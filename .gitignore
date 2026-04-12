@@ -1,0 +1,30 @@
+# Smith runtime state (never commit)
+.smith/
+
+# Internal decision logs
+specs/
+
+# Claude Code local state
+.claude/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# Settings backups created by installer
+*.bak-*
+
+# Logs
+*.log
+
+# Temporary files
+/tmp/

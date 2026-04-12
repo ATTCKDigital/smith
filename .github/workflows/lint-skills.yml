@@ -1,0 +1,49 @@
+name: Lint Skills
+
+on:
+  push:
+    paths:
+      - 'skills/**'
+  pull_request:
+    paths:
+      - 'skills/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate SKILL.md frontmatter
+        run: |
+          set -e
+          ERRORS=0
+          for skill_dir in skills/smith skills/smith-*; do
+            [ -d "$skill_dir" ] || continue
+            skill_file="$skill_dir/SKILL.md"
+            if [ ! -f "$skill_file" ]; then
+              echo "FAIL: $skill_dir missing SKILL.md"
+              ERRORS=$((ERRORS + 1))
+              continue
+            fi
+            # Check for YAML frontmatter delimiters
+            if ! head -1 "$skill_file" | grep -q '^---'; then
+              echo "FAIL: $skill_file missing YAML frontmatter"
+              ERRORS=$((ERRORS + 1))
+            fi
+            echo "OK: $skill_file"
+          done
+          echo "---"
+          if [ $ERRORS -gt 0 ]; then
+            echo "$ERRORS skill(s) failed validation"
+            exit 1
+          fi
+          echo "All skills validated"
+
+      - name: Check for leaked paths
+        run: |
+          if grep -rn "dennisplucinik\|/Users/[a-z]" skills/ hooks/ scheduler/ settings/ scripts/ 2>/dev/null; then
+            echo "FAIL: Found hardcoded user paths"
+            exit 1
+          fi
+          echo "No leaked paths found"

@@ -1,0 +1,49 @@
+name: Skill Proposal
+description: Propose a new Smith skill
+labels: [skill-proposal]
+body:
+  - type: input
+    id: skill-name
+    attributes:
+      label: Proposed skill name
+      placeholder: "smith-xxx"
+    validations:
+      required: true
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What does this skill do? What workflow gap does it fill?
+    validations:
+      required: true
+
+  - type: textarea
+    id: example-usage
+    attributes:
+      label: Example usage
+      description: Show what a user would type and what the output looks like.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Feature workflow
+        - Debugging
+        - Knowledge & vault
+        - Reporting
+        - Design
+        - Meta
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: External dependencies
+      description: Does this skill need tools beyond bash and git?
+    validations:
+      required: false

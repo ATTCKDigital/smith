@@ -1,0 +1,53 @@
+name: Test Install
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - 'settings/**'
+      - 'skills/**'
+      - 'hooks/**'
+  pull_request:
+
+jobs:
+  install-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Run install
+        run: |
+          export HOME=/tmp/test-home
+          mkdir -p "$HOME"
+          bash scripts/install.sh -y
+
+      - name: Verify skills installed
+        run: |
+          export HOME=/tmp/test-home
+          SKILL_COUNT=$(ls -d "$HOME/.claude/skills/smith"* 2>/dev/null | wc -l)
+          echo "Found $SKILL_COUNT skills"
+          [ "$SKILL_COUNT" -ge 25 ] || { echo "FAIL: Expected at least 25 skills"; exit 1; }
+
+      - name: Verify hooks installed
+        run: |
+          export HOME=/tmp/test-home
+          HOOK_COUNT=$(ls "$HOME/.claude/hooks/"*.sh 2>/dev/null | wc -l)
+          echo "Found $HOOK_COUNT hooks"
+          [ "$HOOK_COUNT" -ge 8 ] || { echo "FAIL: Expected at least 8 hooks"; exit 1; }
+
+      - name: Verify settings merged
+        run: |
+          export HOME=/tmp/test-home
+          jq '.hooks' "$HOME/.claude/settings.json" | grep -q "SessionStart" || { echo "FAIL: hooks not merged"; exit 1; }
+          echo "Settings merged correctly"
+
+      - name: Run uninstall
+        run: |
+          export HOME=/tmp/test-home
+          bash scripts/uninstall.sh -y
+          SKILL_COUNT=$(ls -d "$HOME/.claude/skills/smith"* 2>/dev/null | wc -l)
+          [ "$SKILL_COUNT" -eq 0 ] || { echo "FAIL: Skills not cleaned up"; exit 1; }
+          echo "Uninstall clean"
