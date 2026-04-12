@@ -27,7 +27,7 @@ The outcome: you talk to Claude about what you want to build, Smith handles the 
 curl -fsSL https://raw.githubusercontent.com/ATTCKDigital/smith/main/scripts/install.sh | bash
 ```
 
-Then open any project in your terminal and run `/smith` to initialize the vault, bank, and ledger for that project. Once initialized, run `/smith-new` and describe what you want to build. Smith walks you through requirements, planning, task breakdown, implementation, and PR creation — all without leaving the terminal.
+Then open any new or existing project in your terminal and run `/smith` to initialize the vault, bank, and ledger for that project. Once initialized, run `/smith-new` and describe what you want to build. Smith walks you through requirements, planning, task breakdown, implementation, and PR creation — all without leaving the terminal.
 
 > **Note:** `install.sh` is a one-time global setup that installs skills, hooks, and the scheduler into `~/.claude/`. Running `/smith` is a separate per-project step that must be done once in each project before using other commands.
 
