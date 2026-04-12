@@ -27,7 +27,9 @@ The outcome: you talk to Claude about what you want to build, Smith handles the 
 curl -fsSL https://raw.githubusercontent.com/ATTCKDigital/smith/main/scripts/install.sh | bash
 ```
 
-Then open any project in your terminal, run `/smith-new`, and describe what you want to build. Smith walks you through requirements, planning, task breakdown, implementation, and PR creation — all without leaving the terminal.
+Then open any project in your terminal and run `/smith` to initialize the vault, bank, and ledger for that project. Once initialized, run `/smith-new` and describe what you want to build. Smith walks you through requirements, planning, task breakdown, implementation, and PR creation — all without leaving the terminal.
+
+> **Note:** `install.sh` is a one-time global setup that installs skills, hooks, and the scheduler into `~/.claude/`. Running `/smith` is a separate per-project step that must be done once in each project before using other commands.
 
 ---
 
@@ -118,6 +120,8 @@ cd smith
 
 ### What the installer does
 
+The installer is a **one-time global setup** — it installs Smith into `~/.claude/` and does not modify any project.
+
 - Backs up your existing `~/.claude/settings.json`
 - Copies all 25 skills to `~/.claude/skills/`
 - Copies all 8 hooks to `~/.claude/hooks/`
@@ -125,6 +129,8 @@ cd smith
 - Optionally installs the macOS scheduler LaunchAgent
 
 The installer is idempotent — running it again updates skills and hooks without duplicating entries.
+
+After installing, run `/smith` once inside each project to complete **per-project initialization**: scaffolding the vault, bank, ledger, `.specify/` templates, and generating `CLAUDE.md` and `constitution.md` for that project.
 
 ### Updating
 
@@ -211,9 +217,9 @@ launchctl list | grep smith
 Review logs at `~/.smith/scheduler/scheduler.log` for errors.
 
 **Vault directories missing**
-Run `/smith` inside any project to initialize the vault structure, or create the directories manually:
+Run `/smith` inside the project to run per-project initialization (vault, bank, ledger, `.specify/` scaffolding, `CLAUDE.md`). This is required once per project before using other Smith commands. To create just the vault directories manually:
 ```bash
-mkdir -p .smith/vault/{sessions,agents,queue,bank}
+mkdir -p .smith/vault/{sessions,agents,queue,bank,ledger}
 ```
 
 ---
