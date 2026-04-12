@@ -7,7 +7,7 @@
 > Spec-driven development for Claude Code — requirements, plans, and tasks that ship as working code.
 
 <!-- asciinema placeholder -->
-_Demo coming soon — see [smith.attck.com](https://smith.attck.com) for a walkthrough._
+_See [smith.attck.com](https://smith.attck.com) for a walkthrough._
 
 ---
 
