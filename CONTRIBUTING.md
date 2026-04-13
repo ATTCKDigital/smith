@@ -124,7 +124,21 @@ not be merged. It also keeps the project focused and maintainable.
 
 3. Make your changes and test them with Claude Code.
 
-4. Before submitting, verify:
+4. Before submitting, run a security scan:
+   ```bash
+   # Check for OS artifacts that shouldn't be committed
+   find . -name ".DS_Store" -o -name "Thumbs.db" -o -name "*.swp"
+   
+   # Check for sensitive files
+   find . -name ".env*" -o -name "*.pem" -o -name "*.key" -o -name "*credential*" -o -name "*secret*"
+   
+   # Scan for hardcoded secrets (review any matches manually)
+   grep -rE "(api[_-]?key|secret[_-]?key|password|bearer|sk-|pk_live|sk_live)" --include="*.md" --include="*.sh" --include="*.json" . | grep -v "don't\|block\|guard\|protect\|expose\|leak"
+   ```
+   
+   Remove any files or content flagged by these scans before proceeding.
+
+5. Verify functionality:
    - The installer runs without errors
    - Your changes do not break existing skills or hooks
    - CHANGELOG.md is updated
