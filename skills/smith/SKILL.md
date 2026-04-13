@@ -95,9 +95,36 @@ Scan the current working directory to detect existing project characteristics. F
 
 - `frontend/` + `backend/` → Web app (separate dirs)
 - `src/` only → Single project
-- `apps/` or `packages/` → Monorepo
+- `apps/` or `packages/` → Monorepo (directory heuristic)
 - `ios/` or `android/` → Mobile
 - Check for existing `.specify/`, `.claude/commands/`, `.claude/agents/`
+
+#### 2.4.1 Monorepo Tool Detection
+
+Detect monorepo orchestration tools by their config files. These take precedence over directory heuristics:
+
+**Config file detection:**
+- `pnpm-workspace.yaml` → pnpm workspaces
+- `package.json` with `workspaces` field → npm/yarn workspaces (parse JSON to confirm)
+- `nx.json` → Nx monorepo
+- `turbo.json` → Turborepo
+- `lerna.json` → Lerna
+- `rush.json` → Rush
+
+**When monorepo config is found:**
+1. Set structure type to "Monorepo" with high confidence
+2. Record the orchestration tool (e.g., "pnpm workspaces", "Nx", "Turborepo")
+3. Parse workspace configuration to identify package locations:
+   - **pnpm**: Parse `packages` array from `pnpm-workspace.yaml`
+   - **npm/yarn**: Parse `workspaces` field from `package.json` (can be array or object with `packages` key)
+   - **Nx**: Parse `projects` from `nx.json` or scan for `project.json` files; check `workspaceLayout` for custom paths
+   - **Turbo**: Note presence; Turbo typically layers on top of npm/yarn/pnpm workspaces
+   - **Lerna**: Parse `packages` array from `lerna.json`; check `useWorkspaces` flag
+   - **Rush**: Parse `projects` array from `rush.json`
+4. Identify the monorepo root (where the config file lives) — this may differ from cwd if running from a sub-package
+5. Store detected workspace globs for use in CLAUDE.md generation
+
+**Multiple tools:** If multiple configs exist (e.g., `turbo.json` + `pnpm-workspace.yaml`), record both — Turbo is often used alongside a workspace manager.
 
 #### 2.5 Existing Configuration Detection
 
@@ -117,10 +144,14 @@ Display findings in a clear table:
 | Category | Detected | Confidence | Value |
 |----------|----------|------------|-------|
 | Project Name | Yes | High | "my-project" (from package.json) |
+| Structure | Yes | High | Monorepo |
+| Monorepo Tool | Yes | High | pnpm workspaces (from pnpm-workspace.yaml) |
+| Workspace Packages | Yes | High | packages/*, apps/* |
 | Frontend | Yes | High | React 19 + TypeScript |
 | Styling | Yes | High | Tailwind CSS |
 | Backend | Yes | High | Flask 3.x + Python 3.12 |
 | Database | Yes | Medium | SQLite (found .db files) |
+| Package Manager | Yes | High | pnpm (from pnpm-lock.yaml) |
 | Auth | No | — | Not detected |
 | Linting | Yes | High | ESLint + Ruff |
 | Testing | Yes | High | Vitest + Pytest |
@@ -259,7 +290,16 @@ Use the following rules for content generation:
 - **Tailwind**: Include "Tailwind utility classes required; custom CSS MUST be justified"
 - **Docker**: Include container-related standards
 - **SQLAlchemy**: Include "No N+1 queries" rule
+- **Monorepo**: Include workspace-aware rules (see below)
 - Only include sections relevant to the detected/selected stack
+
+**Monorepo-specific constitution rules** (only if monorepo detected):
+- Include "Changes affecting multiple packages require cross-package testing"
+- Include "Shared packages must maintain backwards compatibility or coordinate breaking changes"
+- Include workspace dependency guidelines (internal vs external)
+- For Nx: Include affected-based testing rules (`nx affected:test`)
+- For Turborepo: Include pipeline caching expectations
+- For pnpm: Include workspace protocol usage (`workspace:*`)
 
 #### 4.3 Generate CLAUDE.md
 
@@ -287,6 +327,9 @@ See `.specify/memory/constitution.md` for binding project principles.
 ### Backend
 [From Q8-Q12, only if backend exists]
 
+### Monorepo Structure
+[Generated only if monorepo detected — include workspace layout, package locations, and orchestration tool]
+
 ## Git Commit Guidelines
 [Generated from Q26, Q28 — include linking format, co-author trailer]
 
@@ -306,6 +349,9 @@ See `.specify/memory/constitution.md` for binding project principles.
 
 ### Database
 [Generated from database choice — migration commands if ORM detected]
+
+### Monorepo Commands
+[Generated only if monorepo detected — include workspace-aware commands]
 
 ## Architecture
 
@@ -348,6 +394,65 @@ See `.specify/memory/constitution.md` for binding project principles.
 - Generate actual commands based on the real package manager and frameworks
 - If existing CLAUDE.md was found and user chose to preserve, merge new sections with existing content
 - Include the SpecKit Workflow section verbatim — this is the standard workflow
+
+**Monorepo-specific CLAUDE.md content** (only if monorepo detected):
+
+For the `### Monorepo Structure` section, include:
+- Orchestration tool name and version (e.g., "pnpm workspaces", "Nx 17.x", "Turborepo")
+- Workspace root location (usually cwd, but note if different)
+- Package locations parsed from config (e.g., `packages/*`, `apps/*`)
+- Brief description of each discovered package/app if parseable
+
+For the `### Monorepo Commands` section, generate tool-specific commands:
+
+**pnpm workspaces:**
+```
+pnpm install                    # Install all workspace dependencies
+pnpm -F <package> add <dep>     # Add dependency to specific package
+pnpm -F <package> run <script>  # Run script in specific package
+pnpm -r run build               # Run build in all packages
+pnpm -F "...<package>" test     # Test package and its dependents
+```
+
+**npm/yarn workspaces:**
+```
+npm install                     # Install all workspace dependencies
+npm -w <package> run <script>   # Run script in specific package
+npm run <script> --workspaces   # Run script in all workspaces
+```
+
+**Nx:**
+```
+npx nx run <project>:<target>   # Run target in specific project
+npx nx affected:build           # Build only affected projects
+npx nx affected:test            # Test only affected projects
+npx nx graph                    # Visualize project dependencies
+npx nx run-many -t build        # Run build in all projects
+```
+
+**Turborepo:**
+```
+turbo run build                 # Run build with caching
+turbo run test                  # Run tests with caching
+turbo run build --filter=<pkg>  # Build specific package
+turbo run build --filter=...<pkg>  # Build package and dependents
+```
+
+**Lerna:**
+```
+lerna bootstrap                 # Link local packages
+lerna run build                 # Run build in all packages
+lerna run test --scope=<pkg>    # Run test in specific package
+lerna publish                   # Publish changed packages
+```
+
+**Rush:**
+```
+rush install                    # Install dependencies
+rush build                      # Build all projects
+rush build -t <project>         # Build specific project and deps
+rush test                       # Run tests
+```
 
 #### 4.4 Set Up `.claude/commands/`
 
@@ -395,10 +500,17 @@ If no `.claude/settings.json` exists, create one with sensible defaults:
 ```
 
 Add framework-specific permissions based on detected stack:
-- npm projects: `"Bash(npm run:*)"`, `"Bash(npm install:*)""`
+- npm projects: `"Bash(npm run:*)"`, `"Bash(npm install:*)"`
 - Poetry projects: `"Bash(poetry run:*)"`, `"Bash(poetry install:*)"`
 - Docker projects: `"Bash(docker:*)"`, `"Bash(docker compose:*)"`
 - CI scripts: `"Bash(./scripts/*:*)"`
+
+Add monorepo-specific permissions based on detected orchestration tool:
+- pnpm workspaces: `"Bash(pnpm:*)"`, `"Bash(pnpm -F:*)"`, `"Bash(pnpm -r:*)"`
+- Nx: `"Bash(npx nx:*)"`, `"Bash(nx:*)"`
+- Turborepo: `"Bash(turbo:*)"`, `"Bash(turbo run:*)"`
+- Lerna: `"Bash(lerna:*)"`, `"Bash(npx lerna:*)"`
+- Rush: `"Bash(rush:*)"`
 
 If `.claude/settings.json` already exists, do NOT overwrite — inform the user they may want to add the `.specify/scripts` permission manually.
 
