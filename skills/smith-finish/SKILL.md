@@ -1,3 +1,8 @@
+---
+name: smith-finish
+description: End-of-session workflow that commits, pushes, merges to main, updates specs, and cleans up the workspace.
+---
+
 # Smith — Session Finish
 
 ## Skill Purpose
