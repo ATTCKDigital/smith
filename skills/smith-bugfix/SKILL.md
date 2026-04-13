@@ -18,13 +18,17 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-bugfix <event>
 
-**Input:** <brief summary>
+**User Request:**
+> <verbatim user message that triggered this action — capture the exact words the user typed describing the bug or fix needed. For natural language triggers like "fix this", include the preceding context that describes what's broken.>
+
+**Synthesized Input:** <brief summary of the fix being applied>
 **Outcome:** <what happened>
 **Artifacts:** <files created/modified>
+**Systems affected:** <system IDs>
 ```
 
 Log at these points:
-1. **On invocation** — bug description provided
+1. **On invocation** — capture the verbatim user request AND the synthesized bug description
 2. **After branch created** — branch name
 3. **After fix applied** — files modified, brief description of the fix
 4. **After tests** — pass/fail summary
@@ -224,21 +228,7 @@ For each affected system spec.md:
 3. Add a dated entry describing the fix
 4. Keep it concise and factual
 
-### 6.2 Update CHANGELOG.md
-
-Append an entry to the project root `CHANGELOG.md`:
-```markdown
-## [YYYY-MM-DD HH:MM UTC] — fix: <short description>
-
-**Prompt:** `<original user prompt or $ARGUMENTS>`
-
-**Changes:**
-- `path/to/file.ext`: <before → after summary>
-
-**Reverts:** To revert, run: `git revert <commit-hash>`
-```
-
-### 6.3 Update STATUS.md
+### 6.2 Update STATUS.md
 If the fix is relevant to project status tracking, update `STATUS.md`.
 
 ## Phase 7: Commit, Push & Merge

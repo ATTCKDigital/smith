@@ -1,5 +1,5 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![24 Skills](https://img.shields.io/badge/skills-24-brightgreen.svg)](skills/)
+[![25 Skills](https://img.shields.io/badge/skills-25-brightgreen.svg)](skills/)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blueviolet.svg)](https://claude.ai/code)
 
 # Smith
@@ -39,7 +39,7 @@ Then open any new or existing project in your terminal and run `/smith` to initi
 
 | Category | Commands | Description |
 |---|---|---|
-| Feature workflow | `/smith-new`, `/smith-specify`, `/smith-clarify`, `/smith-plan`, `/smith-tasks`, `/smith-analyze`, `/smith-implement`, `/smith-build`, `/smith-bugfix`, `/smith-checklist`, `/smith-finish` | End-to-end feature development pipeline |
+| Feature workflow | `/smith-new`, `/smith-explore`, `/smith-specify`, `/smith-clarify`, `/smith-plan`, `/smith-tasks`, `/smith-analyze`, `/smith-implement`, `/smith-build`, `/smith-bugfix`, `/smith-checklist`, `/smith-finish` | End-to-end feature development pipeline |
 | Debugging | `/smith-debug` | Diagnostic investigation with structured evidence gathering |
 | Knowledge and vault | `/smith-vault`, `/smith-bank`, `/smith-queue`, `/smith-todo`, `/smith-ledger`, `/smith-reflect` | Persistent session logs, idea storage, task queuing, and accumulated learning |
 | Reporting | `/smith-report`, `/smith-taskstoissues` | Client-facing reports and GitHub issue generation |

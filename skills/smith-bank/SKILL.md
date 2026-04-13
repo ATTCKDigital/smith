@@ -19,10 +19,14 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-bank <event>
 
+**User Request:**
+> <verbatim user message or idea description that triggered this action>
+
 **Action:** <banked|listed|processed|edited|removed|prioritized>
 **Bank ID:** <BANK-NNN>
 **Title:** <idea title>
 **Outcome:** <what happened>
+**Systems affected:** <system IDs>
 ```
 
 ## Behavior

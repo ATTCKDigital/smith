@@ -19,6 +19,9 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-todo <event>
 
+**User Request:**
+> <verbatim user message that triggered this action>
+
 **Action:** <list|add|done|defer|remove|edit|review|week|stats>
 **Date:** <YYYY-MM-DD>
 **Outcome:** <what happened>

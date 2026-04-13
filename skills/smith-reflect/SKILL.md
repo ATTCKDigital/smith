@@ -18,7 +18,10 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-reflect <event>
 
-**Input:** <brief summary>
+**User Request:**
+> <verbatim user message that triggered this action>
+
+**Synthesized Input:** <brief summary>
 **Outcome:** <what happened>
 **Artifacts:** <files created/modified>
 **Systems affected:** <system IDs>
@@ -136,6 +139,7 @@ Determine which sessions to analyze based on arguments:
 **Detecting completed workflows:** Grep session logs for invocation markers:
 - `/smith-build` -- full build workflows
 - `/smith-bugfix` -- bugfix workflows
+- `/smith-audit` -- audit workflows
 - `/smith-implement` -- implementation workflows
 
 Only analyze sessions that contain at least one of these workflow markers. Sessions that are purely Q&A, planning, or specification work are skipped (no execution to learn from).
@@ -358,7 +362,7 @@ Reflection complete.
 
 ## Automatic Invocation
 
-Other smith commands (`/smith-build`, `/smith-bugfix`) may call `/smith-reflect` automatically at the end of their execution. When invoked automatically:
+Other smith commands (`/smith-build`, `/smith-bugfix`, `/smith-audit`) may call `/smith-reflect` automatically at the end of their execution. When invoked automatically:
 
 1. Check `ledger.auto_reflect` in config -- if `false`, skip silently
 2. Analyze only the current session (the one that just completed)

@@ -13,8 +13,12 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-taskstoissues <event>
 
-**Input:** <brief summary>
+**User Request:**
+> <verbatim user message that triggered this action>
+
+**Synthesized Input:** <brief summary>
 **Outcome:** <what happened>
+**Systems affected:** <system IDs>
 ```
 
 Log at these points:

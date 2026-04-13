@@ -18,13 +18,17 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-debug <event>
 
-**Input:** <brief summary>
+**User Request:**
+> <verbatim user message that triggered this action — capture the exact error description, symptoms, or question the user asked. Include any error messages they pasted.>
+
+**Synthesized Input:** <brief summary of what's being investigated>
 **Outcome:** <what happened>
 **Artifacts:** <files created/modified>
+**Systems affected:** <system IDs>
 ```
 
 Log at these points:
-1. **On invocation** — symptom description
+1. **On invocation** — capture the verbatim user request AND the structured symptom description
 2. **After symptom capture** — structured fields extracted
 3. **After triage** — sub-agent findings summary
 4. **After diagnosis** — root cause identified or hypotheses ranked

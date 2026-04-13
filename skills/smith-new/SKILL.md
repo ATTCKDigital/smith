@@ -18,14 +18,17 @@ Append entries to the session log using this format:
 ```
 ### [HH:MM:SS] /smith-new <event>
 
-**Input:** <brief summary>
+**User Request:**
+> <verbatim user message that triggered this action — capture the exact words the user typed, including any conversation context that led to the request. For natural language triggers, capture the trigger message. For explicit /smith-new invocations, capture $ARGUMENTS.>
+
+**Synthesized Input:** <brief summary of what's being built>
 **Outcome:** <what happened>
 **Artifacts:** <files created/modified>
 **Systems affected:** <system IDs>
 ```
 
 Log at these points:
-1. **On invocation** — the feature description provided by the user
+1. **On invocation** — capture the verbatim user request AND the synthesized feature description
 2. **After system detection** — which primary system was identified, which other systems are affected
 3. **After spec creation** — path to created spec folder and spec.md
 4. **After questions generated** — how many questions, path to questions file
@@ -44,9 +47,39 @@ If the user says any of the following (or similar phrases) during a conversation
 
 When triggered by natural language, synthesize the entire conversation history into a comprehensive feature description and proceed as if that description was passed as `$ARGUMENTS`.
 
+## Phase 0: Pre-Change Exploration (Conditional)
+
+Before creating a worktree, check if the proposed feature warrants impact analysis.
+
+### When to Run Exploration
+
+Run `/smith-explore` automatically if ANY of these conditions are met:
+- `$ARGUMENTS` or conversation context mentions: "skill", "hook", "constitution", "CLAUDE.md", "MEMORY.md", "config", "policy"
+- The feature touches core Smith infrastructure (`.claude/skills/`, `.smith/`, `.specify/`)
+- `--explore` flag is passed explicitly
+
+### Exploration Flow
+
+1. **Run `/smith-explore`** with the feature description and scope auto-detected from context
+2. **Wait for the exploration report** — this produces a structured analysis of:
+   - Skills affected
+   - Configuration file conflicts (per File Purpose Policy in constitution.md §VI)
+   - Hooks that might be impacted
+   - Cross-system architectural concerns
+3. **Evaluate exploration status:**
+   - **`clear`**: Continue to Phase 1 (worktree creation)
+   - **`conflicts-found`** (warnings only): Present summary to user, ask to proceed or resolve first
+   - **`blocking-issues`**: STOP. Present blocking issues and require resolution before continuing
+
+### Skip Exploration
+
+If none of the trigger conditions are met, skip directly to Phase 1. Exploration adds overhead and is only valuable for changes that may have system-wide impacts.
+
+---
+
 ## Phase 1: Worktree Creation & Setup
 
-The worktree is created FIRST, before any other work. This ensures the user's current working directory and branch are never touched — the entire workflow is isolated from the start.
+The worktree is created after exploration passes (or is skipped). This ensures the user's current working directory and branch are never touched — the entire workflow is isolated from the start.
 
 0. **Activate workflow tracking** — create `.smith/vault/.active-workflow` in the **main repo**:
    ```

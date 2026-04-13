@@ -18,14 +18,17 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-build <event>
 
-**Input:** <brief summary>
+**User Request:**
+> <verbatim user message that triggered this action — if invoked via /smith-new, reference the original request logged there. If invoked manually for recovery, capture the recovery command.>
+
+**Synthesized Input:** <brief summary of what's being built>
 **Outcome:** <what happened>
 **Artifacts:** <files created/modified>
 **Systems affected:** <system IDs>
 ```
 
 Log at these points:
-1. **On invocation** — which feature is being built, fresh run or recovery
+1. **On invocation** — which feature is being built, fresh run or recovery, reference to original user request
 2. **After each phase completes** — phase name, tasks completed count, key artifacts produced
 3. **After system spec updates** — which system specs were updated and what changed
 4. **After PR created** — PR number, title

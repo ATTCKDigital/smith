@@ -19,9 +19,13 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-report <event>
 
-**Input:** <brief summary>
+**User Request:**
+> <verbatim user message that triggered this action>
+
+**Synthesized Input:** <brief summary>
 **Outcome:** <what happened>
 **Artifacts:** <files created>
+**Systems affected:** <system IDs>
 ```
 
 Log at these points:

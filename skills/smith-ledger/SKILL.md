@@ -19,10 +19,14 @@ Append entries using this format:
 ```
 ### [HH:MM:SS] /smith-ledger <event>
 
+**User Request:**
+> <verbatim user message that triggered this action>
+
 **Subcommand:** <dashboard|list|show|search|prune|promote|demote|export|reset>
-**Input:** <brief summary of args/filters>
+**Synthesized Input:** <brief summary of args/filters>
 **Outcome:** <what happened — counts, changes made, results found>
 **Artifacts:** <files read/modified>
+**Systems affected:** <system IDs>
 ```
 
 Log at these points:
