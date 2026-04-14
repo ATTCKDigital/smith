@@ -141,8 +141,11 @@ If `.smith/vault/ledger/` exists and contains non-empty files, load relevant Led
 1. Check: `ls .smith/vault/ledger/*.md 2>/dev/null`
 2. If files exist, read the following sections (higher-confidence entries first, truncate at ~2000 tokens per file):
    - `.smith/vault/ledger/patterns.md`
+   - `.smith/vault/ledger/antipatterns.md`
+   - `.smith/vault/ledger/tool-preferences.md`
+   - `.smith/vault/ledger/edge-cases.md`
    - `.smith/vault/ledger/project-quirks.md`
-3. Use loaded patterns as additional context when gathering requirements and generating specs. The Ledger informs judgment, it does not override spec/plan/constitution.
+3. Use the loaded entries as additional context throughout this workflow — both during the conversational requirements-gathering phase (to know what to ask about, what failure modes to anticipate) and during spec generation (to steer the spec away from known antipatterns and toward established patterns / tool preferences). The Ledger informs judgment, it does not override spec/plan/constitution.
 4. **Budget violation tracking**: If any Ledger file was truncated (entries were dropped to fit within the ~2000 token budget per file), increment `context_budget_violations` in `.smith/vault/ledger/.meta.json` by 1. If `.meta.json` does not exist, create it from the default template first. This signal tells the reconciliation system that the Ledger is too large for the configured budget.
 
 ## Phase 2: Requirements Conversation
@@ -428,12 +431,13 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    - This runs as a subagent chain (see smith-build skill)
    - Wait for completion
 
-5. **Display final summary** to the user:
+5. **Display final summary** to the user. Lead the message with "Feature `<name>` complete. Here's the summary:" and include:
    - Feature name and branch
    - Files created/modified
    - PR link
    - Release notes summary
    - Link to `specs/<feature>/release.md`
+   - **Token and duration totals** — run `bash hooks/workflow-summary.sh --totals-only` and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim at the bottom of the summary. Run this BEFORE step 9 (clearing the active-workflow file), otherwise the Stop hook will also append its full block to the session log during the same Stop event — behavior is still correct, but running it now guarantees the numbers are fresh.
 
 6. **Merge PR** from the **main repo directory** (not the worktree — avoids "main already checked out" errors):
    **IMPORTANT**: Always run `gh pr merge` from the **primary repo directory**.
@@ -445,7 +449,7 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    - Delete the remote feature branch
    - Pull latest main so the local copy is up to date
 
-7. **Workflow summary** — emitted automatically. The `workflow-summary.sh` Stop hook appends a "=== Workflow Summary ===" block with duration, estimated tokens, tool calls, subagent totals, and files changed once the active-workflow file is removed (step 9 below). Do not emit the summary manually.
+7. **Full workflow summary (session log only)** — emitted automatically. The `workflow-summary.sh` Stop hook appends a "=== Workflow Summary ===" block with duration, estimated tokens, tool calls, subagent totals, and files changed to the session log file once the active-workflow file is removed (step 9 below). Do not emit the full block to the user manually — the two-line totals already surfaced in step 5 are the chat-visible version; the full block is for audit only.
 
 8. **Clean up worktree:**
    ```bash

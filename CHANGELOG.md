@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New hook: `metrics-tracker.sh` — PostToolUse hook that captures character counts for token estimation
 - Workflow metrics summary — primary workflows (smith-new, smith-bugfix, smith-debug) now display aggregated metrics at completion: estimated tokens, tool calls, subagent stats, duration
 - Subagent metrics logging — SubagentStop hook now captures `total_tokens`, `tool_uses`, `duration_ms` and logs to session files
+- `workflow-summary.sh --totals-only` — lightweight mode that prints just `Total tokens used` and `Total duration` to stdout for skills to include inline in the final chat message (Stop-hook stdout doesn't reach the preceding assistant bubble, so the two-line totals are now emitted by the skill before Stop fires)
+
+### Fixed
+
+- `Total tokens used` and `Total duration` now appear in the user-facing "Feature/Bugfix/Debug complete" chat message. Previously these only landed in the session log file because the Stop hook's stdout doesn't flow into the assistant message that already shipped. Skills (`/smith-new`, `/smith-bugfix`, `/smith-debug`) now invoke `workflow-summary.sh --totals-only` and paste the two lines into their final summary before Stop fires. The full `=== Workflow Summary ===` audit block continues to be appended to the session log file by the Stop hook
 
 ### Changed
 
