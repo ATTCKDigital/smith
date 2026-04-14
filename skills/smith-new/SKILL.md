@@ -431,13 +431,7 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    - This runs as a subagent chain (see smith-build skill)
    - Wait for completion
 
-5. **Display final summary** to the user. Lead the message with "Feature `<name>` complete. Here's the summary:" and include:
-   - Feature name and branch
-   - Files created/modified
-   - PR link
-   - Release notes summary
-   - Link to `specs/<feature>/release.md`
-   - **Token and duration totals** — run `bash hooks/workflow-summary.sh --totals-only` and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim at the bottom of the summary. Run this BEFORE step 9 (clearing the active-workflow file), otherwise the Stop hook will also append its full block to the session log during the same Stop event — behavior is still correct, but running it now guarantees the numbers are fresh.
+5. **Display final summary** to the user. Emit a chat message that starts with "Feature `<name>` complete. Here's the summary:" and includes the feature name and branch, files created/modified, PR link, release notes summary, and link to `specs/<feature>/release.md`. At the bottom, run `bash hooks/workflow-summary.sh --totals-only` and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim — do this BEFORE step 9 (clearing the active-workflow file) so the numbers are fresh. The bash invocation is a required action, not an optional extra — the two totals lines must appear in the chat message.
 
 6. **Merge PR** from the **main repo directory** (not the worktree — avoids "main already checked out" errors):
    **IMPORTANT**: Always run `gh pr merge` from the **primary repo directory**.
