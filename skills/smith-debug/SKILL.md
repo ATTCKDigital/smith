@@ -311,6 +311,33 @@ Would you like me to:
 - The full `=== Workflow Summary ===` block is appended to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up — that's for audit only, do not duplicate it in chat
 - Log completion to vault
 
+## Post-Workflow Reflection
+
+After workflow completion (regardless of which Phase 6 option the user selected), trigger a Ledger reflection if enabled. Debug runs surface valuable signal — root causes, false hypotheses, diagnostic dead-ends — that should feed back into `antipatterns.md` and `edge-cases.md` for future runs.
+
+1. Read `.smith/config.json` — if `ledger.auto_reflect` is `true` (default), proceed
+2. Launch a **non-blocking** background sub-agent using the configured reflection model (default: Haiku):
+   - Pass: current session log path, `.smith/vault/ledger/` path, and the debug report path
+   - The sub-agent runs the `smith-reflect` workflow
+   - Do NOT wait for the sub-agent to complete
+3. If `.smith/config.json` is missing or `ledger.auto_reflect` is `false`, skip silently
+
+### Post-Reflection Reconciliation Check
+
+After reflection completes (or is skipped):
+
+1. Read `.smith/config.json` — if `ledger.reconcile.auto_reconcile` is `false`, skip
+2. Read `.smith/vault/ledger/.meta.json` — check signals against thresholds:
+   - `estimated_tokens > thresholds.total_tokens_max` (default 30000)
+   - `context_budget_violations > thresholds.context_violations_threshold` (default 3)
+   - `reinforcements_since_reconcile > thresholds.reinforcements_threshold` (default 50)
+3. Check minimum interval: if `last_reconcile` is less than `minimum_hours_between_reconciles` (default 6) hours ago, skip
+4. If any threshold exceeded AND minimum interval has passed:
+   - Launch a **non-blocking** background sub-agent using the configured `reconcile_model` (default: Haiku)
+   - Pass: "Run /smith-ledger reconcile on this project"
+   - Do NOT wait for the sub-agent to complete
+5. If no threshold exceeded, `.meta.json` is missing, or config is missing, skip silently
+
 ## Key Rules
 
 - **Read-only**: This workflow NEVER modifies application code, configs, or Docker services
