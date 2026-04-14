@@ -314,7 +314,9 @@ bash scripts/health-check.sh
 
 ### 8.2 Summary
 
-The workflow summary is emitted automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up below. Do not emit it manually. If you need to surface bugfix-specific notes (test results, warnings about stashed changes, services rebuilt), log them as a regular event entry — the hook's summary covers metrics, duration, and files changed.
+Emit a final chat message to the user that starts with "Bugfix complete. Here's the summary:" (or equivalent for the fix). Include any bugfix-specific notes (test results, warnings about stashed changes, services rebuilt). At the bottom, run `bash hooks/workflow-summary.sh --totals-only` and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim — do this BEFORE the Workflow Cleanup step below so the active-workflow file still exists (the helper does not require it, but running it now keeps the numbers fresh).
+
+The full `=== Workflow Summary ===` block is written to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is removed — that's for audit only, not chat. Do not emit the full block to the user.
 
 ## Workflow Cleanup
 

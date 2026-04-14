@@ -72,6 +72,19 @@ If the user says any of the following (or similar phrases), treat it as invoking
 
 When triggered by natural language, synthesize the conversation history into the symptom description and proceed as if that was passed as `$ARGUMENTS`.
 
+## Ledger Context (Optional)
+
+If `.smith/vault/ledger/` exists and contains non-empty files, load relevant Ledger sections to inform diagnosis. If the directory is missing, empty, or unreadable, skip silently — the Ledger is purely additive and never required.
+
+1. Check: `ls .smith/vault/ledger/*.md 2>/dev/null`
+2. If files exist, read the following sections (higher-confidence entries first, truncate at ~2000 tokens per file):
+   - `.smith/vault/ledger/antipatterns.md` (past failure modes — directly useful for narrowing hypotheses)
+   - `.smith/vault/ledger/edge-cases.md` (known weird states the system has hit before)
+   - `.smith/vault/ledger/project-quirks.md` (project-specific gotchas — e.g., "this service takes 30s to start, don't assume crash")
+   - `.smith/vault/ledger/tool-preferences.md` (which diagnostic tools/commands are known to work well in this project)
+3. Use loaded entries as additional context during symptom capture, triage, and diagnosis. Especially use `antipatterns.md` to avoid re-investigating already-known failure modes from scratch, and `project-quirks.md` to skip false-positive theories. The Ledger informs judgment, it does not override evidence collected during this run.
+4. **Budget violation tracking**: If any Ledger file was truncated (entries were dropped to fit within the ~2000 token budget per file), increment `context_budget_violations` in `.smith/vault/ledger/.meta.json` by 1. If `.meta.json` does not exist, create it from the default template first. This signal tells the reconciliation system that the Ledger is too large for the configured budget.
+
 ## Phase 1: Symptom Capture (Interactive if needed)
 
 Extract or ask for these structured fields from the user's description:
@@ -294,7 +307,8 @@ Would you like me to:
 ### If user selects [3] (Close):
 - Update the debug report status to `closed` or `documented`
 - Log the diagnosis summary (root cause and confidence level) as a regular event entry in the session log
-- The general workflow summary (duration, tokens, tool calls, subagent totals, files changed) is emitted automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up — do not duplicate it
+- Run `bash hooks/workflow-summary.sh --totals-only` and include the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim at the bottom of the closing chat message
+- The full `=== Workflow Summary ===` block is appended to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up — that's for audit only, do not duplicate it in chat
 - Log completion to vault
 
 ## Key Rules
