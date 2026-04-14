@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Active workflow tracking now uses per-branch files (`.smith/vault/active-workflows/<branch>.yaml`) to support concurrent workflows in different worktrees
 - `subagent-vault-writeback.sh` enhanced to capture and log subagent metrics
+- `/smith-bugfix` Phase 1 rewritten to always run in an isolated worktree branched from `origin/main`. No more "switch to main / stash / cancel" prompt when the user is on a non-main branch — the user's working tree and branch are never touched, and concurrent Smith sessions can't collide on the shared working tree. Matches the worktree-always model already used by `/smith-new`.
 
 - `/smith-new` now includes Phase 0 exploration when features touch `.claude/skills/`, `.smith/`, or `.specify/`
 - `/smith-bugfix` no longer updates CHANGELOG.md (vault session logs handle this)
