@@ -73,77 +73,48 @@ If the user says any of the following (or similar phrases), treat it as invoking
 
 When triggered by natural language, synthesize the conversation history into a concise bug/fix description and proceed as if that description was passed as `$ARGUMENTS`.
 
-## Phase 1: Branch Safety & Setup
+## Phase 1: Worktree Setup
 
-0. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/`:
+Every bugfix always runs in an isolated git worktree branched from `origin/main`. The user's current working directory and branch are NEVER touched, and concurrent Smith sessions cannot collide on the shared working tree. There is no "switch to main / stash / cancel" branching logic — the worktree is mandatory.
+
+0. **Generate fix slug** (2-4 words) from the fix description. Store as `$SLUG`. Derive:
+   - `BRANCH=fix/$SLUG`
+   - `WORKTREE_PATH=/tmp/smith-bugfix-$SLUG`
+   - `PRIMARY_REPO=<current working directory — capture before entering the worktree>`
+
+1. **Fetch latest main** (does NOT change the user's current branch):
    ```bash
-   # After determining branch name:
+   git fetch origin main
+   ```
+
+2. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/` in the **primary repo** (not the worktree, which doesn't exist yet):
+   ```bash
    SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
    mkdir -p .smith/vault/active-workflows
    cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
    workflow: smith-bugfix
-   feature: <bug description slug>
+   feature: $SLUG
    branch: $BRANCH
+   worktree: $WORKTREE_PATH
    started: $(date -u +"%Y-%m-%dT%H:%M:%S")
    EOF
    ```
-   Clear this file at the end after merge or if abandoned:
+   If a yaml file with the same `SAFE_BRANCH` already exists, another session is already using that branch — pick a new slug (e.g., append `-2`) and retry. The file is cleared by the Workflow Cleanup step at the end.
+
+3. **Create the worktree with the fix branch from `origin/main`**:
    ```bash
-   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   git worktree add "$WORKTREE_PATH" -b "$BRANCH" origin/main
+   ```
+   The user's current branch is completely unaffected. They can be on `main`, a feature branch, or a detached HEAD — this workflow will not interfere.
+
+4. **Copy `.env` to the worktree** (only if one exists in the primary repo and the fix might touch services that read it):
+   ```bash
+   [ -f .env ] && cp .env "$WORKTREE_PATH/.env"
    ```
 
-1. **Check current branch**:
-   ```bash
-   git rev-parse --abbrev-ref HEAD
-   ```
-   - If **on `main`**: Proceed.
-   - If **NOT on `main`**: Ask the user how to proceed:
-     > You're currently on branch `<branch-name>`. Options:
-     > 1. **Switch to main** — stash changes and switch (default)
-     > 2. **Run fix in worktree** — create an isolated worktree from main, run the fix there
-     > 3. **Cancel** — abort the bugfix
+5. **All subsequent phases (2-7) run inside `$WORKTREE_PATH`.** Use `cd "$WORKTREE_PATH"` for the first command, then keep every subsequent command scoped to that directory via absolute paths or explicit `cd`. Do NOT `cd` back to the primary repo until Phase 7.3 (merge) — `gh pr merge` must run from the primary repo to avoid "main already checked out" errors.
 
-     **If "Switch to main"** (or "1", "switch", default):
-     ```bash
-     git stash --include-untracked
-     git checkout main
-     git pull origin main
-     ```
-     Note: If stash captured changes, warn the user in the final summary.
-
-     **If "Run fix in worktree"** (or "2", "worktree"):
-     - Set `WORKTREE_MODE=true` and `ORIGINAL_BRANCH=<current-branch>`
-     - Create worktree from main:
-       ```bash
-       git worktree add /tmp/smith-bugfix-<slug> main
-       ```
-     - Copy `.env` to worktree:
-       ```bash
-       cp .env /tmp/smith-bugfix-<slug>/.env
-       ```
-     - All subsequent phases (2-7) run inside the worktree directory.
-     - After Phase 7 merge: clean up worktree from the primary repo:
-       ```bash
-       cd <PRIMARY_REPO> && git worktree remove /tmp/smith-bugfix-<slug>
-       ```
-     - On failure: preserve worktree for debugging, log the path.
-     - User remains on `<original-branch>` throughout.
-
-     **If "Cancel"** (or "3", "cancel"): STOP.
-
-     **IMPORTANT**: When in worktree mode, always run `gh pr merge` from the **primary repo directory**, not from the worktree (avoids "main already checked out" errors).
-
-2. **Ensure main is up to date**:
-   ```bash
-   git pull origin main
-   ```
-
-3. **Create fix branch**:
-   - Generate a short slug (2-4 words) from the fix description
-   - Create and switch to the branch:
-     ```bash
-     git checkout -b fix/<slug>
-     ```
+   **On failure before merge:** preserve the worktree for debugging and log its path in the session log. Do NOT auto-remove it. Leave the active-workflow yaml in place so the user knows the session is still holding that branch.
 
 ## Ledger Context (Optional)
 
@@ -293,38 +264,44 @@ EOF
 )"
 ```
 
-Then merge:
+Then merge **from the primary repo directory** (never from the worktree — `gh pr merge` fails with "main already checked out" otherwise):
 ```bash
-gh pr merge <pr-number> --squash --delete-branch
+cd "$PRIMARY_REPO" && gh pr merge <pr-number> --squash --delete-branch
+cd "$PRIMARY_REPO" && git pull origin main
 ```
 
-### 7.4 Return to main
-```bash
-git checkout main
-git pull origin main
-```
+### 7.4 Update primary repo's main
+Already covered by `git pull` above. The user's working branch in the primary repo is untouched — only the main branch ref moves forward. If the user was on main, they now see the merged changes; if they were on another branch, main is updated but their checkout is not.
 
 ## Phase 8: Post-Merge Rebuild & Summary
 
-### 8.1 Rebuild affected services (on main)
+### 8.1 Rebuild affected services (on main, from the primary repo)
 ```bash
-docker compose up -d --build <service-name>
-bash scripts/health-check.sh
+cd "$PRIMARY_REPO" && docker compose up -d --build <service-name>
+cd "$PRIMARY_REPO" && bash scripts/health-check.sh
 ```
+Skip if no Docker services were touched.
 
 ### 8.2 Summary
 
-Emit a final chat message to the user that starts with "Bugfix complete. Here's the summary:" (or equivalent for the fix). Include any bugfix-specific notes (test results, warnings about stashed changes, services rebuilt). At the bottom, run `bash hooks/workflow-summary.sh --totals-only` and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim — do this BEFORE the Workflow Cleanup step below so the active-workflow file still exists (the helper does not require it, but running it now keeps the numbers fresh).
+Emit a final chat message to the user that starts with "Bugfix complete. Here's the summary:" (or equivalent for the fix). Include any bugfix-specific notes (test results, services rebuilt, worktree path if preserved on failure). At the bottom, run `bash hooks/workflow-summary.sh --totals-only` (from either the primary repo or the worktree — both work) and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim — do this BEFORE the Workflow Cleanup step below.
 
 The full `=== Workflow Summary ===` block is written to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is removed — that's for audit only, not chat. Do not emit the full block to the user.
 
 ## Workflow Cleanup
 
-After the bugfix is merged (or abandoned), clear the active-workflow file to deactivate model routing:
+Run from the primary repo directory. On success, remove the worktree; on failure (before merge), preserve it and skip worktree removal.
+
 ```bash
+cd "$PRIMARY_REPO"
+# Success path: remove the worktree (the branch was already deleted by --delete-branch on merge)
+git worktree remove "$WORKTREE_PATH"
+# Always: clear the active-workflow marker so future sessions know this branch is free
 SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
 rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
 ```
+
+If `git worktree remove` fails because of uncommitted local edits (shouldn't happen on the success path, but can on forced cleanup), fall back to `git worktree remove --force "$WORKTREE_PATH"` and warn the user that any uncommitted changes in the worktree are being discarded.
 
 ## Post-Workflow Reflection
 
