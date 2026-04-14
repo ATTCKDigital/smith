@@ -1,0 +1,101 @@
+{
+  "$comment": "Per-million-token rates in USD. Verified against https://platform.claude.com/docs/en/docs/about-claude/pricing (see specs/003-accurate-workflow-summary/pricing-verified.md). 5-minute cache TTL assumed. Entries ordered longest-prefix-first; patterns use * (no required separator) so they match both the bare id (claude-opus-4-6), dated suffix (claude-opus-4-6-20250929), and context-window suffix (claude-opus-4-6[1m]) so minor-version-specific families win over the broad family wildcard.",
+  "fallback_order": [
+    "exact",
+    "minor",
+    "major",
+    "tier"
+  ],
+  "models": [
+    {
+      "family": "claude-opus-4-6*",
+      "input_per_mtok": 5.0,
+      "output_per_mtok": 25.0,
+      "cache_write_5m_per_mtok": 6.25,
+      "cache_read_per_mtok": 0.5,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Opus 4.6. Rate diverged from Opus 4.0/4.1."
+    },
+    {
+      "family": "claude-opus-4-5*",
+      "input_per_mtok": 5.0,
+      "output_per_mtok": 25.0,
+      "cache_write_5m_per_mtok": 6.25,
+      "cache_read_per_mtok": 0.5,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Opus 4.5. Rate diverged from Opus 4.0/4.1."
+    },
+    {
+      "family": "claude-opus-4-1*",
+      "input_per_mtok": 15.0,
+      "output_per_mtok": 75.0,
+      "cache_write_5m_per_mtok": 18.75,
+      "cache_read_per_mtok": 1.5,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Opus 4.1."
+    },
+    {
+      "family": "claude-opus-4*",
+      "input_per_mtok": 15.0,
+      "output_per_mtok": 75.0,
+      "cache_write_5m_per_mtok": 18.75,
+      "cache_read_per_mtok": 1.5,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Opus 4.0 and catch-all fallback for any Opus 4 minor that shares the original rate."
+    },
+    {
+      "family": "claude-sonnet-4-6*",
+      "input_per_mtok": 3.0,
+      "output_per_mtok": 15.0,
+      "cache_write_5m_per_mtok": 3.75,
+      "cache_read_per_mtok": 0.3,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Sonnet 4.6. Currently flat with Sonnet 4.x."
+    },
+    {
+      "family": "claude-sonnet-4-5*",
+      "input_per_mtok": 3.0,
+      "output_per_mtok": 15.0,
+      "cache_write_5m_per_mtok": 3.75,
+      "cache_read_per_mtok": 0.3,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Sonnet 4.5. Currently flat with Sonnet 4.x."
+    },
+    {
+      "family": "claude-sonnet-4*",
+      "input_per_mtok": 3.0,
+      "output_per_mtok": 15.0,
+      "cache_write_5m_per_mtok": 3.75,
+      "cache_read_per_mtok": 0.3,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Sonnet 4.x catch-all."
+    },
+    {
+      "family": "claude-haiku-4-5*",
+      "input_per_mtok": 1.0,
+      "output_per_mtok": 5.0,
+      "cache_write_5m_per_mtok": 1.25,
+      "cache_read_per_mtok": 0.1,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Haiku 4.5."
+    },
+    {
+      "family": "claude-haiku-3-5*",
+      "input_per_mtok": 0.8,
+      "output_per_mtok": 4.0,
+      "cache_write_5m_per_mtok": 1.0,
+      "cache_read_per_mtok": 0.08,
+      "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
+      "last_verified": "2026-04-14",
+      "notes": "Haiku 3.5 legacy."
+    }
+  ]
+}

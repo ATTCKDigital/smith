@@ -20,6 +20,10 @@ specs/
 # Node
 node_modules/
 
+# Python
+__pycache__/
+*.pyc
+
 # Settings backups created by installer
 *.bak-*
 
