@@ -41,14 +41,22 @@ This command can be invoked in two ways:
 
 ## Phase 0: Context Discovery
 
-0. **Activate workflow tracking** — create `.smith/vault/.active-workflow`:
-   ```
+0. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/`:
+   ```bash
+   BRANCH=$(git rev-parse --abbrev-ref HEAD)
+   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   mkdir -p .smith/vault/active-workflows
+   cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
    workflow: smith-build
    feature: <detected from branch or spec>
-   branch: <current branch>
-   started: <ISO timestamp>
+   branch: $BRANCH
+   started: $(date -u +"%Y-%m-%dT%H:%M:%S")
+   EOF
    ```
-   Clear this file at the end of Phase 7 (after release notes) or on unrecoverable failure.
+   Clear this file at the end of Phase 7 (after release notes) or on unrecoverable failure:
+   ```bash
+   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   ```
 
 1. **Detect worktree context**:
    ```bash
@@ -412,7 +420,11 @@ If `WORKTREE_MODE=true`:
 
 ### 7.4 Clear Workflow Tracking
 
-Remove `.smith/vault/.active-workflow` to signal the workflow is complete.
+Remove the active-workflow file to signal the workflow is complete:
+```bash
+SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+```
 
 ### 7.4.1 Post-Workflow Reflection
 

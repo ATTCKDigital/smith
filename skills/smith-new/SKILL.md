@@ -81,15 +81,23 @@ If none of the trigger conditions are met, skip directly to Phase 1. Exploration
 
 The worktree is created after exploration passes (or is skipped). This ensures the user's current working directory and branch are never touched — the entire workflow is isolated from the start.
 
-0. **Activate workflow tracking** — create `.smith/vault/.active-workflow` in the **main repo**:
-   ```
+0. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/` in the **main repo**:
+   ```bash
+   # After determining branch name in step 4:
+   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   mkdir -p .smith/vault/active-workflows
+   cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
    workflow: smith-new
-   feature: <to be determined>
-   branch: <to be determined>
-   worktree: <to be determined>
-   started: <ISO timestamp>
+   feature: <feature-name>
+   branch: $BRANCH
+   worktree: $WORKTREE_PATH
+   started: $(date -u +"%Y-%m-%dT%H:%M:%S")
+   EOF
    ```
-   Update `feature`, `branch`, and `worktree` fields once the worktree is created in step 4 below. Clear this file at the end of Phase 6 (after merge) or if the workflow is abandoned.
+   Clear this file at the end of Phase 6 (after merge) or if the workflow is abandoned:
+   ```bash
+   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   ```
 
 1. **Fetch latest main** (does NOT change the user's current branch):
    ```bash
@@ -109,7 +117,7 @@ The worktree is created after exploration passes (or is skipped). This ensures t
    ```bash
    git worktree add /tmp/smith-<slug> -b <number>-<short-name> origin/main
    ```
-   Store the worktree path (`/tmp/smith-<slug>`) as `WORKTREE_PATH`. Update `.smith/vault/.active-workflow` in the **main repo** with the `feature`, `branch`, and `worktree` fields.
+   Store the worktree path (`/tmp/smith-<slug>`) as `WORKTREE_PATH`. The active-workflow file was already created in step 0 with the branch and worktree info.
 
    **Note**: The user's current branch is completely unaffected. They can be on any branch — `main`, a feature branch, even a detached HEAD — and this workflow will not interfere.
 
@@ -157,7 +165,12 @@ If the branch was created with a placeholder name in Phase 1 (because `$ARGUMENT
 ```bash
 cd $WORKTREE_PATH && git branch -m <old-placeholder-name> <number>-<short-name>
 ```
-Update `.smith/vault/.active-workflow` in the main repo with the final branch name.
+Rename the active-workflow file if the branch name changed:
+   ```bash
+   OLD_SAFE=$(echo "$OLD_BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   NEW_SAFE=$(echo "$NEW_BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   mv .smith/vault/active-workflows/${OLD_SAFE}.yaml .smith/vault/active-workflows/${NEW_SAFE}.yaml
+   ```
 
 1. **Auto-detect primary system** (reading from worktree):
    - Read all system spec files at `$WORKTREE_PATH/.specify/systems/system-*/spec.md`
@@ -385,7 +398,11 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
       ```bash
       git worktree remove $WORKTREE_PATH
       ```
-   f. **Clear `.smith/vault/.active-workflow`** in the main repo
+   f. **Clear active-workflow file** in the main repo:
+      ```bash
+      SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+      rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+      ```
    g. Confirm: "Queued: `<filename>` (priority: `<level>`, complexity: autonomous). Feature branch `<branch-name>` pushed with all spec artifacts. Run `/smith-queue list` to see pending tasks, or the 2am scheduler will pick it up automatically."
    h. **STOP here.** Do NOT launch `/smith-build`.
 
@@ -415,12 +432,44 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    - Delete the remote feature branch
    - Pull latest main so the local copy is up to date
 
-7. **Clean up worktree:**
+7. **Display workflow summary** with aggregated metrics:
+
+   Read the session log and aggregate all metrics entries and subagent completion entries:
+
+   ```
+   === Workflow Summary ===
+
+   Feature: <feature-name>
+   Branch: <branch-name>
+   Duration: <end_time - started timestamp from active-workflow>
+   PR: <PR number>
+
+   Main Session:
+   - Estimated tokens: ~<sum of all Metrics entry totals / 4>
+   - Tool calls: <count of Metrics entries>
+
+   Subagents:
+   - Count: <number of "Subagent completed" entries>
+   - Total tokens: <sum of subagent total_tokens>
+   - Total tool uses: <sum of subagent tool_uses>
+   - Total duration: <sum of subagent duration_ms>ms
+
+   Files Changed:
+   <list from git diff --name-only main..HEAD>
+   ```
+
+   Log this summary to the session log as well.
+
+8. **Clean up worktree:**
    ```bash
    git worktree remove $WORKTREE_PATH
    ```
 
-8. **Clear workflow tracking** — remove `.smith/vault/.active-workflow` in the main repo
+9. **Clear workflow tracking** — remove the active-workflow file:
+   ```bash
+   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   ```
 
 ### Post-Workflow Reflection
 

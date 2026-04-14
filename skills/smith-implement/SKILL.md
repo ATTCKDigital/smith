@@ -37,14 +37,32 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Workflow Tracking
 
-At the start of implementation, create `.smith/vault/.active-workflow` if it doesn't already exist (it may already be set by `/smith-new` or `/smith-build`):
-```
+At the start of implementation, create a per-branch active-workflow file **only if it doesn't already exist** (it may already be set by `/smith-new` or `/smith-build`):
+```bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+ACTIVE_FILE=".smith/vault/active-workflows/${SAFE_BRANCH}.yaml"
+
+# Only create if not already set by parent workflow
+if [ ! -f "$ACTIVE_FILE" ]; then
+  mkdir -p .smith/vault/active-workflows
+  cat > "$ACTIVE_FILE" << EOF
 workflow: smith-implement
 feature: <detected from branch or spec>
-branch: <current branch>
-started: <ISO timestamp>
+branch: $BRANCH
+started: $(date -u +"%Y-%m-%dT%H:%M:%S")
+EOF
+fi
 ```
-Clear `.smith/vault/.active-workflow` when all tasks are complete. If this action was invoked by `/smith-build`, the build action handles cleanup instead.
+
+Clear the active-workflow file when all tasks are complete, **only if smith-implement created it** (not if inherited from parent):
+```bash
+# Only clean up if we created it (check workflow field)
+if grep -q 'workflow: smith-implement' "$ACTIVE_FILE" 2>/dev/null; then
+  rm -f "$ACTIVE_FILE"
+fi
+```
+If this action was invoked by `/smith-build`, the build action handles cleanup instead.
 
 ## Outline
 
