@@ -24,7 +24,11 @@ if [ -z "$MESSAGE" ]; then
 fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-ACTIVE_WORKFLOW="$PROJECT_DIR/.smith/vault/.active-workflow"
+
+# Get current branch and sanitize for filename (handles branches like feat/vault-infra)
+BRANCH=$(cd "$PROJECT_DIR" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+ACTIVE_WORKFLOW="$PROJECT_DIR/.smith/vault/active-workflows/${SAFE_BRANCH}.yaml"
 
 # Check for manual prefixes first — these work regardless of workflow state
 # Use python3 for reliable prefix detection

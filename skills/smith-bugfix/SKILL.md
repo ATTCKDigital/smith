@@ -62,14 +62,22 @@ When triggered by natural language, synthesize the conversation history into a c
 
 ## Phase 1: Branch Safety & Setup
 
-0. **Activate workflow tracking** — create `.smith/vault/.active-workflow`:
-   ```
+0. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/`:
+   ```bash
+   # After determining branch name:
+   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   mkdir -p .smith/vault/active-workflows
+   cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
    workflow: smith-bugfix
    feature: <bug description slug>
-   branch: <to be determined>
-   started: <ISO timestamp>
+   branch: $BRANCH
+   started: $(date -u +"%Y-%m-%dT%H:%M:%S")
+   EOF
    ```
-   Update `branch` once the fix branch is created. Clear this file at the end after merge or if abandoned.
+   Clear this file at the end after merge or if abandoned:
+   ```bash
+   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   ```
 
 1. **Check current branch**:
    ```bash
@@ -293,17 +301,43 @@ bash scripts/health-check.sh
 
 ### 8.2 Display Summary
 
-Output to the user:
-- Fix description
-- PR link (merged)
-- Files modified
-- Test results
-- Any warnings (stashed changes, unrelated test failures)
-- Confirmation that we're back on `main` with services healthy
+Output a workflow summary with aggregated metrics:
+
+```
+=== Bugfix Summary ===
+
+Fix: <fix description>
+Branch: <branch-name>
+Duration: <end_time - started timestamp>
+PR: <PR number> (merged)
+
+Main Session:
+- Estimated tokens: ~<sum of all Metrics entry totals / 4>
+- Tool calls: <count of Metrics entries>
+
+Subagents:
+- Count: <number of "Subagent completed" entries>
+- Total tokens: <sum of subagent total_tokens>
+- Total tool uses: <sum of subagent tool_uses>
+- Total duration: <sum of subagent duration_ms>ms
+
+Files Changed:
+<list from git diff>
+
+Test Results: <pass/fail summary>
+Warnings: <stashed changes, unrelated test failures if any>
+Status: Back on `main` with services healthy
+```
+
+Log this summary to the session log as well.
 
 ## Workflow Cleanup
 
-After the bugfix is merged (or abandoned), clear `.smith/vault/.active-workflow` to deactivate model routing.
+After the bugfix is merged (or abandoned), clear the active-workflow file to deactivate model routing:
+```bash
+SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+```
 
 ## Post-Workflow Reflection
 

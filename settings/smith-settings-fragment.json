@@ -28,6 +28,12 @@
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/lint-on-save.sh" }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/metrics-tracker.sh" }
+        ]
       }
     ],
     "PreToolUse": [

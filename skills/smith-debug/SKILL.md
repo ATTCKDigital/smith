@@ -280,6 +280,30 @@ Would you like me to:
 
 ### If user selects [3] (Close):
 - Update the debug report status to `closed` or `documented`
+- Display workflow summary with aggregated metrics:
+
+  ```
+  === Debug Summary ===
+
+  Issue: <symptom description>
+  Duration: <end_time - session start>
+  Report: <path to debug report>
+
+  Main Session:
+  - Estimated tokens: ~<sum of all Metrics entry totals / 4>
+  - Tool calls: <count of Metrics entries>
+
+  Subagents (Triage):
+  - Count: <number of triage subagents run>
+  - Total tokens: <sum of subagent total_tokens>
+  - Total tool uses: <sum of subagent tool_uses>
+  - Total duration: <sum of subagent duration_ms>ms
+
+  Diagnosis: <root cause summary>
+  Confidence: <confirmed/probable/possible>
+  ```
+
+- Log this summary to the session log
 - Log completion to vault
 
 ## Key Rules
