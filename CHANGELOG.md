@@ -10,8 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - New skill: `/smith-explore` — pre-change impact analysis for features touching core infrastructure
+- New hook: `metrics-tracker.sh` — PostToolUse hook that captures character counts for token estimation
+- Workflow metrics summary — primary workflows (smith-new, smith-bugfix, smith-debug) now display aggregated metrics at completion: estimated tokens, tool calls, subagent stats, duration
+- Subagent metrics logging — SubagentStop hook now captures `total_tokens`, `tool_uses`, `duration_ms` and logs to session files
 
 ### Changed
+
+- Active workflow tracking now uses per-branch files (`.smith/vault/active-workflows/<branch>.yaml`) to support concurrent workflows in different worktrees
+- `subagent-vault-writeback.sh` enhanced to capture and log subagent metrics
 
 - `/smith-new` now includes Phase 0 exploration when features touch `.claude/skills/`, `.smith/`, or `.specify/`
 - `/smith-bugfix` no longer updates CHANGELOG.md (vault session logs handle this)
