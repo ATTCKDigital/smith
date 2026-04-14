@@ -12,7 +12,8 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "bash ~/.claude/hooks/session-end-review.sh" }
+          { "type": "command", "command": "bash ~/.claude/hooks/session-end-review.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/workflow-summary.sh" }
         ]
       }
     ],

@@ -35,6 +35,19 @@ Log at these points:
 5. **After specs updated** — which specs were updated
 6. **On completion** — PR number, merge status, success/failure
 
+## Subagent Invocation Logging
+
+Immediately before every Agent tool call in this workflow, append a block to the session log. The Agent tool's return value does not expose `subagent_type` or `model` to the parent, so this is the only place that information can be captured.
+
+```
+### [HH:MM:SS] Subagent invoked: <description>
+
+**Type:** <subagent_type or "general">
+**Model:** <model override passed to Agent, or "inherited" if none>
+```
+
+After the Agent tool returns, the `subagent-vault-writeback.sh` hook automatically appends a matching "Subagent completed" block with metrics read from the sidechain transcript — do not duplicate that logging in the skill.
+
 ## When to Use This (vs `/smith-new`)
 
 Use `/smith-bugfix` when:
@@ -299,37 +312,9 @@ docker compose up -d --build <service-name>
 bash scripts/health-check.sh
 ```
 
-### 8.2 Display Summary
+### 8.2 Summary
 
-Output a workflow summary with aggregated metrics:
-
-```
-=== Bugfix Summary ===
-
-Fix: <fix description>
-Branch: <branch-name>
-Duration: <end_time - started timestamp>
-PR: <PR number> (merged)
-
-Main Session:
-- Estimated tokens: ~<sum of all Metrics entry totals / 4>
-- Tool calls: <count of Metrics entries>
-
-Subagents:
-- Count: <number of "Subagent completed" entries>
-- Total tokens: <sum of subagent total_tokens>
-- Total tool uses: <sum of subagent tool_uses>
-- Total duration: <sum of subagent duration_ms>ms
-
-Files Changed:
-<list from git diff>
-
-Test Results: <pass/fail summary>
-Warnings: <stashed changes, unrelated test failures if any>
-Status: Back on `main` with services healthy
-```
-
-Log this summary to the session log as well.
+The workflow summary is emitted automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up below. Do not emit it manually. If you need to surface bugfix-specific notes (test results, warnings about stashed changes, services rebuilt), log them as a regular event entry — the hook's summary covers metrics, duration, and files changed.
 
 ## Workflow Cleanup
 

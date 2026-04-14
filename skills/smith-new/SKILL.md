@@ -35,6 +35,19 @@ Log at these points:
 5. **After questions answered** — summary of each answer (topic + decision, not full text)
 6. **On handoff to build** — note that `/smith-build` autonomous phase was triggered
 
+## Subagent Invocation Logging
+
+Immediately before every Agent tool call in this workflow, append a block to the session log. The Agent tool's return value does not expose `subagent_type` or `model` to the parent, so this is the only place that information can be captured.
+
+```
+### [HH:MM:SS] Subagent invoked: <description>
+
+**Type:** <subagent_type or "general">
+**Model:** <model override passed to Agent, or "inherited" if none>
+```
+
+After the Agent tool returns, the `subagent-vault-writeback.sh` hook automatically appends a matching "Subagent completed" block with metrics read from the sidechain transcript — do not duplicate that logging in the skill.
+
 ## Natural Language Triggers
 
 If the user says any of the following (or similar phrases) during a conversation, treat it as invoking this command using the full conversation context as the feature description:
@@ -432,33 +445,7 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    - Delete the remote feature branch
    - Pull latest main so the local copy is up to date
 
-7. **Display workflow summary** with aggregated metrics:
-
-   Read the session log and aggregate all metrics entries and subagent completion entries:
-
-   ```
-   === Workflow Summary ===
-
-   Feature: <feature-name>
-   Branch: <branch-name>
-   Duration: <end_time - started timestamp from active-workflow>
-   PR: <PR number>
-
-   Main Session:
-   - Estimated tokens: ~<sum of all Metrics entry totals / 4>
-   - Tool calls: <count of Metrics entries>
-
-   Subagents:
-   - Count: <number of "Subagent completed" entries>
-   - Total tokens: <sum of subagent total_tokens>
-   - Total tool uses: <sum of subagent tool_uses>
-   - Total duration: <sum of subagent duration_ms>ms
-
-   Files Changed:
-   <list from git diff --name-only main..HEAD>
-   ```
-
-   Log this summary to the session log as well.
+7. **Workflow summary** — emitted automatically. The `workflow-summary.sh` Stop hook appends a "=== Workflow Summary ===" block with duration, estimated tokens, tool calls, subagent totals, and files changed once the active-workflow file is removed (step 9 below). Do not emit the summary manually.
 
 8. **Clean up worktree:**
    ```bash
