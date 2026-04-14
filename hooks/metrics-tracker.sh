@@ -38,8 +38,8 @@ try:
     # Serialize input to get character count
     tool_input = json.dumps(data.get('tool_input', {}))
 
-    # Output may be string or object
-    tool_output = data.get('tool_output', '')
+    # Output may be string or object (Claude Code PostToolUse field is 'tool_response')
+    tool_output = data.get('tool_response', '')
     if not isinstance(tool_output, str):
         tool_output = json.dumps(tool_output)
 

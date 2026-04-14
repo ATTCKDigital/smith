@@ -35,6 +35,19 @@ Log at these points:
 5. **After merge** — success/failure, branch cleanup status
 6. **On completion** — brief release notes summary, total files created/modified, services rebuilt
 
+## Subagent Invocation Logging
+
+Immediately before every Agent tool call in this workflow (including each phase subagent, testing subagent, and spec-update subagent), append a block to the session log. The Agent tool's return value does not expose `subagent_type` or `model` to the parent, so this is the only place that information can be captured.
+
+```
+### [HH:MM:SS] Subagent invoked: <description>
+
+**Type:** <subagent_type or "general">
+**Model:** <model override passed to Agent, or "inherited" if none>
+```
+
+After the Agent tool returns, the `subagent-vault-writeback.sh` hook automatically appends a matching "Subagent completed" block with metrics read from the sidechain transcript — do not duplicate that logging in the skill.
+
 This command can be invoked in two ways:
 1. **Automatically by `/smith-new`** after questions are answered (normal flow)
 2. **Manually by the user** via `/smith-build` for recovery if a previous build failed partway

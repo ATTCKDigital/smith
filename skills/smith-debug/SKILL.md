@@ -34,6 +34,19 @@ Log at these points:
 4. **After diagnosis** — root cause identified or hypotheses ranked
 5. **On completion** — report path, user decision (bugfix/investigate/close)
 
+## Subagent Invocation Logging
+
+Immediately before every Agent tool call in this workflow (especially the 4 triage agents in Phase 3), append a block to the session log. The Agent tool's return value does not expose `subagent_type` or `model` to the parent, so this is the only place that information can be captured.
+
+```
+### [HH:MM:SS] Subagent invoked: <description>
+
+**Type:** <subagent_type or "general">
+**Model:** <model override passed to Agent, or "inherited" if none>
+```
+
+After the Agent tool returns, the `subagent-vault-writeback.sh` hook automatically appends a matching "Subagent completed" block with metrics read from the sidechain transcript — do not duplicate that logging in the skill.
+
 ## When to Use This
 
 Use `/smith-debug` when:
@@ -280,30 +293,8 @@ Would you like me to:
 
 ### If user selects [3] (Close):
 - Update the debug report status to `closed` or `documented`
-- Display workflow summary with aggregated metrics:
-
-  ```
-  === Debug Summary ===
-
-  Issue: <symptom description>
-  Duration: <end_time - session start>
-  Report: <path to debug report>
-
-  Main Session:
-  - Estimated tokens: ~<sum of all Metrics entry totals / 4>
-  - Tool calls: <count of Metrics entries>
-
-  Subagents (Triage):
-  - Count: <number of triage subagents run>
-  - Total tokens: <sum of subagent total_tokens>
-  - Total tool uses: <sum of subagent tool_uses>
-  - Total duration: <sum of subagent duration_ms>ms
-
-  Diagnosis: <root cause summary>
-  Confidence: <confirmed/probable/possible>
-  ```
-
-- Log this summary to the session log
+- Log the diagnosis summary (root cause and confidence level) as a regular event entry in the session log
+- The general workflow summary (duration, tokens, tool calls, subagent totals, files changed) is emitted automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up — do not duplicate it
 - Log completion to vault
 
 ## Key Rules
