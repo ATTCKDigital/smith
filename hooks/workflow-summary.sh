@@ -4,26 +4,34 @@
 # Scope: Main session only
 #
 # Default mode (Stop hook):
-#   Emits a "=== Workflow Summary ===" block to the current session log at the end
-#   of a primary workflow (smith-new, smith-bugfix, smith-debug). Idempotent and
-#   safe to run on every Stop: will only emit once per workflow.
-#
-#   Gating conditions (all must be true to emit):
+#   Appends a "=== Workflow Summary ===" block to the current session log when a
+#   primary workflow (smith-new, smith-bugfix, smith-debug) completes. Gated by:
 #     1. Session log has a /smith-(new|bugfix|debug) invocation entry
 #     2. Session log does NOT already contain "=== Workflow Summary ==="
-#     3. No active-workflows/<branch>.yaml file exists (workflow cleaned up)
+#     3. No active-workflows/*.yaml file exists (workflow cleaned up)
 #
 # --totals-only mode (manual invocation from a skill):
-#   Prints just two lines to stdout — no session-log write, no gating:
-#     Total tokens used: ~<n>
-#     Total duration: <duration>
-#   Intended for the skill to include inline in its final user-facing message
-#   BEFORE Stop fires (Stop-hook stdout does not reach the preceding chat bubble).
+#   Prints a 3-line chat block to stdout, no session-log write, no gating:
+#     Token Usage: <N> normalized
+#     Est. cost: $<X> USD
+#     Active duration: <t> (total elapsed <T>)
+#   Skills invoke this to include totals inline in their final chat message
+#   BEFORE Stop fires (Stop-hook stdout doesn't reach the preceding chat bubble).
 #
-# Aggregates:
-#   - Main session: tool calls count, estimated tokens (chars/4) from Metrics entries
-#   - Subagents: count, total_tokens, total tool_uses, total duration_ms
-#   - Duration: session file's timestamp in filename to now
+# Computations are implemented in hooks/workflow_summary_lib.py. This script is
+# a thin wrapper that enforces gates, sets env vars, and hands off to Python.
+#
+# Inputs (best-effort — all missing sources degrade gracefully):
+#   - $VAULT_DIR/.current-session → session log path
+#   - Session log ## Metrics section (tool timestamps for gap-detected active duration)
+#   - Session log ### Subagent completed blocks (extended v2 schema, legacy v1 fallback)
+#   - ~/.claude/projects/<slug>/<session-id>.jsonl for parent-session tokens
+#   - hooks/pricing.json for per-model USD rates
+#
+# Output (per specs/003-accurate-workflow-summary/contracts/workflow-summary-cli.md):
+#   - --totals-only: 3 lines to stdout. No session-log write.
+#   - Default: audit block appended to session log; echoed to stdout.
+#   - Exit code: 0 in all v1 paths (including silent exit when gates unmet).
 
 set -euo pipefail
 
@@ -59,7 +67,6 @@ if [ "$TOTALS_ONLY" = "0" ]; then
     fi
 
     # Guard: active-workflows file must NOT exist (workflow cleaned up).
-    # We check the current branch's file; if we can't determine the branch, skip.
     BRANCH=$(cd "$PROJECT_ROOT" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 
     if [ -n "$BRANCH" ]; then
@@ -79,133 +86,12 @@ if [ "$TOTALS_ONLY" = "0" ]; then
     fi
 fi
 
-SESSION_FILE="$SESSION_FILE" PROJECT_ROOT="$PROJECT_ROOT" TOTALS_ONLY="$TOTALS_ONLY" python3 <<'PYEOF'
-import os
-import re
-import sys
-import subprocess
-from datetime import datetime, timezone
-
-session_file = os.environ['SESSION_FILE']
-project_root = os.environ.get('PROJECT_ROOT', '.')
-totals_only = os.environ.get('TOTALS_ONLY', '0') == '1'
-
-with open(session_file, 'r', encoding='utf-8') as f:
-    content = f.read()
-
-# Identify which primary workflow ran (use first invocation in log)
-invoke_match = re.search(
-    r'### \[(\d{2}:\d{2}:\d{2})\] /smith-(new|bugfix|debug) (invoked|invocation)',
-    content
-)
-if not invoke_match:
-    sys.exit(0)
-
-start_time_str = invoke_match.group(1)
-workflow_type = invoke_match.group(2)
-
-# Aggregate main-session tool calls from Metrics entries
-# Format: - `[HH:MM:SS]` **Tool** in:N out:N total:N
-metrics_total_chars = 0
-metrics_count = 0
-for m in re.finditer(r'- `\[\d{2}:\d{2}:\d{2}\]` \*\*\w+\*\*.*?total:(\d+)', content):
-    metrics_total_chars += int(m.group(1))
-    metrics_count += 1
-
-estimated_tokens = metrics_total_chars // 4
-
-# Aggregate subagent completions
-sa_pattern = re.compile(
-    r'### \[\d{2}:\d{2}:\d{2}\] Subagent completed\n\n'
-    r'\*\*Metrics:\*\*\n'
-    r'- total_tokens: (\d+)\n'
-    r'- tool_uses: (\d+)\n'
-    r'- duration_ms: (\d+)'
-)
-sa_matches = sa_pattern.findall(content)
-sa_count = len(sa_matches)
-sa_tokens = sum(int(t) for t, _, _ in sa_matches)
-sa_tools = sum(int(u) for _, u, _ in sa_matches)
-sa_duration_ms = sum(int(d) for _, _, d in sa_matches)
-
-# Duration: session filename YYYY-MM-DD_HHMMSS.md gives start; end is "now"
-# (this hook fires at Stop immediately after workflow cleanup, per the
-# active-workflows guard).
-fn = os.path.basename(session_file).replace('.md', '')
-duration_str = 'unknown'
-try:
-    start_dt = datetime.strptime(fn, '%Y-%m-%d_%H%M%S').replace(tzinfo=timezone.utc)
-    delta = datetime.now(timezone.utc) - start_dt
-    total_sec = int(delta.total_seconds())
-    hours, rem = divmod(total_sec, 3600)
-    mins, secs = divmod(rem, 60)
-    if hours:
-        duration_str = f"{hours}h{mins}m{secs}s"
-    elif mins:
-        duration_str = f"{mins}m{secs}s"
-    else:
-        duration_str = f"{secs}s"
-except ValueError:
-    pass
-
-# Files changed: git diff vs main (best effort — may be on main already)
-files_changed = []
-try:
-    result = subprocess.run(
-        ['git', 'diff', '--name-only', 'main..HEAD'],
-        cwd=project_root, capture_output=True, text=True, timeout=5
-    )
-    if result.returncode == 0:
-        files_changed = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-except (subprocess.SubprocessError, FileNotFoundError, OSError):
-    pass
-
-files_section = ''
-if files_changed:
-    files_section = '\n'.join(f'  - {f}' for f in files_changed[:30])
-    if len(files_changed) > 30:
-        files_section += f'\n  - ... ({len(files_changed) - 30} more)'
-else:
-    files_section = '  (none detected — may already be merged or no diff)'
-
-sa_duration_display = f"{sa_duration_ms}ms ({sa_duration_ms // 1000}s)" if sa_duration_ms else "0ms"
-
-# --totals-only: print just the two lines the user wants in chat and exit.
-# No session-log write, no full summary block.
-if totals_only:
-    combined_tokens = estimated_tokens + sa_tokens
-    print(f"Total tokens used: ~{combined_tokens:,}")
-    print(f"Total duration: {duration_str}")
-    sys.exit(0)
-
-summary = f"""
-
-=== Workflow Summary ===
-
-Workflow: /smith-{workflow_type}
-Started: {start_time_str}
-Duration: {duration_str}
-
-Main Session:
-- Estimated tokens: ~{estimated_tokens:,}
-- Tool calls: {metrics_count}
-
-Subagents:
-- Count: {sa_count}
-- Total tokens: {sa_tokens:,}
-- Total tool uses: {sa_tools}
-- Total duration: {sa_duration_display}
-
-Files Changed:
-{files_section}
-
-"""
-
-with open(session_file, 'a', encoding='utf-8') as f:
-    f.write(summary)
-
-# Stdout is shown in the transcript per Claude Code hook docs
-print(summary)
-PYEOF
+# Hand off to the Python library.
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+SESSION_FILE="$SESSION_FILE" \
+  PROJECT_ROOT="$PROJECT_ROOT" \
+  TOTALS_ONLY="$TOTALS_ONLY" \
+  PYTHONPATH="$HOOK_DIR" \
+  python3 -c "import workflow_summary_lib as L; import sys; sys.exit(L.main())"
 
 exit 0

@@ -192,9 +192,14 @@ def main():
                 with open(session_file, 'a', encoding='utf-8') as f:
                     f.write(f"\n### [{now_time}] Subagent completed\n\n")
                     f.write("**Metrics:**\n")
-                    f.write(f"- total_tokens: {total_tokens}\n")
+                    f.write(f"- model: {model or 'unknown'}\n")
+                    f.write(f"- input_tokens: {total_input}\n")
+                    f.write(f"- output_tokens: {total_output}\n")
+                    f.write(f"- cache_creation_input_tokens: {total_cache_create}\n")
+                    f.write(f"- cache_read_input_tokens: {total_cache_read}\n")
                     f.write(f"- tool_uses: {tool_uses}\n")
-                    f.write(f"- duration_ms: {duration_ms}\n\n")
+                    f.write(f"- duration_ms: {duration_ms}\n")
+                    f.write(f"- total_tokens: {total_tokens}\n\n")
         except OSError:
             pass
 
