@@ -7,8 +7,16 @@
 # Logs tool input/output character counts to the session log for token estimation.
 # Token estimate = total_chars / 4
 #
-# Appends entries to the session log's Metrics section. At workflow end, skills
-# aggregate these entries for the final summary.
+# Also appends a per-tool identifier in parentheses so token-use audits can see
+# which file/command/pattern contributed to a heavy entry:
+#   - Read / Write / Edit / NotebookEdit → file_path (relative to project dir if
+#     possible, else basename)
+#   - Bash → command (first ~60 chars, newlines collapsed)
+#   - Grep / Glob → pattern
+#   - Other tools → no identifier
+#
+# Appends entries to the session log's Metrics section. At workflow end, the
+# workflow-summary Stop hook aggregates these entries for the final summary.
 
 set -euo pipefail
 
@@ -17,59 +25,94 @@ INPUT=$(cat)
 VAULT_DIR="${CLAUDE_PROJECT_DIR:-.}/.smith/vault"
 CURRENT_SESSION_FILE="$VAULT_DIR/.current-session"
 
-# Exit silently if no current session
-if [ ! -f "$CURRENT_SESSION_FILE" ]; then
-    exit 0
-fi
+[ -f "$CURRENT_SESSION_FILE" ] || exit 0
 
 SESSION_FILE=$(cat "$CURRENT_SESSION_FILE")
-if [ ! -f "$SESSION_FILE" ]; then
-    exit 0
-fi
+[ -f "$SESSION_FILE" ] || exit 0
 
-# Extract tool name and calculate character counts using python3
-METRICS=$(echo "$INPUT" | python3 -c "
-import sys, json
+# Let python build the complete log line (including optional identifier). Avoids
+# pipe-delimited parsing back in bash, which is fragile when identifiers contain
+# pipes (e.g., Bash commands piping output).
+LOG_LINE=$(HOOK_INPUT="$INPUT" CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}" python3 2>/dev/null <<'PYEOF'
+import os
+import sys
+import json
+from datetime import datetime, timezone
+
+
+def extract_identifier(tool_name, tool_input_obj, project_dir):
+    if not isinstance(tool_input_obj, dict):
+        return ''
+
+    if tool_name in ('Read', 'Write', 'Edit', 'NotebookEdit'):
+        path = tool_input_obj.get('file_path') or tool_input_obj.get('notebook_path') or ''
+        if not path:
+            return ''
+        if project_dir and path.startswith(project_dir + '/'):
+            return path[len(project_dir) + 1:]
+        if os.path.isabs(path):
+            return os.path.basename(path)
+        return path
+
+    if tool_name == 'Bash':
+        cmd = tool_input_obj.get('command') or ''
+        cmd = cmd.replace('\n', ' ').replace('\r', '').strip()
+        if len(cmd) > 60:
+            cmd = cmd[:60] + '…'
+        return cmd
+
+    if tool_name in ('Grep', 'Glob'):
+        return tool_input_obj.get('pattern') or ''
+
+    return ''
+
 
 try:
-    data = json.load(sys.stdin)
-    tool_name = data.get('tool_name', 'Unknown')
+    data = json.loads(os.environ.get('HOOK_INPUT', '{}'))
+except json.JSONDecodeError:
+    sys.exit(0)
 
-    # Serialize input to get character count
-    tool_input = json.dumps(data.get('tool_input', {}))
+tool_name = data.get('tool_name', 'Unknown')
 
-    # Output may be string or object (Claude Code PostToolUse field is 'tool_response')
-    tool_output = data.get('tool_response', '')
-    if not isinstance(tool_output, str):
-        tool_output = json.dumps(tool_output)
+tool_input_raw = data.get('tool_input', {})
+tool_input_serialized = json.dumps(tool_input_raw) if not isinstance(tool_input_raw, str) else tool_input_raw
 
-    input_chars = len(tool_input)
-    output_chars = len(tool_output)
-    total = input_chars + output_chars
+tool_output = data.get('tool_response', '')
+if not isinstance(tool_output, str):
+    tool_output = json.dumps(tool_output)
 
-    print(f'{tool_name}|{input_chars}|{output_chars}|{total}')
-except Exception as e:
-    print(f'Unknown|0|0|0')
-" 2>/dev/null || echo "Unknown|0|0|0")
+input_chars = len(tool_input_serialized)
+output_chars = len(tool_output)
+total = input_chars + output_chars
 
-TOOL_NAME=$(echo "$METRICS" | cut -d'|' -f1)
-INPUT_CHARS=$(echo "$METRICS" | cut -d'|' -f2)
-OUTPUT_CHARS=$(echo "$METRICS" | cut -d'|' -f3)
-TOTAL_CHARS=$(echo "$METRICS" | cut -d'|' -f4)
+# Skip trivial entries
+if total < 10:
+    sys.exit(0)
 
-# Skip if no significant content (less than 10 chars total)
-if [ "$TOTAL_CHARS" -lt 10 ]; then
-    exit 0
-fi
+identifier = extract_identifier(
+    tool_name,
+    tool_input_raw,
+    os.environ.get('CLAUDE_PROJECT_DIR', '').rstrip('/'),
+)
 
-NOW_TIME=$(date -u +"%H:%M:%S")
+now_time = datetime.now(timezone.utc).strftime('%H:%M:%S')
 
-# Ensure Metrics section exists at the end of the file
+line = f"- `[{now_time}]` **{tool_name}** in:{input_chars} out:{output_chars} total:{total}"
+if identifier:
+    line += f" ({identifier})"
+
+print(line)
+PYEOF
+)
+
+# Python exits silently on trivial entries, json errors, etc.
+[ -z "$LOG_LINE" ] && exit 0
+
+# Ensure Metrics section exists
 if ! grep -q "^## Metrics$" "$SESSION_FILE" 2>/dev/null; then
-    echo -e "\n## Metrics\n" >> "$SESSION_FILE"
+    printf '\n## Metrics\n\n' >> "$SESSION_FILE"
 fi
 
-# Append metric entry (format: timestamp, tool, in chars, out chars, total)
-echo "- \`[$NOW_TIME]\` **$TOOL_NAME** in:${INPUT_CHARS} out:${OUTPUT_CHARS} total:${TOTAL_CHARS}" >> "$SESSION_FILE"
+echo "$LOG_LINE" >> "$SESSION_FILE"
 
 exit 0
