@@ -55,11 +55,11 @@ EOF
 fi
 ```
 
-Clear the active-workflow file when all tasks are complete, **only if smith-implement created it** (not if inherited from parent):
+Clear the active-workflow file when all tasks are complete, **only if smith-implement created it** (not if inherited from parent). Use the shipped helper so this works on projects that deny `Bash(rm:*)`:
 ```bash
 # Only clean up if we created it (check workflow field)
 if grep -q 'workflow: smith-implement' "$ACTIVE_FILE" 2>/dev/null; then
-  rm -f "$ACTIVE_FILE"
+  .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
 fi
 ```
 If this action was invoked by `/smith-build`, the build action handles cleanup instead.

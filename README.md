@@ -184,6 +184,12 @@ The security guard hooks block:
 
 The scheduler runs bash scripts via macOS `launchd`. You can audit the full script at `scheduler/smith-scheduler.sh` before enabling it.
 
+### Coexistence with a `Bash(rm:*)` deny rule
+
+Some projects add `"Bash(rm:*)"` to the `deny` list of `.claude/settings.json` as a safety rail against accidental deletion. In Claude Code, `deny` supersedes `allow`, so a workflow can't route around the deny rule by whitelisting a narrower `rm` pattern.
+
+To let Smith clean up its per-branch active-workflow markers under that rule, `/smith` ships a narrow helper at `.specify/scripts/bash/clear-active-workflow.sh`. The helper only unlinks a single file matching `.smith/vault/active-workflows/<safe-branch>.yaml`, never globs, never recurses, and refuses any path that escapes the active-workflows directory. Every Smith workflow skill calls it instead of inline `rm`, and the default project permissions allow-list it explicitly — so the `Bash(rm:*)` deny stays in place and cleanup still works.
+
 See [docs/security-model.md](docs/security-model.md) for a detailed breakdown of the threat model and mitigations.
 
 ---
