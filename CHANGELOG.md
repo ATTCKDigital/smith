@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `hooks/workflow-summary.sh` now resolves `workflow_summary_lib.py` via a priority chain (`$CLAUDE_HOOKS_DIR` → `~/.claude/hooks` → sibling of `$0`) instead of only the sibling directory. This allows a single installed copy at `~/.claude/hooks/workflow-summary.sh` to serve as a Stop hook across all projects without each project vendoring its own copy of the Python lib and `pricing.json`. If none of the candidates contain the lib, the wrapper prints a stderr note and exits 0 (consistent with existing degrade-gracefully behavior).
 - The chars/4 character-count estimate is no longer displayed as "Estimated tokens" in the workflow summary. The per-tool `metrics-tracker.sh` log lines remain unchanged (useful for spotting heavy tool uses), but the summary block now uses real Anthropic-reported token counts from the parent-session JSONL instead.
 - Active workflow tracking now uses per-branch files (`.smith/vault/active-workflows/<branch>.yaml`) to support concurrent workflows in different worktrees
 - `subagent-vault-writeback.sh` enhanced to capture and log subagent metrics
