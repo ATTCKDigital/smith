@@ -296,9 +296,10 @@ Run from the primary repo directory. On success, remove the worktree; on failure
 cd "$PRIMARY_REPO"
 # Success path: remove the worktree (the branch was already deleted by --delete-branch on merge)
 git worktree remove "$WORKTREE_PATH"
-# Always: clear the active-workflow marker so future sessions know this branch is free
-SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+# Always: clear the active-workflow marker so future sessions know this branch is free.
+# Use the shipped helper so this works even on projects that set Bash(rm:*) in the
+# deny list of .claude/settings.json.
+.specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
 ```
 
 If `git worktree remove` fails because of uncommitted local edits (shouldn't happen on the success path, but can on forced cleanup), fall back to `git worktree remove --force "$WORKTREE_PATH"` and warn the user that any uncommitted changes in the worktree are being discarded.

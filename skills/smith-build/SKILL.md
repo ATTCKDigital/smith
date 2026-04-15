@@ -66,9 +66,9 @@ This command can be invoked in two ways:
    started: $(date -u +"%Y-%m-%dT%H:%M:%S")
    EOF
    ```
-   Clear this file at the end of Phase 7 (after release notes) or on unrecoverable failure:
+   Clear this file at the end of Phase 7 (after release notes) or on unrecoverable failure. Use the shipped helper so this works even on projects that deny `Bash(rm:*)`:
    ```bash
-   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
    ```
 
 1. **Detect worktree context**:
@@ -433,10 +433,9 @@ If `WORKTREE_MODE=true`:
 
 ### 7.4 Clear Workflow Tracking
 
-Remove the active-workflow file to signal the workflow is complete:
+Remove the active-workflow file to signal the workflow is complete. Use the shipped helper, which coexists with a broad `Bash(rm:*)` deny rule:
 ```bash
-SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+.specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
 ```
 
 ### 7.4.1 Post-Workflow Reflection

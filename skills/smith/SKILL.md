@@ -493,11 +493,14 @@ If no `.claude/settings.json` exists, create one with sensible defaults:
       "Bash(git log:*)",
       "Bash(git diff:*)",
       "Bash(git branch:*)",
-      "Bash(./.specify/scripts/*:*)"
+      "Bash(./.specify/scripts/*:*)",
+      "Bash(.specify/scripts/bash/clear-active-workflow.sh:*)"
     ]
   }
 }
 ```
+
+The `clear-active-workflow.sh` entry is listed explicitly so Smith workflow cleanup still works on projects that add `Bash(rm:*)` to the `deny` list as a safety rail. The helper is narrow (single file, no globs, path-escape guarded) and lets skills remove the active-workflow marker without weakening the deny rule.
 
 Add framework-specific permissions based on detected stack:
 - npm projects: `"Bash(npm run:*)"`, `"Bash(npm install:*)"`
@@ -512,7 +515,7 @@ Add monorepo-specific permissions based on detected orchestration tool:
 - Lerna: `"Bash(lerna:*)"`, `"Bash(npx lerna:*)"`
 - Rush: `"Bash(rush:*)"`
 
-If `.claude/settings.json` already exists, do NOT overwrite — inform the user they may want to add the `.specify/scripts` permission manually.
+If `.claude/settings.json` already exists, do NOT overwrite — inform the user they may want to add the `.specify/scripts` permission manually, plus `Bash(.specify/scripts/bash/clear-active-workflow.sh:*)` if their config includes a broad `Bash(rm:*)` deny rule (needed so Smith workflow cleanup can remove active-workflow markers).
 
 #### 4.7 Create `.gitignore` Entries
 

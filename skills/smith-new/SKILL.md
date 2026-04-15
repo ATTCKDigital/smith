@@ -107,9 +107,9 @@ The worktree is created after exploration passes (or is skipped). This ensures t
    started: $(date -u +"%Y-%m-%dT%H:%M:%S")
    EOF
    ```
-   Clear this file at the end of Phase 6 (after merge) or if the workflow is abandoned:
+   Clear this file at the end of Phase 6 (after merge) or if the workflow is abandoned. Use the shipped helper so this works even on projects that set `Bash(rm:*)` in the deny list:
    ```bash
-   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
    ```
 
 1. **Fetch latest main** (does NOT change the user's current branch):
@@ -414,10 +414,9 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
       ```bash
       git worktree remove $WORKTREE_PATH
       ```
-   f. **Clear active-workflow file** in the main repo:
+   f. **Clear active-workflow file** in the main repo (via the shipped helper, which coexists with a broad `Bash(rm:*)` deny rule):
       ```bash
-      SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-      rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+      .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
       ```
    g. Confirm: "Queued: `<filename>` (priority: `<level>`, complexity: autonomous). Feature branch `<branch-name>` pushed with all spec artifacts. Run `/smith-queue list` to see pending tasks, or the 2am scheduler will pick it up automatically."
    h. **STOP here.** Do NOT launch `/smith-build`.
@@ -450,10 +449,9 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    git worktree remove $WORKTREE_PATH
    ```
 
-9. **Clear workflow tracking** — remove the active-workflow file:
+9. **Clear workflow tracking** — remove the active-workflow file via the shipped helper (safe against a `Bash(rm:*)` deny rule):
    ```bash
-   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-   rm -f .smith/vault/active-workflows/${SAFE_BRANCH}.yaml
+   .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
    ```
 
 ### Post-Workflow Reflection
