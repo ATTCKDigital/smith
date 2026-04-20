@@ -26,7 +26,7 @@ The outcome: you talk to Claude about what you want to build, Smith handles the 
 ### Install via the `skills` CLI (skills only)
 
 ```bash
-npx skills add attck/smith
+npx skills add ATTCKDigital/smith
 ```
 
 This is the fastest path — it copies all 26 Smith skills into `~/.claude/skills/` and nothing else. Use this if you only want the Smith workflow commands.
