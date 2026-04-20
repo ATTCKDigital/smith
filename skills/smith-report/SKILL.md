@@ -1,7 +1,7 @@
 ---
 name: smith-report
 description: Generate client-facing project reports from vault data — progress updates, decision logs, spec changelogs, or full audit reports.
-argument-hint: [--range week|month|YYYY-MM-DD:YYYY-MM-DD] [--type progress|decisions|specs|full] [--project <name>]
+argument-hint: "[--range week|month|YYYY-MM-DD:YYYY-MM-DD] [--type progress|decisions|specs|full] [--project <name>]"
 ---
 
 # Smith Client Report Generator

@@ -1,5 +1,5 @@
 ---
-name: smith.init
+name: smith
 description: Initialize SpecKit on a new or existing project — scans the codebase, interviews you about project details, and generates CLAUDE.md, constitution.md, and the full .specify/ scaffolding with commands and agents.
 argument-hint: [--preset flask-react|fastapi-next|cli-python|express-react]
 ---

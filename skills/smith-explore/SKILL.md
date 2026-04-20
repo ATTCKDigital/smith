@@ -1,7 +1,7 @@
 ---
 name: smith-explore
 description: Pre-change exploration — audits codebase for system-wide impacts, identifies touch points, and surfaces conflicts before proceeding with smith-new or other workflows.
-argument-hint: [<feature-description>] [--scope skills|hooks|configs|all] [--deep]
+argument-hint: "[<feature-description>] [--scope skills|hooks|configs|all] [--deep]"
 ---
 
 # Smith Explore — Pre-Change Impact Analysis

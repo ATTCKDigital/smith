@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Install via `npx skills add attck/smith` — new distribution path that copies all 26 skills into `~/.claude/skills/` without requiring the curl installer. Skills-only; hooks and scheduler still require the bundled installer.
+- New skill in the public distribution: `/smith-audit` — cross-system audit orchestrator. Previously only in the agency-internal skill set; now shipped with the public Smith distribution.
 - New skill: `/smith-explore` — pre-change impact analysis for features touching core infrastructure
 - New hook: `metrics-tracker.sh` — PostToolUse hook that captures character counts for token estimation
 - Workflow metrics summary — primary workflows (smith-new, smith-bugfix, smith-debug) now display aggregated metrics at completion: estimated tokens, tool calls, subagent stats, duration
@@ -22,11 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 7 skills (`smith-bank`, `smith-explore`, `smith-ledger`, `smith-migrate-specs`, `smith-report`, `smith-todo`, `smith-vault`) were silently skipped by `npx skills add . --list` because their `argument-hint:` frontmatter value started with `[` followed by multiple space-separated bracketed groups — a YAML flow-sequence construct the `skills` CLI parser rejects. Wrapped all affected values in double quotes so YAML treats them as plain string scalars. Claude Code's own parser already tolerated the unquoted form, so local invocation was never affected; only the external CLI was. See [specs/013-distribution-readiness/research.md](specs/013-distribution-readiness/research.md) for the diagnosis.
 - `Total tokens used` and `Total duration` now appear in the user-facing "Feature/Bugfix/Debug complete" chat message. Previously these only landed in the session log file because the Stop hook's stdout doesn't flow into the assistant message that already shipped. Skills (`/smith-new`, `/smith-bugfix`, `/smith-debug`) now invoke `workflow-summary.sh --totals-only` and paste the two lines into their final summary before Stop fires. The full `=== Workflow Summary ===` audit block continues to be appended to the session log file by the Stop hook
 - Workflow token count was previously a raw sum of `input + output + cache_create + cache_read` at 1× weights across all models, which inflated the number 3–10× vs. what Anthropic actually bills (cache reads are 0.1× and cost varies by model tier). The summary now displays normalized tokens (fixed-weight formula) and estimated USD cost (per-model pricing lookup), with the raw breakdown relegated to the session-log audit block. Addresses the observation that a single smith-new workflow could show 30M+ tokens — a figure that was technically correct per the formula but misleadingly high for a public repo
 
 ### Changed
 
+- **Renamed skill:** `/smith.init` → `/smith`. The `skills/smith/SKILL.md` frontmatter now declares `name: smith` (previously `name: smith.init`), matching the folder name. Invocations of `/smith.init` no longer match; use `/smith` instead. This aligns with the `skills` CLI's expected folder/name convention.
 - `hooks/workflow-summary.sh` now resolves `workflow_summary_lib.py` via a priority chain (`$CLAUDE_HOOKS_DIR` → `~/.claude/hooks` → sibling of `$0`) instead of only the sibling directory. This allows a single installed copy at `~/.claude/hooks/workflow-summary.sh` to serve as a Stop hook across all projects without each project vendoring its own copy of the Python lib and `pricing.json`. If none of the candidates contain the lib, the wrapper prints a stderr note and exits 0 (consistent with existing degrade-gracefully behavior).
 - The chars/4 character-count estimate is no longer displayed as "Estimated tokens" in the workflow summary. The per-tool `metrics-tracker.sh` log lines remain unchanged (useful for spotting heavy tool uses), but the summary block now uses real Anthropic-reported token counts from the parent-session JSONL instead.
 - Active workflow tracking now uses per-branch files (`.smith/vault/active-workflows/<branch>.yaml`) to support concurrent workflows in different worktrees

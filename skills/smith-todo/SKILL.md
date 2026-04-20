@@ -1,7 +1,7 @@
 ---
 name: smith-todo
 description: Manage daily todo lists stored in the vault. Supports listing, adding, completing, deferring, editing, removing items, reviewing past days, weekly overview, and completion stats.
-argument-hint: [list|add|done|defer|remove|edit|review|week|stats] [<id-or-title>] [--date YYYY-MM-DD] [--to YYYY-MM-DD]
+argument-hint: "[list|add|done|defer|remove|edit|review|week|stats] [<id-or-title>] [--date YYYY-MM-DD] [--to YYYY-MM-DD]"
 ---
 
 # Smith Todo

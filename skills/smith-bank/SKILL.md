@@ -1,7 +1,7 @@
 ---
 name: smith-bank
 description: Captures ideas mid-conversation and stores them in the vault for later processing. Use when the user wants to save an idea, park a thought, or come back to something later. Supports listing, processing, editing, and prioritizing banked ideas.
-argument-hint: [list|process|edit|remove|prioritize] [<id>] [--priority <level>] [--system <id>]
+argument-hint: "[list|process|edit|remove|prioritize] [<id>] [--priority <level>] [--system <id>]"
 ---
 
 # Smith Idea Bank

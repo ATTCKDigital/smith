@@ -1,7 +1,7 @@
 ---
 name: smith-migrate-specs
 description: One-time migration of existing flat spec folders into the system-based hierarchy under .specify/systems/.
-argument-hint: [--dry-run] [--all]
+argument-hint: "[--dry-run] [--all]"
 ---
 
 # Smith Spec Migration
