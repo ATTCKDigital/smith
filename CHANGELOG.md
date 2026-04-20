@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Install via `npx skills add attck/smith` — new distribution path that copies all 26 skills into `~/.claude/skills/` without requiring the curl installer. Skills-only; hooks and scheduler still require the bundled installer.
+- Install via `npx skills add ATTCKDigital/smith` — new distribution path that copies all 26 skills into `~/.claude/skills/` without requiring the curl installer. Skills-only; hooks and scheduler still require the bundled installer.
 - New skill in the public distribution: `/smith-audit` — cross-system audit orchestrator. Previously only in the agency-internal skill set; now shipped with the public Smith distribution.
 - New skill: `/smith-explore` — pre-change impact analysis for features touching core infrastructure
 - New hook: `metrics-tracker.sh` — PostToolUse hook that captures character counts for token estimation
