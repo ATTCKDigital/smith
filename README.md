@@ -1,5 +1,5 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![25 Skills](https://img.shields.io/badge/skills-25-brightgreen.svg)](skills/)
+[![26 Skills](https://img.shields.io/badge/skills-26-brightgreen.svg)](skills/)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blueviolet.svg)](https://claude.ai/code)
 
 # Smith
@@ -15,32 +15,50 @@ _See [smith.attck.com](https://smith.attck.com) for a walkthrough._
 
 Claude Code is a powerful AI coding assistant, but it has no built-in workflow structure. Developers jump straight from a vague idea to generated code with no specification, no plan, and no audit trail. The result is hard to review, harder to maintain, and impossible to trace back to requirements. When something goes wrong — and it will — there is no record of what was intended, what was decided, or why.
 
-Smith fixes this by adding 25 skills that encode a full development workflow into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
+Smith fixes this by adding 26 skills that encode a full development workflow into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
 
 The outcome: you talk to Claude about what you want to build, Smith handles the structured process, and you get a merged PR with full traceability from idea to code. Hooks log every session automatically and guard against common mistakes — dangerous shell commands, secret exposure, writes to sensitive files. A scheduler can process queued tasks overnight. Everything runs locally on your machine, nothing phones home, and every artifact is a plain text file you can read, diff, and version-control.
 
 ---
 
-## Quick Start
+## Getting Started
+
+### Install via the `skills` CLI (skills only)
+
+```bash
+npx skills add attck/smith
+```
+
+This is the fastest path — it copies all 26 Smith skills into `~/.claude/skills/` and nothing else. Use this if you only want the Smith workflow commands.
+
+**To update:** re-run the same command. `npx skills add` is idempotent.
+
+**To verify:** open Claude Code and type `/smith` — if it autocompletes, you're set.
+
+### Install via the bundled installer (skills + hooks + scheduler)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ATTCKDigital/smith/main/scripts/install.sh | bash
 ```
 
-Then open any new or existing project in your terminal and run `/smith` to initialize the vault, bank, and ledger for that project. Once initialized, run `/smith-new` and describe what you want to build. Smith walks you through requirements, planning, task breakdown, implementation, and PR creation — all without leaving the terminal.
+Use this for the full Smith experience. In addition to the skills, it wires up the security / logging hooks and (optionally) the macOS scheduler LaunchAgent. See [Installation](#installation) for details.
 
-> **Note:** `install.sh` is a one-time global setup that installs skills, hooks, and the scheduler into `~/.claude/`. Running `/smith` is a separate per-project step that must be done once in each project before using other commands.
+### First run
+
+Once installed, open any new or existing project in your terminal and run `/smith` to initialize the vault, bank, and ledger for that project. Once initialized, run `/smith-new` and describe what you want to build. Smith walks you through requirements, planning, task breakdown, implementation, and PR creation — all without leaving the terminal.
+
+> **Note:** Installation is a one-time global setup into `~/.claude/`. Running `/smith` is a separate per-project step that must be done once in each project before using other commands.
 
 ---
 
 ## What's Inside
 
-### Skills (25)
+### Skills (26)
 
 | Category | Commands | Description |
 |---|---|---|
 | Feature workflow | `/smith-new`, `/smith-explore`, `/smith-specify`, `/smith-clarify`, `/smith-plan`, `/smith-tasks`, `/smith-analyze`, `/smith-implement`, `/smith-build`, `/smith-bugfix`, `/smith-checklist`, `/smith-finish` | End-to-end feature development pipeline |
-| Debugging | `/smith-debug` | Diagnostic investigation with structured evidence gathering |
+| Debugging and audit | `/smith-debug`, `/smith-audit` | Diagnostic investigation and cross-system audit reporting |
 | Knowledge and vault | `/smith-vault`, `/smith-bank`, `/smith-queue`, `/smith-todo`, `/smith-ledger`, `/smith-reflect` | Persistent session logs, idea storage, task queuing, and accumulated learning |
 | Reporting | `/smith-report`, `/smith-taskstoissues` | Client-facing reports and GitHub issue generation |
 | Meta | `/smith`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, governance, and reference |
@@ -123,7 +141,7 @@ cd smith
 The installer is a **one-time global setup** — it installs Smith into `~/.claude/` and does not modify any project.
 
 - Backs up your existing `~/.claude/settings.json`
-- Copies all 25 skills to `~/.claude/skills/`
+- Copies all 26 skills to `~/.claude/skills/`
 - Copies all 8 hooks to `~/.claude/hooks/`
 - Merges hook configuration into `settings.json` (requires `jq`)
 - Optionally installs the macOS scheduler LaunchAgent

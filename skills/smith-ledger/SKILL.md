@@ -1,7 +1,7 @@
 ---
 name: smith-ledger
 description: Browse, search, and manage the Smith Ledger — the accumulated patterns, antipatterns, tool preferences, and edge cases learned from past workflows. Use to review what Smith has learned, search for relevant patterns, prune outdated entries, or inspect the Ledger's evolution over time.
-argument-hint: [list|show|search|prune|promote|demote|export|reset] [<title-or-query>] [--category <cat>] [--confidence <level>] [--file <filename>] [--auto]
+argument-hint: "[list|show|search|prune|promote|demote|export|reset] [<title-or-query>] [--category <cat>] [--confidence <level>] [--file <filename>] [--auto]"
 ---
 
 # Smith Ledger — Knowledge Base Management

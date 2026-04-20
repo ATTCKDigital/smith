@@ -1,7 +1,7 @@
 ---
 name: smith-vault
 description: Browse vault contents — session logs, sub-agent memory, and queue status.
-argument-hint: [sessions|agents|queue|status|projects] [<name>]
+argument-hint: "[sessions|agents|queue|status|projects] [<name>]"
 ---
 
 # Smith Vault Browser
