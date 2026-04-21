@@ -17,6 +17,7 @@ CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CLAUDE_SKILLS_DIR="$CLAUDE_HOME/skills"
 CLAUDE_HOOKS_DIR="$CLAUDE_HOME/hooks"
 CLAUDE_SETTINGS="$CLAUDE_HOME/settings.json"
+CLAUDE_MD="$CLAUDE_HOME/CLAUDE.md"
 
 ASSUME_YES="${SMITH_ASSUME_YES:-0}"
 for arg in "$@"; do
@@ -46,6 +47,7 @@ echo "  • All smith/smith-* skills from $CLAUDE_SKILLS_DIR"
 echo "  • Smith hooks from $CLAUDE_HOOKS_DIR"
 echo "  • Scheduler from $SMITH_HOME/scheduler/"
 echo "  • Restore settings.json from the most recent backup (if any)"
+echo "  • Restore CLAUDE.md from the most recent backup (if any)"
 echo
 info "This will NOT remove:"
 echo "  • Per-project .smith/vault/ directories (your session logs stay put)"
@@ -74,7 +76,7 @@ ok "Removed $REMOVED_SKILLS skills"
 
 # Remove hooks
 SMITH_HOOKS=(
-    file-change-logger.sh lint-on-save.sh
+    file-change-logger.sh grade-response.sh lint-on-save.sh
     security-guard-bash.sh security-guard-files.sh
     session-end-review.sh session-start-logger.sh
     subagent-vault-writeback.sh task-router.sh
@@ -105,6 +107,24 @@ if [ -n "$LATEST_BACKUP" ]; then
     fi
 else
     warn "No backup found. Smith hook entries may still be in $CLAUDE_SETTINGS — edit manually if needed"
+fi
+
+# Restore most recent CLAUDE.md backup (if any)
+LATEST_MD_BACKUP=$(ls -1t "$CLAUDE_MD".bak-* 2>/dev/null | head -1 || true)
+if [ -n "$LATEST_MD_BACKUP" ]; then
+    if prompt_yn "Restore CLAUDE.md from $LATEST_MD_BACKUP?" y; then
+        cp "$LATEST_MD_BACKUP" "$CLAUDE_MD"
+        ok "CLAUDE.md restored"
+    else
+        warn "CLAUDE.md NOT restored. Smith rubric still present at $CLAUDE_MD"
+    fi
+elif [ -f "$CLAUDE_MD" ]; then
+    if prompt_yn "No CLAUDE.md backup found. Remove the Smith rubric at $CLAUDE_MD?" n; then
+        rm -f "$CLAUDE_MD"
+        ok "Removed $CLAUDE_MD"
+    else
+        warn "Smith rubric still present at $CLAUDE_MD — edit or remove manually if needed"
+    fi
 fi
 
 echo

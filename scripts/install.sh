@@ -22,6 +22,7 @@ CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CLAUDE_SKILLS_DIR="$CLAUDE_HOME/skills"
 CLAUDE_HOOKS_DIR="$CLAUDE_HOME/hooks"
 CLAUDE_SETTINGS="$CLAUDE_HOME/settings.json"
+CLAUDE_MD="$CLAUDE_HOME/CLAUDE.md"
 
 # ---------- arg parsing ----------
 ASSUME_YES="${SMITH_ASSUME_YES:-0}"
@@ -118,8 +119,9 @@ fi
 echo
 info "Smith will:"
 echo "  • Copy 27 skills → $CLAUDE_SKILLS_DIR/smith*"
-echo "  • Copy 8 hooks   → $CLAUDE_HOOKS_DIR/"
+echo "  • Copy 9 hooks   → $CLAUDE_HOOKS_DIR/"
 echo "  • Copy scheduler → $SMITH_HOME/scheduler/"
+echo "  • Install global CLAUDE.md rubric → $CLAUDE_MD (backup first)"
 echo "  • Merge hook entries into $CLAUDE_SETTINGS (backup first)"
 if [ "$IS_MACOS" = "1" ] && [ "${SMITH_SKIP_SCHEDULER:-0}" != "1" ]; then
     echo "  • Offer to install a macOS LaunchAgent for the daily scheduler"
@@ -169,6 +171,17 @@ info "Copying scheduler"
 cp "$REPO_ROOT/scheduler/smith-scheduler.sh" "$SMITH_HOME/scheduler/smith-scheduler.sh"
 chmod +x "$SMITH_HOME/scheduler/smith-scheduler.sh"
 ok "Installed scheduler script"
+
+# ---------- install global CLAUDE.md rubric ----------
+info "Installing global CLAUDE.md rubric"
+CLAUDE_MD_TEMPLATE="$REPO_ROOT/settings/claude-md-template.md"
+if [ -f "$CLAUDE_MD" ]; then
+    CLAUDE_MD_BACKUP="$CLAUDE_MD.bak-$(date +%Y%m%d-%H%M%S)"
+    cp "$CLAUDE_MD" "$CLAUDE_MD_BACKUP"
+    ok "Backed up existing CLAUDE.md → $CLAUDE_MD_BACKUP"
+fi
+cp "$CLAUDE_MD_TEMPLATE" "$CLAUDE_MD"
+ok "Installed CLAUDE.md rubric at $CLAUDE_MD"
 
 # ---------- merge settings.json ----------
 info "Merging hook entries into $CLAUDE_SETTINGS"
