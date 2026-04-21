@@ -208,6 +208,8 @@ Some projects add `"Bash(rm:*)"` to the `deny` list of `.claude/settings.json` a
 
 To let Smith clean up its per-branch active-workflow markers under that rule, `/smith` ships a narrow helper at `.specify/scripts/bash/clear-active-workflow.sh`. The helper only unlinks a single file matching `.smith/vault/active-workflows/<safe-branch>.yaml`, never globs, never recurses, and refuses any path that escapes the active-workflows directory. Every Smith workflow skill calls it instead of inline `rm`, and the default project permissions allow-list it explicitly — so the `Bash(rm:*)` deny stays in place and cleanup still works.
 
+As a safety net, `hooks/active-workflow-janitor.sh` runs on every `Stop` event and sweeps orphaned markers whose branch is gone (locally and on origin) or already merged into `origin/main`. Hooks bypass the permission matcher, so the sweep works under a `Bash(rm:*)` deny rule without needing an allow-list entry, and it also collects markers left behind by sessions that crash or are interrupted before a skill's normal cleanup runs. Active branches are never touched.
+
 See [docs/security-model.md](docs/security-model.md) for a detailed breakdown of the threat model and mitigations.
 
 ---
