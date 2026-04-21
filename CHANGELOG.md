@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `hooks/active-workflow-janitor.sh` — Stop-hook sweep for stale `.smith/vault/active-workflows/*.yaml` markers. Removes files whose branch is gone (locally and on origin) or already merged into `origin/main`. Belt-and-suspenders with the existing `clear-active-workflow.sh` helper: skill-level cleanup still handles the happy path, and the hook catches orphans from crashed sessions, interrupted workflows, or skills that slipped through without using the helper. Runs with hook-level permissions, so it works under a `Bash(rm:*)` deny rule without an allow-list entry. Registered in `settings/smith-settings-fragment.json` so `scripts/install.sh` wires it into `~/.claude/settings.json` on install.
 - Install via `npx skills add ATTCKDigital/smith` — new distribution path that copies all 26 skills into `~/.claude/skills/` without requiring the curl installer. Skills-only; hooks and scheduler still require the bundled installer.
 - New skill in the public distribution: `/smith-audit` — cross-system audit orchestrator. Previously only in the agency-internal skill set; now shipped with the public Smith distribution.
 - New skill: `/smith-explore` — pre-change impact analysis for features touching core infrastructure
