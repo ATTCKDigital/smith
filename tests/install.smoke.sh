@@ -29,7 +29,14 @@ echo
 echo "=== Verifying hooks ==="
 HOOK_COUNT=$(ls "$FAKE_HOME/.claude/hooks/"*.sh 2>/dev/null | wc -l | tr -d ' ')
 echo "Hooks installed: $HOOK_COUNT"
-[ "$HOOK_COUNT" -ge 8 ] || { echo "FAIL: Expected >= 8 hooks, got $HOOK_COUNT"; exit 1; }
+[ "$HOOK_COUNT" -ge 9 ] || { echo "FAIL: Expected >= 9 hooks, got $HOOK_COUNT"; exit 1; }
+[ -x "$FAKE_HOME/.claude/hooks/grade-response.sh" ] || { echo "FAIL: grade-response.sh not installed or not executable"; exit 1; }
+
+echo
+echo "=== Verifying global CLAUDE.md rubric ==="
+[ -f "$FAKE_HOME/.claude/CLAUDE.md" ] || { echo "FAIL: ~/.claude/CLAUDE.md not installed"; exit 1; }
+grep -q "Rule Enforcement System" "$FAKE_HOME/.claude/CLAUDE.md" || { echo "FAIL: CLAUDE.md missing rubric content"; exit 1; }
+echo "CLAUDE.md rubric installed"
 
 echo
 echo "=== Verifying settings merge ==="
@@ -39,6 +46,10 @@ if ! jq '.hooks' "$FAKE_HOME/.claude/settings.json" | grep -q "SessionStart"; th
 fi
 if ! jq '.hooks' "$FAKE_HOME/.claude/settings.json" | grep -q "PreToolUse"; then
     echo "FAIL: PreToolUse hook not found in settings.json"
+    exit 1
+fi
+if ! jq '.hooks.Stop' "$FAKE_HOME/.claude/settings.json" | grep -q "grade-response.sh"; then
+    echo "FAIL: grade-response Stop hook not registered in settings.json"
     exit 1
 fi
 echo "Settings merged correctly"
@@ -55,7 +66,8 @@ bash "$REPO_ROOT/scripts/uninstall.sh" -y
 
 echo
 echo "=== Verifying cleanup ==="
-REMAINING=$(ls -d "$FAKE_HOME/.claude/skills/smith"* 2>/dev/null | wc -l | tr -d ' ')
+REMAINING=$(ls -d "$FAKE_HOME/.claude/skills/smith"* 2>/dev/null | wc -l | tr -d ' ' || true)
+REMAINING="${REMAINING:-0}"
 [ "$REMAINING" -eq 0 ] || { echo "FAIL: $REMAINING skills remain after uninstall"; exit 1; }
 echo "Uninstall clean"
 

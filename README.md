@@ -63,12 +63,13 @@ Once installed, open any new or existing project in your terminal and run `/smit
 | Reporting | `/smith-report`, `/smith-taskstoissues` | Client-facing reports and GitHub issue generation |
 | Meta | `/smith`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, governance, and reference |
 
-### Hooks (8)
+### Hooks (9)
 
 | Hook | Event | Purpose |
 |---|---|---|
 | `session-start-logger.sh` | SessionStart | Creates a session log in `.smith/vault/sessions/` |
 | `session-end-review.sh` | Stop | Reviews changes made during the session and prompts for spec updates |
+| `grade-response.sh` | Stop | Grades the turn against `~/.claude/CLAUDE.md` rubric via a Haiku critic; blocks the stop and forces a retry when score < 100 (up to 3 retries) |
 | `file-change-logger.sh` | PostToolUse (Write/Edit) | Logs every file change to the active session log |
 | `lint-on-save.sh` | PostToolUse (Write/Edit) | Runs the project linter on changed files |
 | `security-guard-bash.sh` | PreToolUse (Bash) | Blocks dangerous commands and secret exposure |
@@ -141,8 +142,9 @@ cd smith
 The installer is a **one-time global setup** — it installs Smith into `~/.claude/` and does not modify any project.
 
 - Backs up your existing `~/.claude/settings.json`
+- Backs up your existing `~/.claude/CLAUDE.md` (if any) and installs the Smith rubric
 - Copies all 26 skills to `~/.claude/skills/`
-- Copies all 8 hooks to `~/.claude/hooks/`
+- Copies all 9 hooks to `~/.claude/hooks/`
 - Merges hook configuration into `settings.json` (requires `jq`)
 - Optionally installs the macOS scheduler LaunchAgent
 

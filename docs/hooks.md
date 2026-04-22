@@ -1,6 +1,6 @@
 # Hooks Reference
 
-Smith installs 8 hooks into `~/.claude/hooks/`. Each hook is a bash script registered in `~/.claude/settings.json` under the `hooks` key. Claude Code fires hooks automatically at specific lifecycle events.
+Smith installs 9 hooks into `~/.claude/hooks/`. Each hook is a bash script registered in `~/.claude/settings.json` under the `hooks` key. Claude Code fires hooks automatically at specific lifecycle events.
 
 To disable any hook, remove its entry from `~/.claude/settings.json`. The script file can remain in `~/.claude/hooks/` without effect.
 
@@ -12,6 +12,7 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 |------|-------|---------|---------|
 | session-start-logger | SessionStart | * | Create session log |
 | session-end-review | Stop | * | Review changes, prompt for spec updates |
+| grade-response | Stop | * | Grade response against CLAUDE.md rubric; block stop and retry if score < 100 |
 | file-change-logger | PostToolUse | Write, Edit, NotebookEdit | Log file changes to session |
 | lint-on-save | PostToolUse | Write, Edit | Run linter on saved files |
 | security-guard-bash | PreToolUse | Bash | Block dangerous commands |
@@ -40,6 +41,18 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 - **What it does:** Runs when a Claude Code session ends. Reviews the changes made during the session by reading the session log and git diff. If spec files exist in the project, it checks whether the changes are consistent with the spec and prompts the user to update specs if they have drifted.
 - **Files touched:** Reads `.smith/vault/sessions/<current>.jsonl`, reads spec files under `.smith/` or `specs/`
 - **To disable:** Remove the `Stop` entry referencing this script from `settings.json`.
+
+---
+
+### grade-response.sh
+
+- **Event:** Stop
+- **Matcher:** `*` (fires on every session end)
+- **What it does:** Grades the just-completed turn against the weighted rubric in `~/.claude/CLAUDE.md` via a Haiku critic (`claude --model haiku -p`). If the total score is less than 100, the hook exits 2 to block the stop and force a retry. Capped at 3 retries per turn — after that, warns on stderr and passes. Fails open on any error (missing transcript, bad JSON, unreachable critic).
+- **Files touched:** Reads `$HOME/.claude/CLAUDE.md` and the current session transcript. Writes a retry counter to `/tmp/claude-grade-retry-<session-id>`, cleaned up on pass or max-retries-exhausted.
+- **Tuning:** Edit `~/.claude/CLAUDE.md` to change rule weights, add sub-criteria, or introduce new rules. The total must sum to 100; rules are all-or-nothing. See the "Rule Enforcement System" section of the rubric for the grading contract. The `MAX_RETRIES` constant (default: 3) inside `grade-response.sh` caps retries per turn.
+- **Anti-recursion:** The hook skips grading when invoked with `stop_hook_active: true` so a blocked stop does not re-trigger itself.
+- **To disable:** Remove the `Stop` entry referencing this script from `settings.json`. It is registered as a separate Stop entry from `session-end-review` / `workflow-summary` so it can be toggled independently.
 
 ---
 
