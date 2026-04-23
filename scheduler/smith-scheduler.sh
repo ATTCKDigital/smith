@@ -1,39 +1,93 @@
 #!/usr/bin/env bash
 # smith-scheduler.sh
-# Daily queue processor for Smith.
-# Reads ~/.smith/projects.json, scans each project's queue for all autonomous
-# tasks that are ready (pending or scheduled), and processes them via Claude
-# Code in non-interactive mode with git worktree isolation.
 #
-# Intended to be run by macOS launchd once daily at 2:00 AM (configurable).
-# Can also be run manually: bash ~/.smith/scheduler/smith-scheduler.sh
+# Daily queue processor for Smith — THIN LAUNCHER.
+#
+# Iterates every project registered in ~/.smith/projects.json, filters each
+# project's .smith/vault/queue/ for autonomous tasks that are ready to run
+# (priority-ordered, dependencies met, scheduled_for <= today), then delegates
+# each selected task to the /smith-queue skill via:
+#
+#     "$CLAUDE_BIN" --model <model> --permission-mode bypassPermissions \
+#         -p "/smith-queue process <filename>"
+#
+# The skill owns the full pipeline (status updates, git worktree, tests,
+# PR, merge, spec updates, history archival). This script does NOT
+# reimplement any of those steps — if the skill's behavior changes, the
+# scheduler inherits it for free.
+#
+# Intended to run under macOS launchd once daily at 2:00 AM (see
+# scheduler/com.smith.scheduler.plist.template). Can also run manually:
+#     SMITH_SCHEDULER_ENABLED=1 bash ~/.smith/scheduler/smith-scheduler.sh
+#
+# Environment variables
+#   SMITH_SCHEDULER_ENABLED   required=1 — kill switch; exits silently otherwise
+#   SMITH_SCHEDULER_DRY_RUN   =1 to log planned dispatches without invoking claude
+#   SMITH_SCHEDULER_MODEL     model for claude invocations (default: sonnet)
+#   CLAUDE_BIN                explicit path to the claude CLI (skips auto-resolve)
 
 set -uo pipefail
 
 SMITH_DIR="$HOME/.smith"
 PROJECTS_FILE="$SMITH_DIR/projects.json"
 LOG_FILE="$SMITH_DIR/scheduler/scheduler.log"
-NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%S")
-NOW_EPOCH=$(date +%s)
 TODAY=$(date +"%Y-%m-%d")
+DRY_RUN="${SMITH_SCHEDULER_DRY_RUN:-0}"
+CLAUDE_MODEL="${SMITH_SCHEDULER_MODEL:-sonnet}"
 
 log() {
     echo "[$(date -u +"%Y-%m-%d %H:%M:%S")] $1" >> "$LOG_FILE"
 }
 
-# Ensure log file exists
 mkdir -p "$(dirname "$LOG_FILE")"
 touch "$LOG_FILE"
 
-log "=== Daily scheduler run started ==="
+# SAFETY GUARD: require explicit opt-in. Acts as a soft uninstall for the
+# launchd agent without needing `launchctl unload`. To re-enable, invoke with:
+#   SMITH_SCHEDULER_ENABLED=1 bash ~/.smith/scheduler/smith-scheduler.sh
+if [ "${SMITH_SCHEDULER_ENABLED:-0}" != "1" ]; then
+    log "=== Scheduler disabled (SMITH_SCHEDULER_ENABLED != 1) — exiting ==="
+    exit 0
+fi
 
-# Check projects file
+# Resolve an absolute path to the `claude` binary. launchd runs with a minimal
+# PATH that does not include Homebrew, nvm, or the Claude Code app bundle,
+# which caused prior runs to fail with "claude: command not found" while the
+# script still reported tasks as "Completed" (because $? was masked by `|| true`).
+resolve_claude_bin() {
+    if [ -n "${CLAUDE_BIN:-}" ] && [ -x "$CLAUDE_BIN" ]; then
+        echo "$CLAUDE_BIN"
+        return 0
+    fi
+    if command -v claude >/dev/null 2>&1; then
+        command -v claude
+        return 0
+    fi
+    local vm_root="$HOME/Library/Application Support/Claude/claude-code-vm"
+    if [ -f "$vm_root/.sdk-version" ]; then
+        local version
+        version=$(tr -d '[:space:]' < "$vm_root/.sdk-version")
+        if [ -x "$vm_root/$version/claude" ]; then
+            echo "$vm_root/$version/claude"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+if ! CLAUDE_BIN=$(resolve_claude_bin); then
+    log "=== ERROR: cannot locate claude binary — aborting ==="
+    exit 1
+fi
+log "Using claude binary: $CLAUDE_BIN"
+
+log "=== Daily scheduler run started (dry_run=$DRY_RUN, model=$CLAUDE_MODEL) ==="
+
 if [ ! -f "$PROJECTS_FILE" ]; then
     log "No projects.json found at $PROJECTS_FILE — nothing to do"
     exit 0
 fi
 
-# Parse project paths from JSON (simple grep-based extraction for macOS compatibility)
 PROJECT_PATHS=$(grep '"path"' "$PROJECTS_FILE" | sed 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
 
 if [ -z "$PROJECT_PATHS" ]; then
@@ -41,7 +95,7 @@ if [ -z "$PROJECT_PATHS" ]; then
     exit 0
 fi
 
-TOTAL_PROCESSED=0
+TOTAL_DISPATCHED=0
 TOTAL_FAILED=0
 TOTAL_SKIPPED=0
 
@@ -52,23 +106,25 @@ while IFS= read -r vault_path; do
         continue
     fi
 
-    PROJECT_NAME=$(basename "$(dirname "$vault_path")")
-    PROJECT_DIR=$(dirname "$vault_path")  # .smith is inside the project dir
+    # vault_path is always <project-root>/.smith/vault — strip that suffix to
+    # get the project root. Two levels up via `dirname dirname` works too but
+    # is fragile if someone relocates the vault; the suffix form is explicit.
+    PROJECT_DIR="${vault_path%/.smith/vault}"
+    PROJECT_NAME=$(basename "$PROJECT_DIR")
 
     log "Scanning project: $PROJECT_NAME ($QUEUE_DIR)"
 
-    # Collect all processable tasks with their priority for sorting
+    # Collect all processable tasks with their priority for sorting.
     TASK_LIST=""
 
     for queue_file in "$QUEUE_DIR"/*.md; do
         [ -f "$queue_file" ] || continue
         [ "$(basename "$queue_file")" = ".batch-progress.md" ] && continue
 
-        # Read status and complexity
         STATUS=$(grep '^status:' "$queue_file" | head -1 | sed 's/status:[[:space:]]*//' | tr -d '"' | tr -d ' ')
         COMPLEXITY=$(grep '^complexity:' "$queue_file" | head -1 | sed 's/complexity:[[:space:]]*//' | tr -d '"' | tr -d ' ')
 
-        # Only process autonomous tasks that are pending or scheduled
+        # Only process autonomous tasks that are pending or scheduled.
         if [ "$COMPLEXITY" != "autonomous" ]; then
             continue
         fi
@@ -76,7 +132,7 @@ while IFS= read -r vault_path; do
             continue
         fi
 
-        # If scheduled, check that scheduled_for is not in the future (beyond today)
+        # If scheduled, only run tasks whose scheduled_for is today or earlier.
         if [ "$STATUS" = "scheduled" ]; then
             SCHEDULED_FOR=$(grep '^scheduled_for:' "$queue_file" | head -1 | sed 's/scheduled_for:[[:space:]]*//' | tr -d '"')
             if [ -n "$SCHEDULED_FOR" ]; then
@@ -89,15 +145,13 @@ while IFS= read -r vault_path; do
             fi
         fi
 
-        # Check dependencies — skip if any depend_on task is not completed
+        # Check dependencies — skip if any depends_on task is not completed.
         DEPENDS=$(grep '^depends_on:' "$queue_file" | head -1 | sed 's/depends_on:[[:space:]]*//' | tr -d '"' | tr -d '[]')
         if [ -n "$DEPENDS" ] && [ "$DEPENDS" != "" ]; then
             DEPS_MET=true
             for dep in $(echo "$DEPENDS" | tr ',' '\n' | tr -d ' '); do
                 [ -z "$dep" ] && continue
-                # Check if dependency is completed (in history)
                 if [ ! -f "$QUEUE_DIR/history/$dep" ]; then
-                    # Check if it's still in the queue (not completed)
                     if [ -f "$QUEUE_DIR/$dep" ]; then
                         DEP_STATUS=$(grep '^status:' "$QUEUE_DIR/$dep" | head -1 | sed 's/status:[[:space:]]*//' | tr -d '"' | tr -d ' ')
                         if [ "$DEP_STATUS" != "completed" ]; then
@@ -114,7 +168,6 @@ while IFS= read -r vault_path; do
             fi
         fi
 
-        # Read priority for sorting (default: medium)
         PRIORITY=$(grep '^priority:' "$queue_file" | head -1 | sed 's/priority:[[:space:]]*//' | tr -d '"' | tr -d ' ')
         case "$PRIORITY" in
             critical) SORT_KEY="1" ;;
@@ -127,7 +180,6 @@ while IFS= read -r vault_path; do
         TASK_LIST="${TASK_LIST}${SORT_KEY}|${queue_file}\n"
     done
 
-    # Sort tasks by priority then process
     if [ -z "$TASK_LIST" ]; then
         log "  No processable tasks found"
         continue
@@ -137,71 +189,63 @@ while IFS= read -r vault_path; do
 
     while IFS= read -r queue_file; do
         [ -z "$queue_file" ] && continue
+        [ -f "$queue_file" ] || continue
 
-        TASK_DESC=$(grep '^task:' "$queue_file" | head -1 | sed 's/task:[[:space:]]*//' | tr -d '"')
-        if [ -z "$TASK_DESC" ]; then
-            TASK_DESC=$(grep '^description:' "$queue_file" | head -1 | sed 's/description:[[:space:]]*//' | tr -d '"')
-        fi
         FILENAME=$(basename "$queue_file")
-        SLUG=$(echo "$FILENAME" | sed 's/^[0-9_-]*//;s/\.md$//')
 
-        log "  Processing: $FILENAME — $TASK_DESC"
+        # Skill-delegation invariant: do NOT mutate queue file state here
+        # (status, status-history, worktree, history/ move). The /smith-queue
+        # skill is the single source of truth for the pipeline; any local
+        # mutation before invocation risks double-writes and the exact
+        # "moved to history with no real work done" failure mode that
+        # motivated this rewrite.
 
-        # Update status to in-progress
-        sed -i '' 's/^status: \(pending\|scheduled\)/status: in-progress/' "$queue_file"
-        NOW_STAMP=$(date -u +"%Y-%m-%d %H:%M")
-        echo "- \`[$NOW_STAMP]\` In Progress — daily scheduler picked up" >> "$queue_file"
-
-        # Create worktree
-        WORKTREE_DIR="/tmp/smith-queue-$SLUG"
-        cd "$PROJECT_DIR" || continue
-
-        if git worktree add "$WORKTREE_DIR" -b "queue/$SLUG" main 2>>"$LOG_FILE"; then
-            log "  Worktree created: $WORKTREE_DIR"
-        else
-            log "  ERROR: Failed to create worktree for $SLUG"
-            sed -i '' 's/^status: in-progress/status: failed/' "$queue_file"
-            echo "- \`[$NOW_STAMP]\` Failed — could not create git worktree" >> "$queue_file"
-            mkdir -p "$QUEUE_DIR/history"
-            mv "$queue_file" "$QUEUE_DIR/history/"
-            TOTAL_FAILED=$((TOTAL_FAILED + 1))
+        if [ "$DRY_RUN" = "1" ]; then
+            log "  [dry-run] would dispatch: /smith-queue process $FILENAME (project: $PROJECT_NAME)"
+            TOTAL_DISPATCHED=$((TOTAL_DISPATCHED + 1))
             continue
         fi
 
-        # Run Claude in non-interactive mode
-        CLAUDE_OUTPUT=$(claude --model sonnet -p "You are processing a queued task for the $PROJECT_NAME project. Task: $TASK_DESC. Work in directory: $WORKTREE_DIR. Implement the task, commit changes, and provide a brief summary of what was done." 2>&1) || true
+        log "  Dispatching to skill: $FILENAME (project: $PROJECT_NAME)"
 
-        RESULT_STAMP=$(date -u +"%Y-%m-%d %H:%M")
+        # Invoke from the project directory in a subshell so `cd` does not
+        # persist across iterations. Route claude's stdout/stderr into the
+        # scheduler log so errors like "claude: command not found" are never
+        # swallowed again.
+        (
+            cd "$PROJECT_DIR" && \
+            "$CLAUDE_BIN" \
+                --model "$CLAUDE_MODEL" \
+                --permission-mode bypassPermissions \
+                -p "/smith-queue process $FILENAME"
+        ) >> "$LOG_FILE" 2>&1
+        SKILL_EXIT=$?
 
-        if [ $? -eq 0 ]; then
-            sed -i '' 's/^status: in-progress/status: completed/' "$queue_file"
-            echo "- \`[$RESULT_STAMP]\` Completed — branch queue/$SLUG ready for review" >> "$queue_file"
-            echo "" >> "$queue_file"
-            echo "## Result" >> "$queue_file"
-            echo "" >> "$queue_file"
-            echo "$CLAUDE_OUTPUT" | head -50 >> "$queue_file"
-            log "  Completed: $FILENAME — branch queue/$SLUG"
-            TOTAL_PROCESSED=$((TOTAL_PROCESSED + 1))
+        # Verify outcome by inspecting the queue/history filesystem state.
+        # The skill moves the entry to history/ on both success and explicit
+        # failure (per SKILL.md step 15 / Failure Handling). If the file is
+        # still in queue/, the skill did not take ownership — we never mutate
+        # it ourselves, so the task remains pending for the next run.
+        if [ -f "$QUEUE_DIR/history/$FILENAME" ]; then
+            HIST_STATUS=$(grep '^status:' "$QUEUE_DIR/history/$FILENAME" | head -1 | sed 's/status:[[:space:]]*//' | tr -d '"' | tr -d ' ')
+            if [ "$HIST_STATUS" = "completed" ]; then
+                log "    Completed: $FILENAME (skill exit=$SKILL_EXIT, status=completed)"
+                TOTAL_DISPATCHED=$((TOTAL_DISPATCHED + 1))
+            else
+                log "    Skill recorded failure: $FILENAME (skill exit=$SKILL_EXIT, status=$HIST_STATUS)"
+                TOTAL_FAILED=$((TOTAL_FAILED + 1))
+            fi
+        elif [ -f "$queue_file" ]; then
+            POST_STATUS=$(grep '^status:' "$queue_file" | head -1 | sed 's/status:[[:space:]]*//' | tr -d '"' | tr -d ' ')
+            log "    Skill exited $SKILL_EXIT but $FILENAME still in queue (status=$POST_STATUS) — investigate"
+            TOTAL_FAILED=$((TOTAL_FAILED + 1))
         else
-            sed -i '' 's/^status: in-progress/status: failed/' "$queue_file"
-            echo "- \`[$RESULT_STAMP]\` Failed — claude execution error" >> "$queue_file"
-            echo "" >> "$queue_file"
-            echo "## Error" >> "$queue_file"
-            echo "" >> "$queue_file"
-            echo "$CLAUDE_OUTPUT" | tail -20 >> "$queue_file"
-            log "  Failed: $FILENAME"
+            log "    Skill exited $SKILL_EXIT and $FILENAME is neither in queue/ nor history/ — investigate"
             TOTAL_FAILED=$((TOTAL_FAILED + 1))
         fi
-
-        # Clean up worktree (leave branch for review)
-        git worktree remove "$WORKTREE_DIR" 2>>"$LOG_FILE" || true
-
-        # Move to history
-        mkdir -p "$QUEUE_DIR/history"
-        mv "$queue_file" "$QUEUE_DIR/history/" 2>/dev/null || true
 
     done <<< "$SORTED_TASKS"
 
 done <<< "$PROJECT_PATHS"
 
-log "=== Daily scheduler run complete — processed: $TOTAL_PROCESSED, failed: $TOTAL_FAILED, skipped: $TOTAL_SKIPPED ==="
+log "=== Daily scheduler run complete — dispatched: $TOTAL_DISPATCHED, failed: $TOTAL_FAILED, skipped: $TOTAL_SKIPPED ==="

@@ -506,13 +506,46 @@ Manage the macOS launchd scheduler for automatic daily queue processing.
   3. If the plist is loaded in launchd (`launchctl list | grep com.smith.scheduler`), run `launchctl unload` then `launchctl load` to pick up the new time
   4. Confirm: "Scheduler updated to run daily at HH:MM. Next run: <calculated next occurrence>."
 
-The scheduler script (`~/.smith/scheduler/smith-scheduler.sh`):
+The scheduler script (`~/.smith/scheduler/smith-scheduler.sh`) is a **thin launcher** that delegates to this skill. It:
 1. Reads `~/.smith/projects.json` to find all project vaults
-2. Scans each project's `.smith/vault/queue/` for all `autonomous` tasks with `status: pending` or `status: scheduled` (skips items scheduled for a future date beyond today)
+2. Scans each project's `.smith/vault/queue/` for `autonomous` tasks with `status: pending` or `status: scheduled` (skips items scheduled for a future date beyond today)
 3. Sorts tasks by priority (critical → high → medium → low), then by creation date
 4. Checks dependency chains — skips tasks whose dependencies aren't completed
-5. For each processable task: updates status → `in-progress`, creates git worktree, runs `claude --model sonnet -p "<task context>"`, updates status on completion, moves to history
-6. Logs all activity to `~/.smith/scheduler/scheduler.log`
+5. For each processable task: invokes this skill via `claude -p "/smith-queue process <filename>"` and lets the skill own the pipeline (status updates, worktree, tests, PR, merge, spec updates, history archival)
+6. Captures the skill's exit code and verifies outcome by checking whether the queue entry was moved to `history/` (the skill is responsible for that move; the scheduler does NOT mutate queue files itself)
+7. Logs all activity to `~/.smith/scheduler/scheduler.log`
+
+### Scheduler invocation contract
+
+When the scheduler dispatches a queued task, the exact invocation is:
+
+```bash
+"$CLAUDE_BIN" --model "$CLAUDE_MODEL" --permission-mode bypassPermissions \
+    -p "/smith-queue process <filename>"
+```
+
+Run from the project root directory (so `.smith/vault/queue/<filename>` resolves). `CLAUDE_BIN` is resolved in the scheduler via (1) explicit `CLAUDE_BIN` env override, (2) `PATH` lookup, then (3) the Claude Code VM bundle under `~/Library/Application Support/Claude/claude-code-vm/<version>/claude` (version read from `.sdk-version`).
+
+**Responsibilities are partitioned to avoid double-writes:**
+
+| Step | Owner |
+|------|-------|
+| Read `~/.smith/projects.json`, iterate project vaults | scheduler |
+| Filter queue: `complexity: autonomous`, status pending/scheduled, deps met, scheduled_for ≤ today | scheduler |
+| Priority-sort, dispatch order | scheduler |
+| Resolve `claude` binary, capture exit code | scheduler |
+| Update queue frontmatter `status: in-progress` and append history line | **skill** |
+| Create git worktree from the entry's `branch` field | **skill** |
+| Run `/smith-build`, Docker rebuild, tests, `git push`, `gh pr create`, `gh pr merge` | **skill** |
+| Update `status: completed` or `status: failed` and append history | **skill** |
+| Update system specs, CHANGELOG.md, STATUS.md | **skill** |
+| Move queue entry to `history/` | **skill** |
+| Clean up the worktree | **skill** |
+| Verify archival, tally dispatched/failed counters | scheduler |
+
+**Non-interactivity:** when invoked as `process <filename>` for a task whose `complexity` is `autonomous`, the skill must not prompt for user input. Resolve any ambiguity by marking the task `failed` with a descriptive status-history entry rather than blocking on a question.
+
+**Never let the scheduler reimplement pipeline steps.** The pipeline lives here in SKILL.md; if scheduler logic starts doing `sed 's/status: pending/status: in-progress/'` or `mv ... history/`, that's a regression — it's the exact class of bug that caused the 2026-04-23 silent-completion incident (scheduler pre-mutated state, then `claude: command not found` prevented any real work, but the script still moved entries to `history/`).
 
 ---
 
