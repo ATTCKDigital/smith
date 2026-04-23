@@ -28,13 +28,13 @@ The installer offers to set up the LaunchAgent during `scripts/install.sh`. To i
 bash ~/.smith/scheduler/install-launchagent.sh
 ```
 
-This creates a plist at `~/Library/LaunchAgents/com.attck.smith-scheduler.plist` and loads it with `launchctl`.
+This creates a plist at `~/Library/LaunchAgents/com.smith.scheduler.plist` and loads it with `launchctl`.
 
 ### Uninstalling the LaunchAgent
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.attck.smith-scheduler.plist
-rm ~/Library/LaunchAgents/com.attck.smith-scheduler.plist
+launchctl unload ~/Library/LaunchAgents/com.smith.scheduler.plist
+rm ~/Library/LaunchAgents/com.smith.scheduler.plist
 ```
 
 ---
@@ -57,19 +57,46 @@ For Linux users, add this to your crontab:
 
 ## How Task Processing Works
 
-1. **Read projects** -- The scheduler reads `~/.smith/scheduler/projects.json`, which lists the absolute paths of projects registered for autonomous processing.
+The scheduler is a **thin launcher**. It decides *what* to run, then delegates each task to the `/smith-queue` skill which owns the full pipeline.
 
-2. **Scan queues** -- For each project, the scheduler scans `.smith/vault/queue/` for task files with `"status": "pending"` or `"status": "scheduled"` and `"mode": "autonomous"`.
+1. **Read projects** — The scheduler reads `~/.smith/projects.json`, which lists the absolute paths of project vaults registered for autonomous processing.
 
-3. **Select task** -- Tasks are processed in priority order (highest priority first), then by creation date (oldest first).
+2. **Scan queues** — For each project, the scheduler scans `.smith/vault/queue/` for entries with `complexity: autonomous` and `status: pending` or `status: scheduled`. Scheduled items whose `scheduled_for` is a future date are skipped.
 
-4. **Create worktree** -- A fresh git worktree is created on a new branch (`smith/auto/<task-id>`) so autonomous work does not interfere with your working directory.
+3. **Filter and sort** — Tasks with unmet `depends_on` references are skipped. Remaining tasks are priority-sorted (critical → high → medium → low), then by creation date (oldest first).
 
-5. **Run Claude** -- Claude Code is invoked in non-interactive mode (`claude -p`) with the task description as the prompt. The security guards remain active during autonomous runs.
+4. **Dispatch to the skill** — For each selected task, the scheduler invokes:
 
-6. **Complete** -- On success, the task file is moved to `.smith/vault/queue/history/` with the status updated to `"completed"`. On failure, the status is set to `"failed"` with an error summary.
+   ```bash
+   "$CLAUDE_BIN" --model "$CLAUDE_MODEL" --permission-mode bypassPermissions \
+       -p "/smith-queue process <filename>"
+   ```
 
-7. **Clean up** -- The worktree is removed after processing.
+   from the project root. The `/smith-queue process` pipeline then runs in-process: status updates → git worktree on the entry's `branch` field → `/smith-build` → Docker rebuild → tests → `gh pr create` → `gh pr merge` → spec + CHANGELOG updates → move entry to `history/` → worktree cleanup. See `skills/smith-queue/SKILL.md` for the full pipeline spec and the "Scheduler invocation contract" section.
+
+5. **Verify outcome** — The scheduler captures the skill's exit code and checks whether the queue entry was moved to `history/`. The scheduler does NOT mutate queue files itself — pre-mutating state before the skill took ownership was the root cause of the 2026-04-23 silent-completion regression.
+
+### Dry run
+
+Set `SMITH_SCHEDULER_DRY_RUN=1` to log what would be dispatched without invoking Claude. Useful for verifying filter/sort logic after changes without billing a real run.
+
+```bash
+SMITH_SCHEDULER_ENABLED=1 SMITH_SCHEDULER_DRY_RUN=1 \
+    bash ~/.smith/scheduler/smith-scheduler.sh
+```
+
+### Model override
+
+Default model is `sonnet`. Override per-run with `SMITH_SCHEDULER_MODEL`:
+
+```bash
+SMITH_SCHEDULER_ENABLED=1 SMITH_SCHEDULER_MODEL=haiku \
+    bash ~/.smith/scheduler/smith-scheduler.sh
+```
+
+### Kill switch
+
+`SMITH_SCHEDULER_ENABLED` must be `1` for the scheduler to do anything. Without it the script logs a disabled message and exits 0. This acts as a soft uninstall — the launchd agent can remain loaded while the script is inert, which is useful for debugging without unloading the agent.
 
 ---
 
@@ -87,18 +114,19 @@ Each run is timestamped. The log includes which projects were scanned, which tas
 
 ## Registering Projects
 
-To add a project to the scheduler, edit `~/.smith/scheduler/projects.json`:
+Registered projects live in `~/.smith/projects.json` as a JSON array of entries. Each entry's `path` points at the project's `.smith/vault` directory (not the project root):
 
 ```json
-{
-  "projects": [
-    "/Users/you/Projects/my-app",
-    "/Users/you/Projects/another-app"
-  ]
-}
+[
+  {
+    "name": "my-app",
+    "path": "/Users/you/Projects/my-app/.smith/vault",
+    "last_session": "2026-04-23T13:01:16"
+  }
+]
 ```
 
-Only projects listed here will be scanned for autonomous tasks.
+Only projects listed here will be scanned for autonomous tasks. New entries are usually created automatically the first time you run `/smith` in a project.
 
 ---
 
@@ -107,7 +135,7 @@ Only projects listed here will be scanned for autonomous tasks.
 See [Security Model](security-model.md) for a detailed discussion of scheduler security. Key points:
 
 - The scheduler runs as your user, not as root.
-- Only tasks explicitly marked `"mode": "autonomous"` are processed.
+- Only tasks explicitly marked `complexity: autonomous` are processed.
 - Each task runs in an isolated git worktree.
 - Claude runs in non-interactive mode and cannot prompt for input.
 - Review `~/.smith/scheduler/smith-scheduler.sh` before enabling.
