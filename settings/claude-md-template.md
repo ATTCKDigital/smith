@@ -221,3 +221,45 @@ directories are verified present.
 | 6. General Preferences | 8 | Always |
 | 7. Directory Setup | 2 | Smith projects |
 | **Total** | **100** | |
+
+---
+
+## Smith Context System
+
+> Advisory guidance — not a graded rule. Helps you use injected context
+> efficiently when a Smith skill runs.
+
+When a Smith skill is invoked, the `context-loader.sh` hook automatically
+injects relevant context from the vault and project manifest. Do NOT
+manually navigate the codebase to find relevant files — the injected
+context under "Smith Context Injection" already contains the file list
+from the manifest.
+
+If the context injection is present:
+1. Read the "Must Read" files first (whole files; primary sections are
+   annotated `[primary: <range>, <label>]` for focus)
+2. Read the "Should Read" files if context from Must Read is insufficient
+3. Reference the "Reference Only" files for patterns; do not modify them
+4. Trust the system detection — if the injection says system-X is
+   affected, the manifest determined that
+
+If the context injection is NOT present (hook didn't fire or timed out):
+1. Read `.smith/index/manifest.md` for the project overview
+2. Navigate to the relevant system manifest under `.smith/index/systems/`
+3. Use `.meta` files to identify primary sections in large files
+
+If `.smith/index/` does not exist for the project, run `/smith-index` to
+bootstrap.
+
+## File Size Awareness
+
+> Advisory guidance — not a graded rule. Helps you read large files
+> efficiently.
+
+Files over 300 lines may exceed reliable single-turn read budget. When
+reading large files:
+- Check the `.meta` file first at
+  `.smith/index/files/<path>/<filename>.meta` for primary-section guidance
+- Read the whole file when you can; the `.meta` is a guide, not a constraint
+- If you find yourself needing to read multiple large files for one task,
+  consider whether the files should be decomposed

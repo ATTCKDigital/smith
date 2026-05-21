@@ -292,7 +292,37 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 git push -u origin <branch-name>
 ```
 
-### 5.3 Create PR & Merge
+### 5.3 Pre-PR File-Size Scan
+
+Before composing the PR body, scan all files modified on this branch for
+oversized source files. This is a non-blocking advisory — always proceed
+with the PR.
+
+```bash
+# Enumerate files changed vs main
+git diff main --name-only > /tmp/smith-build-changed.txt
+
+# For each modified file that exists on disk, count lines
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  lines=$(wc -l < "$f" | tr -d ' ')
+  if [ "$lines" -gt 300 ]; then
+    printf -- "- \`%s\` — %s lines (exceeds 300)\n" "$f" "$lines"
+  fi
+done < /tmp/smith-build-changed.txt > /tmp/smith-build-oversized.txt
+```
+
+If `/tmp/smith-build-oversized.txt` is non-empty, include a **"File Size
+Warnings"** section in the PR body (see Step 5.4 template). If empty, omit
+the section entirely.
+
+Source extensions in scope: `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.css`,
+`.html`, `.sh`. Exclude paths matching `vendor/`, `node_modules/`, `.venv/`,
+`dist/`, `build/`, `.smith/`.
+
+This is a FLAG, never a blocker. Always proceed with PR creation.
+
+### 5.4 Create PR & Merge
 ```bash
 gh pr create --title "<short title>" --body "$(cat <<'EOF'
 ## Summary
@@ -300,6 +330,16 @@ gh pr create --title "<short title>" --body "$(cat <<'EOF'
 
 ## Test plan
 <from test results>
+
+## File Size Warnings
+<contents of /tmp/smith-build-oversized.txt if non-empty; otherwise omit this section>
+
+The following files exceed the 300-line threshold and should be considered
+for decomposition in follow-up work:
+
+<oversized file list, e.g.:>
+- `backend/src/api/v1/products.py` — 1,250 lines (exceeds 300)
+- `services/billing/main.py` — 487 lines (exceeds 300)
 
 ## Release notes
 See specs/<feature>/release.md
@@ -317,7 +357,7 @@ cd <PRIMARY_REPO> && gh pr merge <pr-number> --squash --delete-branch
 gh pr merge <pr-number> --squash --delete-branch
 ```
 
-### 5.4 Return to main
+### 5.5 Return to main
 
 **Normal mode:**
 ```bash
@@ -489,7 +529,7 @@ If `/smith-build` is run manually (not from `/smith-new`):
    - No tasks.md → start from Phase 1
    - Tasks partially complete → resume Phase 2 from first incomplete task
    - All tasks complete, uncommitted → start from Phase 5
-   - PR exists, not merged → start from Phase 5.3
+   - PR exists, not merged → start from Phase 5.4
    - PR merged, services not rebuilt → start from Phase 6
    - Everything done → just generate release notes (Phase 7)
 
