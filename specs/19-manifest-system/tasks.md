@@ -184,10 +184,10 @@ and, where applicable, the acceptance criterion or design decision it satisfies.
 
 ## Phase 8: Documentation
 
-- [ ] T097 [P] [docs] Create `/tmp/smith-manifest-system/docs/manifest-system.md` — user-facing reference covering: what the manifest is, directory structure (`.smith/index/`), how to invoke `/smith-index` (all flags), how 4-tier config resolution works, how heuristic path resolver works, customization (overriding via `system-paths.json`, project parser overrides at `.smith/scripts/`), gitignore policy, fan-out behavior + Q3 note (no kill switch in v1).
-- [ ] T098 [P] [docs] Update `/tmp/smith-manifest-system/README.md` — add "Manifest System" top-level section linking to `docs/manifest-system.md`; brief explainer of `/smith-index` and `/smith-navigate`.
-- [ ] T099 [P] [docs] Update `/tmp/smith-manifest-system/CONTRIBUTING.md` — add: (a) hook chain order matters (`manifest-updater.sh` runs LAST per Decision 7); (b) acorn regen procedure per Q8 (`npx esbuild ... --bundle --minify` command line, target node18, single-file CJS output); (c) parser development notes.
-- [ ] T100 [P] [docs] Update `/tmp/smith-manifest-system/CHANGELOG.md` — feature entry under next release covering all 14 requirements + 8 design decisions + 10 resolved questions.
+- [X] T097 [P] [docs] Create `/tmp/smith-manifest-system/docs/manifest-system.md` — user-facing reference covering: what the manifest is, directory structure (`.smith/index/`), how to invoke `/smith-index` (all flags), how 4-tier config resolution works, how heuristic path resolver works, customization (overriding via `system-paths.json`, project parser overrides at `.smith/scripts/`), gitignore policy, fan-out behavior + Q3 note (no kill switch in v1).
+- [X] T098 [P] [docs] Update `/tmp/smith-manifest-system/README.md` — add "Manifest System" top-level section linking to `docs/manifest-system.md`; brief explainer of `/smith-index` and `/smith-navigate`.
+- [X] T099 [P] [docs] Update `/tmp/smith-manifest-system/CONTRIBUTING.md` — add: (a) hook chain order matters (`manifest-updater.sh` runs LAST per Decision 7); (b) acorn regen procedure per Q8 (`npx esbuild ... --bundle --minify` command line, target node18, single-file CJS output); (c) parser development notes.
+- [X] T100 [P] [docs] Update `/tmp/smith-manifest-system/CHANGELOG.md` — feature entry under next release covering all 14 requirements + 8 design decisions + 10 resolved questions.
 
 ---
 

@@ -1,5 +1,5 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![26 Skills](https://img.shields.io/badge/skills-26-brightgreen.svg)](skills/)
+[![28 Skills](https://img.shields.io/badge/skills-28-brightgreen.svg)](skills/)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blueviolet.svg)](https://claude.ai/code)
 
 # Smith
@@ -15,7 +15,7 @@ _See [smith.attck.com](https://smith.attck.com) for a walkthrough._
 
 Claude Code is a powerful AI coding assistant, but it has no built-in workflow structure. Developers jump straight from a vague idea to generated code with no specification, no plan, and no audit trail. The result is hard to review, harder to maintain, and impossible to trace back to requirements. When something goes wrong — and it will — there is no record of what was intended, what was decided, or why.
 
-Smith fixes this by adding 26 skills that encode a full development workflow into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
+Smith fixes this by adding 28 skills that encode a full development workflow into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
 
 The outcome: you talk to Claude about what you want to build, Smith handles the structured process, and you get a merged PR with full traceability from idea to code. Hooks log every session automatically and guard against common mistakes — dangerous shell commands, secret exposure, writes to sensitive files. A scheduler can process queued tasks overnight. Everything runs locally on your machine, nothing phones home, and every artifact is a plain text file you can read, diff, and version-control.
 
@@ -53,7 +53,7 @@ Once installed, open any new or existing project in your terminal and run `/smit
 
 ## What's Inside
 
-### Skills (26)
+### Skills (28)
 
 | Category | Commands | Description |
 |---|---|---|
@@ -61,9 +61,10 @@ Once installed, open any new or existing project in your terminal and run `/smit
 | Debugging and audit | `/smith-debug`, `/smith-audit` | Diagnostic investigation and cross-system audit reporting |
 | Knowledge and vault | `/smith-vault`, `/smith-bank`, `/smith-queue`, `/smith-todo`, `/smith-ledger`, `/smith-reflect` | Persistent session logs, idea storage, task queuing, and accumulated learning |
 | Reporting | `/smith-report`, `/smith-taskstoissues` | Client-facing reports and GitHub issue generation |
+| Manifest | `/smith-index`, `/smith-navigate` | Precomputed project index and Haiku navigator for structured context retrieval (see [docs/manifest-system.md](docs/manifest-system.md)) |
 | Meta | `/smith`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, governance, and reference |
 
-### Hooks (9)
+### Hooks (11)
 
 | Hook | Event | Purpose |
 |---|---|---|
@@ -72,6 +73,8 @@ Once installed, open any new or existing project in your terminal and run `/smit
 | `grade-response.sh` | Stop | Grades the turn against `~/.claude/CLAUDE.md` rubric via a Haiku critic; blocks the stop and forces a retry when score < 100 (up to 3 retries) |
 | `file-change-logger.sh` | PostToolUse (Write/Edit) | Logs every file change to the active session log |
 | `lint-on-save.sh` | PostToolUse (Write/Edit) | Runs the project linter on changed files |
+| `manifest-updater.sh` | PostToolUse (Write/Edit) | Updates `.smith/index/` metadata after edits; emits 300-line advisory warnings. Runs LAST in the chain so it sees the post-lint file state. |
+| `context-loader.sh` | UserPromptSubmit | Detects `/smith-*` invocations and natural-language triggers; injects vault + navigator context as `additionalContext` before reasoning starts. Zero overhead for regular conversation. |
 | `security-guard-bash.sh` | PreToolUse (Bash) | Blocks dangerous commands and secret exposure |
 | `security-guard-files.sh` | PreToolUse (Write/Edit) | Blocks writes to sensitive files without explicit approval |
 | `task-router.sh` | PreToolUse (Task) | Routes sub-agent tasks during active workflows |
@@ -118,6 +121,46 @@ The **vault** (`.smith/vault/`) is the persistent memory layer. It stores:
 **Hooks** fire on every tool use for security and logging. They require no configuration — the installer wires them into Claude Code's settings automatically.
 
 The **scheduler** processes autonomous tasks from the queue overnight using git worktrees so your working tree stays clean.
+
+---
+
+## Manifest System
+
+Smith ships with a **precomputed project index** plus a **Haiku-powered navigator** that injects a curated file list into Claude's context *before* reasoning starts. The goal: stop Claude from reading the wrong files, reading too many files, or missing cross-referenced helpers it actually needs.
+
+### What it is
+
+- A hierarchical manifest at `.smith/index/` that describes every source file — system membership, line count, exports, imports, FastAPI/Express routes, React components.
+- A `UserPromptSubmit` hook (`context-loader.sh`) that detects `/smith-*` invocations and natural-language triggers, then injects assembled context as `additionalContext` before the main session reasons.
+- A `PostToolUse` hook (`manifest-updater.sh`) that keeps the manifest current as files are edited.
+- Two new skills: `/smith-index` (build / refresh / migrate the manifest) and `/smith-navigate` (return categorized Must Read / Should Read / Reference Only file lists).
+
+### Why it matters
+
+- Eliminates "Claude read the wrong files" failures by giving the model a deterministic candidate list up front.
+- Reduces token waste from speculative reads — annotated whole-file reads with primary-section hints instead of grep-everything.
+- Makes `/smith-explore` Phase 1 faster — manifest lookup first, grep only when the manifest doesn't cover the query.
+- Surfaces file-size hygiene throughout the workflow (300/500-line thresholds appear in `.meta`, PR descriptions, and audit reports).
+- Regular conversation has **zero overhead** — the hook short-circuits when no Smith skill or trigger phrase is detected.
+
+### How to enable it
+
+Auto-installed by `npx skills add ATTCKDigital/smith` (use `--no-hooks` to opt out). Then in any project:
+
+```sh
+/smith init        # new project — runs /smith-index as its last setup step
+/smith-index       # existing project — first-time index build (~40s for 300 files)
+```
+
+### How it changes your daily flow
+
+Mostly invisible. Hooks fire automatically when you edit files; the manifest stays current. You'll see:
+
+- **`/smith-navigate "task description"`** — ad-hoc lookup, returns a categorized file list in under 3 seconds.
+- **`/smith-index --check`** — quick freshness check (SHA-256 of first 4KB per file) without rebuilding.
+- **File-size advisories** in `/smith-build` PR descriptions and `/smith-audit` reports when files cross 300 lines.
+
+For the full design, the 4-tier `context-manifest.json` resolution, the path-resolver heuristic, and troubleshooting, see [docs/manifest-system.md](docs/manifest-system.md).
 
 ---
 

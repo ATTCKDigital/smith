@@ -145,6 +145,159 @@ not be merged. It also keeps the project focused and maintainable.
 
 ---
 
+## Vendored Dependencies
+
+### `scripts/parsers/vendor/acorn.min.js`
+
+The JS/TS/JSX/TSX parser depends on a single bundled, minified file at
+`scripts/parsers/vendor/acorn.min.js`. This bundle includes:
+
+- `acorn@8.x` — the upstream JavaScript parser
+- `acorn-jsx` — JSX plugin
+- `acorn-typescript` — TypeScript plugin
+
+It is built+minified via `esbuild` into a single CommonJS file (~150KB) and
+checked into the repo. Version is pinned in `scripts/parsers/vendor/VERSION`.
+
+**Why vendored:** install-time determinism. Smith installs by copying files
+from this repo into `~/.smith/scripts/` — there is no `npm install` step at
+user-install time. Vendoring guarantees the parser works the moment `node`
+is on PATH, regardless of what's in the user's `npm` cache or registry
+availability. It also pins the exact parser version Smith was tested against,
+so behavior is reproducible across machines.
+
+**Marked as vendored in `.gitattributes`:**
+
+```
+scripts/parsers/vendor/acorn.min.js linguist-vendored=true
+scripts/parsers/vendor/acorn.min.js linguist-generated=true
+```
+
+Keeps the file out of GitHub's per-language line-count statistics and out of
+diff summaries by default.
+
+**License:** acorn and its plugins are MIT-licensed. License text is preserved
+in `scripts/parsers/vendor/README.md` (or `scripts/parsers/vendor/LICENSE` if
+upstream included one in the bundle).
+
+**Regen procedure (when upgrading acorn):**
+
+```bash
+# Run in a scratch directory — DO NOT pollute the smith-repo tree with node_modules
+cd /tmp/build-acorn-bundle && \
+  npm init -y && \
+  npm install --no-save acorn@8 acorn-jsx acorn-typescript esbuild && \
+  cat > entry.js << 'EOF'
+const acorn = require('acorn');
+const acornJsx = require('acorn-jsx');
+const acornTypescript = require('acorn-typescript').default;
+module.exports = { acorn, acornJsx, acornTypescript };
+EOF
+  npx esbuild entry.js \
+    --bundle \
+    --minify \
+    --platform=node \
+    --format=cjs \
+    --target=node18 \
+    --outfile=<absolute-path-to-smith-repo>/scripts/parsers/vendor/acorn.min.js
+```
+
+After regenerating:
+
+1. Update `scripts/parsers/vendor/VERSION` with the new acorn version.
+2. Re-run the parser fixture tests (`bash tests/parsers/test_parse_js.sh`).
+3. Note any behavior changes in CHANGELOG.md under `### Changed`.
+
+---
+
+## Parser Development
+
+Source-code parsers live in `scripts/parsers/`:
+
+- `parse-python.py` — Python AST parser using stdlib `ast` (no third-party deps).
+- `parse-js.js` — JS/TS/JSX/TSX parser using the vendored acorn bundle.
+- `path-resolver.py` — heuristic path → system mapping (stdlib `json`/`os.path`).
+- `parser-lib.sh` — bash helper that resolves which parser to invoke for a
+  given file extension; respects per-project overrides.
+
+### Contracts
+
+All parsers emit JSON conforming to
+`specs/19-manifest-system/contracts/parser-output.schema.json`. The shape is:
+
+```jsonc
+{
+  "language": "python" | "javascript" | "typescript" | "jsx" | "tsx",
+  "lines": <int>,
+  "functions": [{ "name", "line", "params", "return_type", "docstring" }],
+  "classes":   [{ "name", "line", "methods": [{ "name", "line" }] }],
+  "imports":   [{ "module", "names", "line", "kind" }],
+  "routes":    [{ "method", "path", "line", "function", "framework" }],
+  "errors":    []  // populated on partial parse; never throws
+}
+```
+
+### Hard rules
+
+- **Performance budget:** <200ms p95 per file. Verify with
+  `tests/parsers/fixtures/` files up to 2000 lines.
+- **Never crashes.** Malformed input must return partial JSON with an
+  `errors[]` entry. No uncaught exceptions, no non-zero exit on bad input.
+- **No source modification.** Parsers are read-only.
+- **Stdlib only for `parse-python.py`.** The Python parser must not require
+  pip-installable dependencies.
+
+### Test fixtures
+
+- Python: `tests/parsers/fixtures/python/` — vanilla, async, classes,
+  FastAPI/Flask routes, type hints, docstrings, empty, syntax errors.
+- JS/TS: `tests/parsers/fixtures/js/` — ESM exports, default exports, React
+  components, deduplicated imports, Express routes, TypeScript interfaces,
+  malformed JSX, TSX components.
+
+### Running parser tests
+
+```bash
+# Python parser
+python3 tests/parsers/test_parse_python.py
+
+# JS/TS parser (integration test — invokes node directly)
+bash tests/parsers/test_parse_js.sh
+
+# Contract validation (JSON Schema check across all fixtures)
+python3 tests/contracts/test_parser_output_schema.py
+```
+
+### Per-project parser override
+
+If a project ships `.smith/scripts/parse-python.py` (or `parse-js.js`),
+`manifest-updater.sh` uses that instead of the global `~/.smith/scripts/`
+copy. This lets a project fork parsing behavior — e.g. a project that uses an
+unusual code generator and wants to filter out auto-generated functions —
+without forking smith-repo. The override mechanism lives in
+`scripts/parsers/parser-lib.sh::resolve_parser`.
+
+---
+
+## Hook Chain Ordering
+
+Hook order matters for the PostToolUse `Write|Edit` chain. Smith's installer
+guarantees the following invariant:
+
+```
+file-change-logger.sh  →  lint-on-save.sh  →  manifest-updater.sh
+```
+
+`manifest-updater.sh` MUST be LAST so it observes the final on-disk file
+state after any lint reformatting. If you add a new PostToolUse hook that
+should run before manifest update, register it earlier; if your hook should
+react to the manifest update, switch it to a different event (e.g.
+`SubagentStop`) — there is no "after manifest-updater" slot.
+
+The ordering invariant is enforced by `tests/hooks/test_hook_chain_order.sh`.
+
+---
+
 ## Communication
 
 All project communication happens through **GitHub Issues**. This keeps
