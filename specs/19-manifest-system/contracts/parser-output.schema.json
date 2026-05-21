@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ATTCKDigital/smith/specs/19-manifest-system/contracts/parser-output.schema.json",
+  "title": "Smith Parser Output",
+  "description": "JSON shape emitted by parse-python.py and parse-js.js. Both parsers conform to this schema; language-specific differences are surfaced via the 'language' field and the JS-only 'exports' array.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "language",
+    "lines",
+    "functions",
+    "classes",
+    "imports",
+    "routes",
+    "exports",
+    "errors"
+  ],
+  "properties": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source file path as passed to the parser. May be absolute or project-relative."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["python", "javascript", "typescript"],
+      "description": "Detected language. JSX collapses to javascript; TSX to typescript."
+    },
+    "lines": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total line count of the source file, including blank lines."
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "line", "params"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 1 },
+          "params": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "type": { "type": ["string", "null"] },
+                "default": { "type": "string" }
+              }
+            }
+          },
+          "return_type": { "type": ["string", "null"] },
+          "docstring": {
+            "type": ["string", "null"],
+            "description": "First line of the docstring, stripped. Null if no docstring."
+          },
+          "is_async": { "type": "boolean" }
+        }
+      }
+    },
+    "classes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "line", "methods"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 1 },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "line"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "line": { "type": "integer", "minimum": 1 }
+              }
+            }
+          },
+          "bases": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["line", "name", "kind"],
+        "properties": {
+          "line": { "type": "integer", "minimum": 1 },
+          "name": { "type": "string", "minLength": 1, "description": "Module path or package name." },
+          "kind": {
+            "type": "string",
+            "enum": ["import", "from", "require", "dynamic"]
+          },
+          "imported": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Names imported from the module (for 'from X import a, b' and 'import {a, b} from \"X\"')."
+          },
+          "alias": { "type": "string" }
+        }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["method", "path", "line", "function"],
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ANY"]
+          },
+          "path": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 1 },
+          "function": { "type": "string", "minLength": 1, "description": "Handler function name." },
+          "framework": {
+            "type": "string",
+            "enum": ["fastapi", "flask", "express", "unknown"],
+            "description": "Detected framework. Optional."
+          }
+        }
+      }
+    },
+    "exports": {
+      "type": "array",
+      "description": "JS/TS only. Empty array for Python.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "line", "kind"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 1 },
+          "kind": {
+            "type": "string",
+            "enum": ["named", "default", "module-level", "react-component"]
+          }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Populated on parse failures. Empty array means clean parse.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["message"],
+        "properties": {
+          "line": { "type": "integer", "minimum": 0 },
+          "col": { "type": "integer", "minimum": 0 },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
