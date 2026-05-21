@@ -1,0 +1,114 @@
+{
+  "_meta": {
+    "version": 1,
+    "tier_label": "repo-default"
+  },
+  "_default": {
+    "vault": {
+      "sessions": 3,
+      "ledger": "top-20",
+      "bank": "recent",
+      "queue": "pending",
+      "agents": "recent"
+    },
+    "navigator": false,
+    "navigator_scope": "task_specific",
+    "system_specs": "none"
+  },
+  "smith-new": {
+    "vault": {
+      "sessions": 5,
+      "ledger": "top-20",
+      "bank": "all",
+      "queue": "pending",
+      "agents": "all"
+    },
+    "navigator": true,
+    "navigator_scope": "task_specific",
+    "system_specs": "affected_systems_only"
+  },
+  "smith-bugfix": {
+    "vault": {
+      "sessions": 5,
+      "ledger": "top-20",
+      "bank": "recent",
+      "queue": "pending",
+      "agents": "recent"
+    },
+    "navigator": true,
+    "navigator_scope": "task_specific",
+    "system_specs": "affected_systems_only"
+  },
+  "smith-debug": {
+    "vault": {
+      "sessions": 5,
+      "ledger": "top-20",
+      "bank": "recent",
+      "queue": "pending",
+      "agents": "all"
+    },
+    "navigator": true,
+    "navigator_scope": "error_context",
+    "system_specs": "affected_systems_only"
+  },
+  "smith-build": {
+    "vault": {
+      "sessions": 3,
+      "ledger": "top-20",
+      "bank": "none",
+      "queue": "pending",
+      "agents": "recent"
+    },
+    "navigator": false,
+    "navigator_scope": "changed_files_context",
+    "system_specs": "frontmatter_only"
+  },
+  "smith-audit": {
+    "vault": {
+      "sessions": 5,
+      "ledger": "all",
+      "bank": "none",
+      "queue": "all",
+      "agents": "all"
+    },
+    "navigator": false,
+    "navigator_scope": "full_project",
+    "system_specs": "all_frontmatter"
+  },
+  "smith-vault": {
+    "vault": {
+      "sessions": 0,
+      "ledger": "none",
+      "bank": "none",
+      "queue": "none",
+      "agents": "none"
+    },
+    "navigator": false,
+    "navigator_scope": "task_specific",
+    "system_specs": "none"
+  },
+  "smith-help": {
+    "vault": {
+      "sessions": 0,
+      "ledger": "none",
+      "bank": "none",
+      "queue": "none",
+      "agents": "none"
+    },
+    "navigator": false,
+    "navigator_scope": "task_specific",
+    "system_specs": "none"
+  },
+  "smith-bank": {
+    "vault": {
+      "sessions": 1,
+      "ledger": "none",
+      "bank": "recent",
+      "queue": "none",
+      "agents": "none"
+    },
+    "navigator": false,
+    "navigator_scope": "task_specific",
+    "system_specs": "none"
+  }
+}

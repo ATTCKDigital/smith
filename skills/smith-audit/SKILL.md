@@ -170,6 +170,61 @@ Structure:
 
 [Specs that don't match code, undocumented features, stale session decisions]
 
+## File Size Audit
+
+Hygiene check for oversized source files in scope for this system. Counts
+sourced from `.smith/index/files/` `.meta` files when available, otherwise
+computed live via `wc -l`.
+
+**Source extensions in scope:** `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.css`,
+`.html`, `.sh`. Excludes paths matching `vendor/`, `node_modules/`, `.venv/`,
+`dist/`, `build/`, `.smith/`.
+
+### Thresholds
+
+| Threshold | Count |
+|-----------|-------|
+| Files over 300 lines | N |
+| Files over 500 lines | N |
+
+### Top 10 Largest Files
+
+| Rank | File | Lines | Note |
+|------|------|-------|------|
+| 1 | `path/to/file.py` | 1,250 | Consider decomposing — exceeds 500-line threshold |
+| 2 | `path/to/other.js` | 870 | Consider decomposing — exceeds 500-line threshold |
+| 3 | `path/to/third.ts` | 412 | — |
+| ... | | | |
+
+For each file >500 lines, include a one-line decomposition suggestion in the
+Note column (e.g., "Split route handlers into separate module" or "Extract
+data-access layer"). Files between 300 and 500 lines are listed without a
+decomposition suggestion — they are a flag, not a directive.
+
+### Detection Procedure
+
+```bash
+# Prefer manifest metadata if available
+if [ -d .smith/index/files ]; then
+  # Extract lines from .meta files (format: "lines: <N>")
+  ...
+else
+  # Fallback: live scan
+  find . -type f \
+    \( -name '*.py' -o -name '*.js' -o -name '*.jsx' -o -name '*.ts' \
+       -o -name '*.tsx' -o -name '*.css' -o -name '*.html' -o -name '*.sh' \) \
+    -not -path '*/vendor/*' \
+    -not -path '*/node_modules/*' \
+    -not -path '*/.venv/*' \
+    -not -path '*/dist/*' \
+    -not -path '*/build/*' \
+    -not -path '*/.smith/*' \
+    -exec wc -l {} + | sort -rn | head -10
+fi
+```
+
+This subsection is advisory — it never blocks an audit pass/fail score.
+
 ## Detailed Sub-Audit Reports
 
 See individual reports:

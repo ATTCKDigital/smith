@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# post-merge — Smith manifest catch-up after `git pull` or `git merge`.
+#
+# Installed per-project by `scripts/install-git-hooks.sh` (or `/smith init`).
+# Exits silently for projects that don't use Smith (no .smith/index/).
+#
+# Per Design Decision 8 (sync mechanism). Fast (~1-2s typical) — only
+# re-parses files that changed between ORIG_HEAD and HEAD.
+
+set -uo pipefail
+
+# Locate the project root (the worktree root for git operations).
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+
+# Silent no-op for non-Smith projects.
+if [ ! -d "$PROJECT_ROOT/.smith/index" ]; then
+    exit 0
+fi
+
+# Resolve run.py. Search order:
+#   1. <repo>/scripts/smith-index/run.py  (dev install)
+#   2. ~/.smith/scripts/smith-index/run.py (installed)
+#   3. ~/.claude/scripts/smith-index/run.py (alt installed)
+RUN_PY=""
+for cand in \
+    "$PROJECT_ROOT/scripts/smith-index/run.py" \
+    "$HOME/.smith/scripts/smith-index/run.py" \
+    "$HOME/.claude/scripts/smith-index/run.py"; do
+    if [ -f "$cand" ]; then
+        RUN_PY="$cand"
+        break
+    fi
+done
+
+if [ -z "$RUN_PY" ] || ! command -v python3 >/dev/null 2>&1; then
+    # Cannot run; exit silently.
+    exit 0
+fi
+
+# ORIG_HEAD is set by git for pull/merge.
+FROM_REF="${1:-ORIG_HEAD}"
+TO_REF="${2:-HEAD}"
+
+# Run --incremental in the background so we never delay the user's git op.
+# stderr to a log file; ignore failures.
+LOG_DIR="$HOME/.smith/logs"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+(
+    cd "$PROJECT_ROOT" \
+        && python3 "$RUN_PY" --incremental \
+            --from "$FROM_REF" --to "$TO_REF" \
+            --root "$PROJECT_ROOT" \
+            >> "$LOG_DIR/git-hooks.log" 2>&1 \
+        || true
+) &
+
+exit 0

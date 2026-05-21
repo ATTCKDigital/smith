@@ -1,0 +1,32 @@
+{
+  "_comment": "OPTIONAL FILE. system-paths.json overrides the built-in heuristic in scripts/parsers/path-resolver.py. If absent, the heuristic engine handles all paths automatically. Use this file only when you need to correct or override the heuristic's guess.",
+  "_comment_2": "Rules are matched by longest-prefix wins against the project-relative file path. Use forward slashes on all platforms.",
+  "rules": [
+    {
+      "_comment": "Map the products feature (backend + frontend) to one system.",
+      "prefix": "backend/src/api/v1/products",
+      "system": "system-15-command-center"
+    },
+    {
+      "_comment": "Generic backend API layer.",
+      "prefix": "backend/src/api",
+      "system": "system-01-api"
+    },
+    {
+      "_comment": "Backend models.",
+      "prefix": "backend/src/models",
+      "system": "system-02-models"
+    },
+    {
+      "_comment": "All frontend code, not split further.",
+      "prefix": "frontend/src",
+      "system": "system-03-frontend"
+    },
+    {
+      "_comment": "Shopify integration.",
+      "prefix": "backend/src/services/shopify",
+      "system": "system-04-shopify-sync"
+    }
+  ],
+  "default": "unassigned"
+}

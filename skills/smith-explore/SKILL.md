@@ -46,7 +46,61 @@ This skill is automatically invoked as Phase 0 of `/smith-new` when `--explore` 
 
 ## Phase 1: Scope Detection
 
-Parse `$ARGUMENTS` to determine exploration scope:
+> **Phase 1 now uses the manifest as a map, not a fence — start narrow, expand as needed.**
+>
+> *Pre-2026-05: Phase 1 used blind grep/find across the entire codebase.
+> Post-manifest-system: we start with the precomputed manifest (via
+> `/smith-navigate`) for the common case, falling back to whole-codebase grep
+> when the manifest doesn't cover the query.*
+
+### Step 1: Manifest-Driven Candidate Lookup
+
+First, invoke `/smith-navigate` with the user's feature description (or the
+verbatim exploration target from `$ARGUMENTS`). This returns a categorized
+file list from the project manifest:
+
+```
+/smith-navigate "<feature description from $ARGUMENTS>"
+```
+
+Capture the navigator's output — the `Must Read`, `Should Read`,
+`Reference Only`, and `Systems Affected` sections become the initial set of
+candidate locations to investigate.
+
+**If `.smith/index/manifest.md` is missing** (project hasn't been indexed),
+`/smith-navigate` will emit a "Manifest not initialized" sentinel. In that
+case, skip directly to Step 3 (whole-codebase grep) with this one-line note
+appended to the exploration report:
+
+> "Manifest not initialized — using whole-codebase grep. Run `/smith-index`
+> to enable faster scoped exploration."
+
+### Step 2: Focused Grep on Navigator Output
+
+Grep the locations returned by `/smith-navigate` plus their immediate
+neighborhoods (parent directories, sibling files in the same module). This
+is the focused pass and covers the common case where the manifest already
+knows where the relevant code lives.
+
+For each candidate path:
+- Read the file (or its primary section per the `[primary: <range>, <label>]`
+  annotation)
+- Grep its parent directory for related symbols
+- Note any imports/exports that point to other manifest entries
+
+### Step 3: Whole-Codebase Expansion (if needed)
+
+Escalate to a whole-codebase grep when ANY of these conditions hold:
+
+- `/smith-navigate` returned no candidates (manifest doesn't cover the query)
+- Initial focused grep finds signals of broader impact (e.g., a function
+  used across many files, a global constant, a shared utility)
+- The query mentions concepts not present in any system manifest
+- The user explicitly passed `--deep`
+
+When escalating, use the legacy `--scope` matrix below to bound the search:
+
+### Scope Matrix (used by Step 3 and explicit `--scope` flags)
 
 | Flag | Scope | What to scan |
 |------|-------|--------------|
