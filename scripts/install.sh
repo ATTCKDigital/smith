@@ -26,9 +26,13 @@ CLAUDE_MD="$CLAUDE_HOME/CLAUDE.md"
 
 # ---------- arg parsing ----------
 ASSUME_YES="${SMITH_ASSUME_YES:-0}"
+NO_HOOKS=0
+NO_PARSERS=0
 for arg in "$@"; do
     case "$arg" in
         -y|--yes) ASSUME_YES=1 ;;
+        --no-hooks) NO_HOOKS=1 ;;
+        --no-parsers) NO_PARSERS=1 ;;
         -h|--help)
             sed -n '2,15p' "$0" | sed 's/^# *//'
             exit 0
@@ -164,7 +168,27 @@ for hook_src in "$REPO_ROOT"/hooks/*.sh; do
     chmod +x "$CLAUDE_HOOKS_DIR/$hook_name"
     HOOK_COUNT=$((HOOK_COUNT + 1))
 done
-ok "Installed $HOOK_COUNT hooks"
+# Copy the Python helpers used by the manifest-system hooks.
+for helper_src in "$REPO_ROOT"/hooks/*.py; do
+    [ -f "$helper_src" ] || continue
+    helper_name="$(basename "$helper_src")"
+    cp "$helper_src" "$CLAUDE_HOOKS_DIR/$helper_name"
+    chmod +x "$CLAUDE_HOOKS_DIR/$helper_name"
+done
+ok "Installed $HOOK_COUNT hooks (plus Python helpers)"
+
+# ---------- install manifest-system parsers ----------
+if [ "$NO_PARSERS" != "1" ]; then
+    info "Installing manifest-system parsers to ~/.smith/scripts/"
+    bash "$REPO_ROOT/scripts/install-parsers.sh" || warn "parser install reported errors"
+    # Also stage the smith-index runtime so post-merge/post-checkout git
+    # hooks (and the /smith-index skill) can find run.py.
+    mkdir -p "$SMITH_HOME/scripts/smith-index"
+    cp "$REPO_ROOT/scripts/smith-index/run.py" "$SMITH_HOME/scripts/smith-index/run.py" 2>/dev/null || true
+    cp "$REPO_ROOT/scripts/smith-index/run.sh" "$SMITH_HOME/scripts/smith-index/run.sh" 2>/dev/null || true
+    chmod +x "$SMITH_HOME/scripts/smith-index/"*.sh 2>/dev/null || true
+    ok "Parsers installed"
+fi
 
 # ---------- copy scheduler ----------
 info "Copying scheduler"
@@ -201,6 +225,15 @@ jq -s '
 mv "$TMP_SETTINGS" "$CLAUDE_SETTINGS"
 ok "Settings merged"
 
+# ---------- install manifest-system hooks (auto-register per Q4) ----------
+if [ "$NO_HOOKS" != "1" ]; then
+    info "Registering manifest-system hooks in $CLAUDE_SETTINGS"
+    bash "$REPO_ROOT/scripts/install-hooks.sh" --settings "$CLAUDE_SETTINGS" \
+        || warn "hook registration reported errors"
+else
+    info "Skipping manifest-system hook registration (--no-hooks)"
+fi
+
 # ---------- optional: scheduler LaunchAgent ----------
 if [ "$IS_MACOS" = "1" ] && [ "${SMITH_SKIP_SCHEDULER:-0}" != "1" ]; then
     echo
@@ -230,6 +263,9 @@ echo "  Next steps:"
 echo "    1. Open Claude Code in any project"
 echo "    2. Run /smith-new to start a new feature, or /smith-help to see all commands"
 echo "    3. Session logs and vault state will be created in <project>/.smith/vault/"
+echo "    4. For per-project git-hook drift catch-up, run inside the project:"
+echo "         $REPO_ROOT/scripts/install-git-hooks.sh"
+echo "       (Or just run /smith-index manually when needed.)"
 echo
 echo "  Docs: https://github.com/ATTCKDigital/smith"
 echo "  Website: https://smith.attck.com"

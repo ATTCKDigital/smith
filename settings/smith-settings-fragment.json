@@ -33,13 +33,22 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "bash ~/.claude/hooks/lint-on-save.sh" }
+          { "type": "command", "command": "bash ~/.claude/hooks/lint-on-save.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/manifest-updater.sh" }
         ]
       },
       {
         "matcher": "*",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/metrics-tracker.sh" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/context-loader.sh" }
         ]
       }
     ],

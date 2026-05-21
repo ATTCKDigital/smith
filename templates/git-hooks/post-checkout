@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# post-checkout — Smith manifest catch-up after `git checkout`.
+#
+# Installed per-project by `scripts/install-git-hooks.sh` (or `/smith init`).
+# Exits silently for projects that don't use Smith (no .smith/index/).
+#
+# Git invokes this hook with three args:
+#   $1 — prev HEAD sha
+#   $2 — new HEAD sha
+#   $3 — flag: 1 if branch checkout, 0 if file checkout
+#
+# We only run for branch checkouts (file checkouts don't change ref history
+# in a way the manifest cares about).
+
+set -uo pipefail
+
+PREV_HEAD="${1:-}"
+NEW_HEAD="${2:-}"
+FLAG="${3:-0}"
+
+# Only branch checkouts; skip file checkouts (avoid running on `git checkout
+# -- some-file`).
+if [ "$FLAG" != "1" ]; then
+    exit 0
+fi
+
+# No-op when prev == new (e.g. fresh clone first checkout).
+if [ -n "$PREV_HEAD" ] && [ "$PREV_HEAD" = "$NEW_HEAD" ]; then
+    exit 0
+fi
+
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+
+# Silent no-op for non-Smith projects.
+if [ ! -d "$PROJECT_ROOT/.smith/index" ]; then
+    exit 0
+fi
+
+RUN_PY=""
+for cand in \
+    "$PROJECT_ROOT/scripts/smith-index/run.py" \
+    "$HOME/.smith/scripts/smith-index/run.py" \
+    "$HOME/.claude/scripts/smith-index/run.py"; do
+    if [ -f "$cand" ]; then
+        RUN_PY="$cand"
+        break
+    fi
+done
+
+if [ -z "$RUN_PY" ] || ! command -v python3 >/dev/null 2>&1; then
+    exit 0
+fi
+
+LOG_DIR="$HOME/.smith/logs"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+
+(
+    cd "$PROJECT_ROOT" \
+        && python3 "$RUN_PY" --incremental \
+            --from "$PREV_HEAD" --to "$NEW_HEAD" \
+            --root "$PROJECT_ROOT" \
+            >> "$LOG_DIR/git-hooks.log" 2>&1 \
+        || true
+) &
+
+exit 0

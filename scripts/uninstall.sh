@@ -80,6 +80,10 @@ SMITH_HOOKS=(
     security-guard-bash.sh security-guard-files.sh
     session-end-review.sh session-start-logger.sh
     subagent-vault-writeback.sh task-router.sh
+    manifest-updater.sh context-loader.sh
+)
+SMITH_HOOK_HELPERS=(
+    manifest-updater-lib.py context-loader-lib.py
 )
 REMOVED_HOOKS=0
 for hook in "${SMITH_HOOKS[@]}"; do
@@ -88,7 +92,23 @@ for hook in "${SMITH_HOOKS[@]}"; do
         REMOVED_HOOKS=$((REMOVED_HOOKS + 1))
     fi
 done
+for helper in "${SMITH_HOOK_HELPERS[@]}"; do
+    if [ -f "$CLAUDE_HOOKS_DIR/$helper" ]; then
+        rm -f "$CLAUDE_HOOKS_DIR/$helper"
+        REMOVED_HOOKS=$((REMOVED_HOOKS + 1))
+    fi
+done
 ok "Removed $REMOVED_HOOKS hooks"
+
+# Remove manifest-system parsers
+if [ -d "$SMITH_HOME/scripts" ]; then
+    REPO_ROOT_GUESS="$(cd "$(dirname "$0")/.." && pwd)"
+    if [ -f "$REPO_ROOT_GUESS/scripts/install-parsers.sh" ]; then
+        bash "$REPO_ROOT_GUESS/scripts/install-parsers.sh" --uninstall 2>/dev/null || true
+        ok "Removed manifest-system parsers"
+    fi
+    rm -rf "$SMITH_HOME/scripts/smith-index" 2>/dev/null || true
+fi
 
 # Remove scheduler
 if [ -d "$SMITH_HOME/scheduler" ]; then
