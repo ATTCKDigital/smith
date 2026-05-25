@@ -7,6 +7,8 @@ handoffs:
     prompt: Implement the feature specification based on the updated constitution. I want to build...
 ---
 
+> **Workflow requirement (Smith 20+):** This skill must be invoked from inside an active top-level workflow (`/smith-new`, `/smith-bugfix`, `/smith-debug`, `/smith-build`). The workflow-gate hook will block standalone invocation. To use this skill standalone, start a top-level workflow first.
+
 ## Vault Logging
 
 Throughout this action, log significant events to the vault session log. Read the session log path from `.smith/vault/.current-session`. If the file is missing or the vault is not initialized, skip all logging silently.

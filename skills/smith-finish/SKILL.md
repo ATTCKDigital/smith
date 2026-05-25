@@ -63,6 +63,28 @@ Session Status:
 
 ---
 
+### Step 1.5: Activate Workflow Tracking
+
+Before any file is written (spec updates in Step 4, CHANGELOG/STATUS updates), create an active-workflow marker so the workflow-gate hook (PreToolUse) allows subsequent writes. `smith-finish` is often invoked standalone outside another workflow, so it must create its own marker.
+
+Skip this step if the State table mapped to "Nothing to do" or "Skip to Step 6 (verify clean state)" — no edits will happen.
+
+```bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+mkdir -p .smith/vault/active-workflows
+cat > .smith/vault/active-workflows/finish-${SAFE_BRANCH}.yaml << EOF
+workflow: smith-finish
+feature: session-finish
+branch: ${BRANCH}
+started: $(date -u +"%Y-%m-%dT%H:%M:%S")
+EOF
+```
+
+The marker is cleared in Step 6.5 below, regardless of whether the run reached merge or stopped at any earlier step.
+
+---
+
 ### Step 2: Commit
 
 ```bash
@@ -196,6 +218,18 @@ docker compose up -d --build <affected-services>
 ```
 
 Wait for healthy status, then report.
+
+---
+
+### Step 6.5: Clear Workflow Tracking
+
+If Step 1.5 created an active-workflow marker, remove it now via the shipped helper. Safe to run unconditionally — the helper is a no-op when the marker doesn't exist:
+
+```bash
+.specify/scripts/bash/clear-active-workflow.sh "finish-${SAFE_BRANCH}"
+```
+
+After this, the workflow-gate hook returns to denying ad-hoc edits — `smith-finish` no longer holds an active workflow.
 
 ---
 
