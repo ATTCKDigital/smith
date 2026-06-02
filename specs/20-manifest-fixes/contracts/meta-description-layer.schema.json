@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ATTCKDigital/smith/specs/20-manifest-fixes/contracts/meta-description-layer.schema.json",
+  "title": "Smith Manifest .meta Description Layer",
+  "description": "LLM-generated descriptions stored in .meta files. Never authored or modified by the parser or save hook. Written ONLY by `/smith-index --describe` (bulk) and by smith workflows (`/smith-new`, `/smith-bugfix`, `/smith-debug`) in-context. Read by `/smith-navigate` and surfaced (with staleness annotation when Hash != described_against_hash) for routing decisions. NOTE: this schema documents the SERIALIZED form of the description layer. The actual stored form in .meta files is plain markdown lines (see spec.md §B5 and data-model.md §2); this JSON shape is the logical contract used by `meta_describe.py` when handing data to `render_meta()` and when round-tripping through the helper's internal `MetaDescription` dataclass.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "module_description",
+    "method_descriptions",
+    "described_against_hash",
+    "described_at"
+  ],
+  "properties": {
+    "module_description": {
+      "type": ["string", "null"],
+      "maxLength": 240,
+      "description": "Per-module summary, ≤120-char soft cap (240 hard cap to allow rare overflow). Single line, no newlines, no markdown formatting. Null when no module description has been generated yet (e.g. file existed only structurally before this layer was constructed)."
+    },
+    "method_descriptions": {
+      "type": "array",
+      "description": "Per-method descriptions keyed by the stable 16-char method id from parser output (see parser-output-v2.schema.json). Methods whose id is absent from this array have no description; the renderer omits the inline description suffix for those entries.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["method_id", "description"],
+        "properties": {
+          "method_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "Stable 16-char hex method id from parser output. Matches the `id` field on functions[] entries and on classes[].methods[] entries in parser-output-v2.schema.json."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400,
+            "description": "Per-method description, ≤200-char soft cap (400 hard cap). One-to-two sentences. No newlines, no markdown formatting."
+          }
+        }
+      }
+    },
+    "described_against_hash": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 (full 64-char hex) of the source file at the moment this description was generated. Compared against the current `Hash:` field in .meta to detect staleness — if they differ, the description was generated against earlier source. Null only when this layer is being constructed for a file that has not yet been described (in which case module_description and method_descriptions should also be null/empty)."
+    },
+    "described_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of the most recent description generation pass that produced this layer. Null only when the layer is empty (see described_against_hash)."
+    }
+  }
+}
