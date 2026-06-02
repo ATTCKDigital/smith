@@ -2,14 +2,16 @@
 # tests/e2e/run-all.sh
 #
 # Runs every E2E test in tests/e2e/ and summarises the result.
-# Exit code is 0 iff all eight tests pass.
+# Exit code is 0 iff all listed tests pass.
 
 set -uo pipefail
 
 E2E_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# Ordered test list (matches T101-T108 in tasks.md).
+# Ordered test list. v1 tests (T101-T108) come first, followed by the
+# Manifest System v2 tests (T110-T113).
 TESTS=(
+    # v1
     "test_full_index_rebuild.sh"
     "test_check_staleness.sh"
     "test_manifest_updater_hook.sh"
@@ -18,6 +20,11 @@ TESTS=(
     "test_4tier_resolution.sh"
     "test_path_resolution.sh"
     "test_quickstart_scenarios.sh"
+    # v2 (Manifest System v2 — Phases 2-11 of 20-manifest-fixes)
+    "test_resolver_with_specify_systems.sh"
+    "test_full_describe_flow.sh"
+    "test_save_hook_preservation.sh"
+    "test_migration_paths.sh"
 )
 
 PASSED=0
@@ -27,7 +34,7 @@ FAILED_LIST=()
 START_TS=$(python3 -c 'import time; print(time.monotonic())')
 
 printf '%s\n' "=========================================="
-printf '%s\n' " E2E test driver — Manifest System (T101-T108)"
+printf '%s\n' " E2E test driver — Manifest System v1 (T101-T108) + v2 (T110-T113)"
 printf '%s\n' "=========================================="
 
 for tname in "${TESTS[@]}"; do

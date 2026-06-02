@@ -191,6 +191,44 @@ class ParseRoundTripTests(unittest.TestCase):
         self.assertIsNone(block["module_description"])
         self.assertEqual(block["method_descriptions"], {})
 
+    def test_parses_class_method_descriptions(self):
+        """Class methods render with 4-space indent under `## Classes`; the
+        parser must accept BOTH 2-space (Functions) and 4-space (Classes >
+        methods) indents. Regression for a Phase E save-hook round-trip bug
+        where class-method descriptions were silently dropped because the
+        parser only matched 2-space `  Id: ` lines under `## Functions`."""
+        sample = (
+            "# foo.py\n"
+            "Last Updated: 2026-06-02T00:00:00Z\n"
+            "Language: python\n"
+            "Lines: 50\n"
+            "Hash: abc123\n"
+            "**Description:** Module summary.\n"
+            "Described-Against-Hash: abc123\n"
+            "Described-At: 2026-06-02T00:00:00Z\n"
+            "\n"
+            "## Classes\n"
+            "- `Foo` (line 1)\n"
+            "  - `bar` (line 5)\n"
+            "    Id: 1234567890abcdef\n"
+            "    Description: A class method description.\n"
+            "\n"
+            "## Functions\n"
+            "- `top` (line 20)\n"
+            "  Id: fedcba0987654321\n"
+            "  Description: A top-level function description.\n"
+        )
+        result = md.parse_meta_descriptions(sample)
+        self.assertIsNotNone(result)
+        # Both class-method and top-level descriptions should be parsed.
+        self.assertEqual(len(result.method_descriptions), 2)
+        self.assertIn("1234567890abcdef", result.method_descriptions)
+        self.assertEqual(
+            result.method_descriptions["1234567890abcdef"],
+            "A class method description.",
+        )
+        self.assertIn("fedcba0987654321", result.method_descriptions)
+
 
 class QualifyingMethodsTests(unittest.TestCase):
     def test_threshold_filters_trivial_methods(self):

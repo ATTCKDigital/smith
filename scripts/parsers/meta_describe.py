@@ -120,7 +120,7 @@ def parse_meta_descriptions(meta_text: str) -> MetaDescription | None:
     described_at: str | None = None
     method_descriptions: dict[str, str] = {}
 
-    in_functions = False
+    in_method_section = False
     current_id: str | None = None
 
     for raw in meta_text.splitlines():
@@ -136,27 +136,31 @@ def parse_meta_descriptions(meta_text: str) -> MetaDescription | None:
             described_at = line[len("Described-At: ") :].strip()
             continue
 
-        # Section toggles
-        if line.startswith("## Functions"):
-            in_functions = True
+        # Section toggles — methods live under either "## Functions" (top-level)
+        # or "## Classes" (class methods). Render emits Id/Description with
+        # 2-space indent under Functions, 4-space under Classes.
+        if line.startswith("## Functions") or line.startswith("## Classes"):
+            in_method_section = True
             current_id = None
             continue
-        if line.startswith("## ") and in_functions:
-            in_functions = False
+        if line.startswith("## ") and in_method_section:
+            in_method_section = False
             current_id = None
             continue
 
-        if in_functions:
-            # Two indented forms accepted, per data-model.md §2.1:
-            #   "  Id: <hex>"
-            #   "  Description: <text>"
-            if line.startswith("  Id: "):
-                current_id = line[len("  Id: ") :].strip()
-                continue
-            if line.startswith("  Description: ") and current_id:
-                method_descriptions[current_id] = line[len("  Description: ") :]
-                current_id = None
-                continue
+        if in_method_section:
+            # Indent-permissive match for both 2-space (Functions) and 4-space
+            # (Classes > methods) renderings.
+            stripped = line.lstrip()
+            indent_len = len(line) - len(stripped)
+            if indent_len >= 2:
+                if stripped.startswith("Id: "):
+                    current_id = stripped[len("Id: ") :].strip()
+                    continue
+                if stripped.startswith("Description: ") and current_id:
+                    method_descriptions[current_id] = stripped[len("Description: ") :]
+                    current_id = None
+                    continue
 
     any_present = bool(
         module_description

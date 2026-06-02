@@ -146,18 +146,18 @@ Hard constraints (carried from spec):
 
 ## Phase 11: Integration + E2E Tests
 
-- [ ] T110 [P] [tests] Create tests/e2e/test_full_describe_flow.sh: use a sample-project fixture, run `python3 scripts/smith-index/run.py --describe`, assert descriptions populated in `.meta`, then simulate a smith-bugfix edit on one file via a stub workflow invocation, assert only touched method descriptions updated and untouched stay byte-identical
-- [ ] T111 [P] [tests] Create tests/e2e/test_save_hook_preservation.sh: seed descriptions, run a sequence of file edits through hooks/manifest-updater.sh, assert description layer preserved across each save and `Hash != Described-Against-Hash` after each edit
-- [ ] T112 [P] [tests] Create tests/e2e/test_migration_paths.sh: synthetic project mimicking armory's prose system specs, run `/smith-migrate-system-paths` end-to-end (simulated operator input via heredoc), assert frontmatter written correctly, then run path-resolver against fixture files and confirm correct system bucketing
-- [ ] T113 [tests] Update tests/e2e/run-all.sh to include all new tests from Phases 2-11 in the run order
+- [X] T110 [P] [tests] Create tests/e2e/test_full_describe_flow.sh: use a sample-project fixture, run `python3 scripts/smith-index/run.py --describe`, assert descriptions populated in `.meta`, then simulate a smith-bugfix edit on one file via a stub workflow invocation, assert only touched method descriptions updated and untouched stay byte-identical
+- [X] T111 [P] [tests] Create tests/e2e/test_save_hook_preservation.sh: seed descriptions, run a sequence of file edits through hooks/manifest-updater.sh, assert description layer preserved across each save and `Hash != Described-Against-Hash` after each edit
+- [X] T112 [P] [tests] Create tests/e2e/test_migration_paths.sh: synthetic project mimicking armory's prose system specs, run `/smith-migrate-system-paths` end-to-end (simulated operator input via heredoc), assert frontmatter written correctly, then run path-resolver against fixture files and confirm correct system bucketing
+- [X] T113 [tests] Update tests/e2e/run-all.sh to include all new tests from Phases 2-11 in the run order
 
 ---
 
 ## Phase 12: Docs
 
-- [ ] T120 [docs] Update CHANGELOG.md with a v2 "Unreleased" entry covering: Track A (`.specify/systems/` tier 1 + system-spec template + `/smith-migrate-system-paths`), Track B (LLM description layer in `.meta` + stable method id), Track C (in-context updates + `/smith-index --describe` + coverage flag); call out additive-only `.meta` schema and the operator migration path (`/smith-migrate-system-paths` → `/smith-index` → optional `/smith-index --describe`)
-- [ ] T121 [docs] Update docs/manifest-system.md to document: (a) `.meta` description layer fields and absence semantics per data-model.md §2, (b) `/smith-index --describe` CLI + Rule 4 checkpoint/JSONL/resume per data-model.md §7, (c) staleness detection via hash mismatch per data-model.md §2.4, (d) resolver tier order with new tier 1 per plan.md Architecture Overview, (e) `/smith-migrate-system-paths` operator workflow
-- [ ] T122 [P] [docs] Update README.md only if needed (likely a single bullet under "What's new in v2"); skip if README does not currently reference manifest internals
+- [X] T120 [docs] Update CHANGELOG.md with a v2 "Unreleased" entry covering: Track A (`.specify/systems/` tier 1 + system-spec template + `/smith-migrate-system-paths`), Track B (LLM description layer in `.meta` + stable method id), Track C (in-context updates + `/smith-index --describe` + coverage flag); call out additive-only `.meta` schema and the operator migration path (`/smith-migrate-system-paths` → `/smith-index` → optional `/smith-index --describe`)
+- [X] T121 [docs] Update docs/manifest-system.md to document: (a) `.meta` description layer fields and absence semantics per data-model.md §2, (b) `/smith-index --describe` CLI + Rule 4 checkpoint/JSONL/resume per data-model.md §7, (c) staleness detection via hash mismatch per data-model.md §2.4, (d) resolver tier order with new tier 1 per plan.md Architecture Overview, (e) `/smith-migrate-system-paths` operator workflow
+- [X] T122 [P] [docs] Update README.md only if needed (likely a single bullet under "What's new in v2"); skip if README does not currently reference manifest internals
 
 ---
 
