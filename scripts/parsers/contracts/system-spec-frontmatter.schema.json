@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ATTCKDigital/smith/specs/20-manifest-fixes/contracts/system-spec-frontmatter.schema.json",
+  "title": "Smith System Spec Frontmatter",
+  "description": "YAML frontmatter declaring a system and its directory paths. Located at the top of .specify/systems/<name>/spec.md between leading `---` and trailing `---` lines. Read by `/smith-index` path-resolver tier 1 to bucket files into systems. Validated by `/smith init` scaffolding (A2) and `/smith-migrate-system-paths` (A3) before write. Resolver loads defensively at runtime — malformed frontmatter is silently skipped (tier 1 no-ops for that spec) so an authoring error never breaks indexing. The frontmatter body below the closing `---` is unconstrained markdown and is preserved verbatim by A3.",
+  "type": "object",
+  "required": ["system"],
+  "additionalProperties": true,
+  "properties": {
+    "system": {
+      "type": "string",
+      "pattern": "^system-(\\d+-)?[a-z][a-z0-9-]*$",
+      "description": "System identifier. MUST match the parent directory name (.specify/systems/<name>/ → <name>). Accepted forms: `system-NN-short-name` (numbered) or `system-short-name` (unnumbered). A3/A2 enforce the directory-name match; the resolver tolerates a missing `system` value by falling back to the directory name."
+    },
+    "paths": {
+      "type": "array",
+      "description": "List of literal directory prefixes (project-relative, POSIX, ending in `/`) that belong to this system. Resolver tier 1 walks these in longest-prefix-first order. v1 limitation: literal prefixes ONLY — globs (`*`, `?`, `[]`, `{}`, `!`) are rejected. Glob support is deferred to v3. May be omitted or empty; system contributes nothing to tier 1 in that case (tier 2/3 still resolve files via heuristic).",
+      "items": {
+        "type": "string",
+        "minLength": 2,
+        "pattern": "^[^*?\\[\\]{}!]+/$",
+        "description": "Literal directory prefix ending in `/`. No glob characters allowed in v1."
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "in-progress",
+        "complete",
+        "active",
+        "deprecated",
+        "proposed"
+      ],
+      "description": "Lifecycle status. Both spec terms (`active`/`deprecated`/`proposed`) and the broader Smith ecosystem terms (`draft`/`in-progress`/`complete`) are accepted. The resolver does not act on this field — it is informational for operators and downstream tooling."
+    },
+    "also_affects": {
+      "type": "array",
+      "description": "Optional cross-system pointer list. Each entry references another system by id. The resolver validates that each referenced system has a corresponding `.specify/systems/<id>/` directory; dangling pointers WARN but do not block. The resolver does NOT extend tier-1 path coverage based on `also_affects` — it is informational metadata.",
+      "items": {
+        "type": "string",
+        "pattern": "^system-(\\d+-)?[a-z][a-z0-9-]*$"
+      }
+    }
+  }
+}

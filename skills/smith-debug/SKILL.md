@@ -275,6 +275,31 @@ error: <exact error text>
 - <links to relevant specs, issues, prior debug reports>
 ```
 
+## Phase 5.5: Update `.meta` Descriptions for Touched Methods (Conditional)
+
+`/smith-debug` is read-only by design — it produces a debug report but
+does NOT modify source code. **Skip this phase** when the workflow has
+not written or edited any source file.
+
+If the workflow DID write or edit any source file (e.g. a one-line
+probe insertion that was committed by accident, or a future evolution
+that allows targeted instrumentation), apply the same touched-method
+`.meta` description update used by `/smith-bugfix` Phase 3.5:
+
+```bash
+python3 ~/.smith/scripts/meta_describe.py update-touched \
+  --rel-path <project-relative-path> \
+  --touched-ids <comma-separated-16hex-ids> \
+  --purpose-shifted <true|false>
+```
+
+See `/smith-bugfix` Phase 3.5 for full identification, the
+`purpose_shifted` heuristic, and failure handling. The save hook
+preserves description bytes across re-saves, so any descriptions
+generated here survive subsequent edits (data-model.md §3.2). Missing
+descriptions are surfaced as non-blocking PR-body warnings by
+`/smith-build` (data-model.md §9).
+
 ## Phase 6: Decision Gate
 
 Present the diagnosis summary to the user and ask:

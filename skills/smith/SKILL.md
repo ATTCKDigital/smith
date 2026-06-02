@@ -529,6 +529,46 @@ If `.gitignore` exists, append SpecKit-related entries if not already present:
 
 If `.gitignore` doesn't exist, create one with standard patterns for the detected stack plus the above entries.
 
+#### 4.8 Optionally Scaffold System Specs
+
+Smith v2 path-resolver tier 1 reads `.specify/systems/<id>/spec.md` YAML frontmatter (`system`, `paths`) to bucket files into systems. Declaring systems upfront lets `/smith-index` route files correctly from day one. This step is **optional** — skip if the project is small, exploratory, or doesn't yet have clear system boundaries. Systems can also be added later manually or via `/smith-migrate-system-paths` on a project that grew `.specify/systems/` organically.
+
+Ask the operator:
+
+> "Does this project have logical systems you'd like to declare upfront, so `/smith-index` can route files correctly from day one? (yes/skip)"
+
+If the operator answers anything other than yes / y / Y, skip this step silently.
+
+If yes, enter a per-system loop:
+
+1. **Ask for a short kebab-case name** for the system (e.g. `email-pipeline`, `command-center`, `auth`). Re-prompt on blank input. Strip surrounding whitespace.
+2. **Compute the system id** as `system-NN-<short-name>` where `NN` is the count of `.specify/systems/system-*/` directories that exist so far in this run, plus one, zero-padded to two digits (`01`, `02`, ...).
+3. **Ask for directory prefixes** that belong to this system, one per line. Terminate the inner loop on a blank line. For each entry:
+   - Strip surrounding whitespace.
+   - **Reject** entries containing any glob character (`*`, `?`, `[`, `]`, `{`, `}`, `!`) — v1 supports literal prefixes only. Print: `"Glob characters not allowed in v1 — please enter a literal prefix."` and re-prompt for the same slot.
+   - Auto-append a trailing `/` if missing.
+   - Collect into a list.
+4. **Copy the template**: read `~/.claude/skills/smith/templates/system-spec-template.md`, and write it to `.specify/systems/<id>/spec.md` with these substitutions in the YAML frontmatter block ONLY (do not touch the body):
+   - `system: system-<NN>-<short-kebab-name>` → `system: <id>`
+   - The single placeholder list item `  - <relative-prefix>/` is replaced by one `  - <prefix>` line per collected entry, preserving two-space indentation. If the list is empty, emit `paths: []` on a single line in place of the multi-line block.
+   - `status: draft` stays as-is.
+   - `also_affects: []` stays as-is.
+   - The body skeleton stays as-is — the user can flesh it out later (or A3 can be re-run, though A3 only adds paths, not body).
+5. **Ask whether to declare another system**. If yes, loop back to step 1. If no, exit the loop.
+
+**Validation invariant** (enforced by step 3): every prefix written into the `paths:` list contains no glob characters and ends with `/`. The resolver loads paths defensively, but this step is also the first line of defense.
+
+After the loop completes, print a summary:
+
+```
+Scaffolded N system spec(s):
+  - .specify/systems/system-01-<name>/spec.md (2 paths)
+  - .specify/systems/system-02-<name>/spec.md (1 path)
+You can edit the body of each spec at any time. Run `/smith-migrate-system-paths` to bulk-propose paths from existing prose.
+```
+
+If the operator types `skip` at any per-system prompt, skip that system (do not write a spec for it) and continue the outer "another system?" loop.
+
 ### Phase 5: Verification & Report
 
 After generating all files, present a summary:
@@ -549,6 +589,7 @@ After generating all files, present a summary:
 | `docs/sessions/` | Created (session chat logs) |
 | `specs/questions/` | Created (pre-implementation question files) |
 | `specs/init-intake.md` | Created (permanent project config decisions) |
+| `.specify/systems/system-*/spec.md` (N files) | Created / Skipped (4.8) |
 
 ### Available Commands
 | Command | Description |

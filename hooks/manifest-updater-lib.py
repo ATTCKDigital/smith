@@ -223,9 +223,32 @@ def main(argv: list[str]) -> int:
         parser_label = lang
         parsed = run_mod.run_parser(parser_path, lang, fp, timeout_s=1.5)  # type: ignore[attr-defined]
 
-    # Hash + meta render.
+    # Hash + meta paths.
     hash_hex = run_mod.sha256_first_4kb(fp)  # type: ignore[attr-defined]
-    meta_text = run_mod.render_meta(rel, parsed, hash_hex)  # type: ignore[attr-defined]
+    index_dir = project_root / ".smith" / "index"
+    files_dir = index_dir / "files"
+    systems_dir = index_dir / "systems"
+    meta_target = files_dir / (rel + ".meta")
+
+    # v2: preserve any existing .meta description layer. The save hook NEVER
+    # generates descriptions (LLM-free, <500ms p95 budget). It only carries
+    # the existing description block forward into the regenerated .meta.
+    # Hash is recomputed; Described-Against-Hash is preserved verbatim, so
+    # the mismatch (Hash != Described-Against-Hash) is the implicit
+    # staleness signal — no extra marker needed. Per data-model.md §3.2.
+    existing_descriptions = None
+    if meta_target.exists():
+        try:
+            existing_text = meta_target.read_text(encoding="utf-8")
+            existing_descriptions = run_mod.parse_existing_descriptions(  # type: ignore[attr-defined]
+                existing_text
+            )
+        except OSError:
+            existing_descriptions = None
+
+    meta_text = run_mod.render_meta(  # type: ignore[attr-defined]
+        rel, parsed, hash_hex, existing_descriptions=existing_descriptions
+    )
 
     # Resolve target system.
     overrides_dict = _load_overrides(project_root)
@@ -244,14 +267,9 @@ def main(argv: list[str]) -> int:
         return 0
 
     # Write .meta atomically.
-    index_dir = project_root / ".smith" / "index"
-    files_dir = index_dir / "files"
-    systems_dir = index_dir / "systems"
     index_dir.mkdir(parents=True, exist_ok=True)
     files_dir.mkdir(parents=True, exist_ok=True)
     systems_dir.mkdir(parents=True, exist_ok=True)
-
-    meta_target = files_dir / (rel + ".meta")
     meta_target.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write(meta_target, meta_text)
 

@@ -22,10 +22,56 @@ Exit codes:
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
+import os
 import re
 import sys
 from typing import Any
+
+
+# --- Stable method id (v2) -------------------------------------------------
+def _canonical_param(p: dict[str, Any]) -> str:
+    name = p.get("name", "")
+    typ = p.get("type")
+    if typ is None or typ == "":
+        typ = "_"
+    default = p.get("default")
+    if default is None or default == "":
+        default = "_"
+    return f"{name}:{typ}={default}"
+
+
+def _canonical_signature(params: list[dict[str, Any]], return_type: str | None) -> str:
+    body = ",".join(_canonical_param(p) for p in params)
+    rt = return_type if (return_type is not None and return_type != "") else "_"
+    return f"{body}->{rt}"
+
+
+def _normalize_module_path(path: str) -> str:
+    """Project-relative POSIX path. Uses CWD as project root if `path` is
+    absolute and rooted there; otherwise strips a leading `./`.
+    """
+    p = path.replace(os.sep, "/")
+    cwd = os.getcwd().replace(os.sep, "/").rstrip("/") + "/"
+    if p.startswith(cwd):
+        p = p[len(cwd) :]
+    if p.startswith("./"):
+        p = p[2:]
+    return p
+
+
+def _stable_method_id(
+    module_path: str,
+    scope_chain: str,
+    name: str,
+    params: list[dict[str, Any]],
+    return_type: str | None,
+) -> str:
+    """Stable 16-char hex id per research.md §1."""
+    sig = _canonical_signature(params, return_type)
+    canon = f"{module_path}::{scope_chain}::{name}::{sig}"
+    return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16]
 
 
 # --- Route decorator detection ---------------------------------------------
@@ -126,7 +172,7 @@ def _is_function_def(node: ast.AST) -> bool:
     return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
 
 
-def _extract_functions(tree: ast.AST) -> list[dict[str, Any]]:
+def _extract_functions(tree: ast.AST, module_path: str = "") -> list[dict[str, Any]]:
     """Module-level functions only (methods are captured under classes)."""
     out: list[dict[str, Any]] = []
     if not isinstance(tree, ast.Module):
@@ -134,11 +180,14 @@ def _extract_functions(tree: ast.AST) -> list[dict[str, Any]]:
     for node in tree.body:
         if not _is_function_def(node):
             continue
+        params = _extract_params(node.args)
+        ret = _safe_unparse(node.returns)
         entry: dict[str, Any] = {
+            "id": _stable_method_id(module_path, "", node.name, params, ret),
             "name": node.name,
             "line": node.lineno,
-            "params": _extract_params(node.args),
-            "return_type": _safe_unparse(node.returns),
+            "params": params,
+            "return_type": ret,
             "docstring": _first_docstring_line(node),
             "is_async": isinstance(node, ast.AsyncFunctionDef),
         }
@@ -146,7 +195,7 @@ def _extract_functions(tree: ast.AST) -> list[dict[str, Any]]:
     return out
 
 
-def _extract_classes(tree: ast.AST) -> list[dict[str, Any]]:
+def _extract_classes(tree: ast.AST, module_path: str = "") -> list[dict[str, Any]]:
     """Top-level classes; methods are flattened one level."""
     out: list[dict[str, Any]] = []
     if not isinstance(tree, ast.Module):
@@ -157,7 +206,12 @@ def _extract_classes(tree: ast.AST) -> list[dict[str, Any]]:
         methods: list[dict[str, Any]] = []
         for child in node.body:
             if _is_function_def(child):
-                methods.append({"name": child.name, "line": child.lineno})
+                m_params = _extract_params(child.args)
+                m_ret = _safe_unparse(child.returns)
+                mid = _stable_method_id(
+                    module_path, node.name, child.name, m_params, m_ret
+                )
+                methods.append({"id": mid, "name": child.name, "line": child.lineno})
         bases: list[str] = []
         for b in node.bases:
             text = _safe_unparse(b)
@@ -349,6 +403,7 @@ def parse(path: str) -> dict[str, Any]:
         return result
 
     result["lines"] = _count_lines(source)
+    module_path = _normalize_module_path(path)
 
     try:
         tree = ast.parse(source, filename=path)
@@ -372,11 +427,11 @@ def parse(path: str) -> dict[str, Any]:
         return result
 
     try:
-        result["functions"] = _extract_functions(tree)
+        result["functions"] = _extract_functions(tree, module_path)
     except Exception as e:
         result["errors"].append({"message": f"functions extract: {e}"})
     try:
-        result["classes"] = _extract_classes(tree)
+        result["classes"] = _extract_classes(tree, module_path)
     except Exception as e:
         result["errors"].append({"message": f"classes extract: {e}"})
     try:

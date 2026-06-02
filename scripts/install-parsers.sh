@@ -102,6 +102,7 @@ if $UNINSTALL; then
   uninstall_file "${TARGET_DIR}/parse-python.py"
   uninstall_file "${TARGET_DIR}/parse-js.js"
   uninstall_file "${TARGET_DIR}/path-resolver.py"
+  uninstall_file "${TARGET_DIR}/meta_describe.py"
   uninstall_file "${TARGET_DIR}/parser-lib.sh"
   uninstall_file "${TARGET_DIR}/vendor/acorn.min.js"
   log "uninstall complete"
@@ -114,6 +115,11 @@ log "install starting (source=${SOURCE_DIR}, target=${TARGET_DIR})"
 install_file "${SOURCE_DIR}/parse-python.py"           "${TARGET_DIR}/parse-python.py"           755
 install_file "${SOURCE_DIR}/parse-js.js"               "${TARGET_DIR}/parse-js.js"               755
 install_file "${SOURCE_DIR}/path-resolver.py"          "${TARGET_DIR}/path-resolver.py"          755
+# v2: meta_describe.py is the shared LLM-description helper consumed by
+# /smith-index --describe and the three smith workflows (smith-new,
+# smith-bugfix, smith-debug) via `python3 ~/.smith/scripts/meta_describe.py
+# update-touched ...`. Per data-model.md §4.
+install_file "${SOURCE_DIR}/meta_describe.py"          "${TARGET_DIR}/meta_describe.py"          755
 install_file "${SOURCE_DIR}/parser-lib.sh"             "${TARGET_DIR}/parser-lib.sh"             644
 install_file "${SOURCE_DIR}/vendor/acorn.min.js"       "${TARGET_DIR}/vendor/acorn.min.js"       644
 
