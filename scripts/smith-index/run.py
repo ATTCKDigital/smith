@@ -99,6 +99,38 @@ try:
 except Exception:
     path_resolver = None  # type: ignore[assignment]
 
+# meta_describe (v2 description layer). Optional — modes that don't touch
+# descriptions never call it. `parse_existing_descriptions` is re-exported
+# here so the save hook can import a single name from run.py.
+try:
+    _md_spec = _ilu.spec_from_file_location(
+        "meta_describe", PARSER_DIR_REPO / "meta_describe.py"
+    )
+    if _md_spec and _md_spec.loader:
+        _meta_describe = _ilu.module_from_spec(_md_spec)
+        # Python 3.14 dataclass needs the module in sys.modules during exec.
+        sys.modules["meta_describe"] = _meta_describe
+        _md_spec.loader.exec_module(_meta_describe)  # type: ignore[attr-defined]
+    else:
+        _meta_describe = None  # type: ignore[assignment]
+except Exception:
+    _meta_describe = None  # type: ignore[assignment]
+
+
+def parse_existing_descriptions(meta_text: str) -> dict | None:
+    """Re-export of meta_describe.parse_meta_descriptions() in dict form.
+
+    Returns the dict shape consumed by render_meta(...
+    existing_descriptions=). Returns None when no description layer is
+    present in `meta_text` (v1 .meta or empty input).
+    """
+    if _meta_describe is None:
+        return None
+    desc = _meta_describe.parse_meta_descriptions(meta_text)
+    if desc is None:
+        return None
+    return _meta_describe.render_description_block(desc)
+
 
 def iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -305,8 +337,27 @@ def _empty_parser_output(
 # --- Meta file rendering ----------------------------------------------------
 
 
-def render_meta(rel_path: str, parsed: dict, hash_hex: str) -> str:
-    """Render markdown .meta per data-model.md section 2."""
+def render_meta(
+    rel_path: str,
+    parsed: dict,
+    hash_hex: str,
+    existing_descriptions: dict | None = None,
+) -> str:
+    """Render markdown .meta per data-model.md §2.
+
+    `existing_descriptions` (optional) carries the description layer to
+    splice in:
+      {
+        "module_description": str | None,
+        "described_against_hash": str | None,
+        "described_at": str | None,
+        "method_descriptions": {<id>: <description>, ...},
+      }
+    When None, the description-layer lines are omitted entirely (v1
+    layout). When present, three header lines are inserted after `Hash:`
+    and per-method `Id:`/`Description:` entries are rendered inline inside
+    `## Functions` and `## Classes`.
+    """
     lines_count = parsed.get("lines", 0)
     language = parsed.get("language", "unknown")
     out: list[str] = []
@@ -315,6 +366,20 @@ def render_meta(rel_path: str, parsed: dict, hash_hex: str) -> str:
     out.append(f"Language: {language}")
     out.append(f"Lines: {lines_count}")
     out.append(f"Hash: {hash_hex}")
+
+    # v2 description layer (additive). Per data-model.md §2.1, lines are
+    # emitted only when present in `existing_descriptions`.
+    ed = existing_descriptions or {}
+    module_desc = ed.get("module_description")
+    against_hash = ed.get("described_against_hash")
+    described_at = ed.get("described_at")
+    method_descs = ed.get("method_descriptions") or {}
+    if module_desc:
+        out.append(f"**Description:** {module_desc}")
+    if against_hash:
+        out.append(f"Described-Against-Hash: {against_hash}")
+    if described_at:
+        out.append(f"Described-At: {described_at}")
     out.append("")
     if lines_count > THRESHOLD_300:
         out.append(
@@ -368,6 +433,12 @@ def render_meta(rel_path: str, parsed: dict, hash_hex: str) -> str:
             out.append(f"- `{c.get('name', '')}` (line {c.get('line', '')})")
             for m in (c.get("methods") or [])[:30]:
                 out.append(f"  - `{m.get('name', '')}` (line {m.get('line', '')})")
+                mid = m.get("id")
+                if mid:
+                    out.append(f"    Id: {mid}")
+                    desc = method_descs.get(mid)
+                    if desc:
+                        out.append(f"    Description: {desc}")
     else:
         out.append("_None._")
     out.append("")
@@ -390,9 +461,13 @@ def render_meta(rel_path: str, parsed: dict, hash_hex: str) -> str:
             out.append(
                 f"- `{fn.get('name', '')}({sig}){ret_s}` (line {fn.get('line', '')})"
             )
-            doc = fn.get("docstring")
-            if doc:
-                out.append(f"  {doc}")
+            fid = fn.get("id")
+            if fid:
+                out.append(f"  Id: {fid}")
+                desc = method_descs.get(fid)
+                if desc:
+                    out.append(f"  Description: {desc}")
+            # v2 drops parser-derived docstring emission (parser is structure-only).
     else:
         out.append("_None._")
     out.append("")
@@ -464,8 +539,8 @@ def render_system_manifest(
     out.append("")
     out.append("## Files")
     out.append("")
-    out.append("| File | Lines | Exports |")
-    out.append("|------|-------|---------|")
+    out.append("| File | Lines | Description | Exports |")
+    out.append("|------|-------|-------------|---------|")
 
     # Sort by lines desc.
     sorted_entries = sorted(entries, key=lambda e: e.get("lines", 0), reverse=True)
@@ -473,7 +548,9 @@ def render_system_manifest(
     for e in listed:
         lines = e.get("lines", 0)
         warn = " ⚠️" if lines > THRESHOLD_300 else ""
-        out.append(f"| {e['path']} | {lines}{warn} | {e['exports']} |")
+        # v2: per-module description column (empty when not yet generated).
+        desc = (e.get("module_description") or "").replace("|", "\\|")
+        out.append(f"| {e['path']} | {lines}{warn} | {desc} | {e['exports']} |")
     remaining = len(sorted_entries) - len(listed)
     if remaining > 0:
         out.append("")
@@ -750,11 +827,24 @@ class IndexRun:
             if lines_count > THRESHOLD_500:
                 self.stats["over_500"] += 1
 
+            # Pull module description from the existing .meta description
+            # layer if any (preserved by render_meta when present).
+            module_desc = ""
+            try:
+                existing_text = meta_path.read_text(encoding="utf-8")
+                if _meta_describe is not None:
+                    md = _meta_describe.parse_meta_descriptions(existing_text)
+                    if md and md.module_description:
+                        module_desc = md.module_description
+            except OSError:
+                pass
+
             entry = {
                 "path": rel,
                 "lines": lines_count,
                 "exports": _exports_summary(parsed),
                 "exceeds": lines_count > THRESHOLD_300,
+                "module_description": module_desc,
             }
             self.systems.setdefault(system, []).append(entry)
             self.succeeded += 1
@@ -984,6 +1074,348 @@ def mode_incremental(
     return 0
 
 
+# --- /smith-index --describe (v2 LLM description layer) -------------------
+
+
+def _read_meta_text(meta_path: Path) -> str | None:
+    try:
+        return meta_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _extract_hash_from_meta(meta_text: str) -> str | None:
+    """Return the `Hash:` value from a .meta text, or None."""
+    for line in meta_text.splitlines():
+        if line.startswith("Hash: "):
+            return line[len("Hash: ") :].strip()
+        if line.startswith("# ") or line == "":
+            continue
+        # Other header lines may come first; keep scanning briefly.
+    return None
+
+
+def _describe_one_file(
+    project_root: Path,
+    files_dir: Path,
+    file_path: Path,
+    *,
+    threshold: int,
+    model: str,
+    api_key: str | None,
+) -> tuple[str, dict]:
+    """Describe one file. Returns (status, info-dict).
+
+    status ∈ {"ok", "skipped", "error"}.
+    info-dict carries `method_count`, `module_chars`, `error` (optional).
+    """
+    rel = str(file_path.relative_to(project_root))
+    info: dict = {"method_count": 0, "module_chars": 0, "error": None}
+
+    if _meta_describe is None:
+        info["error"] = "meta_describe import failure"
+        return "error", info
+
+    ext = file_path.suffix
+    if ext in PASSIVE_EXTS:
+        # Passive files have no parser output structure; we still write a
+        # module description if it qualifies.
+        parsed = passive_parse(file_path)
+    else:
+        resolution = resolve_parser(ext, project_root)
+        if not resolution:
+            info["error"] = "no parser available"
+            return "skipped", info
+        lang, parser_path = resolution
+        parsed = run_parser(parser_path, lang, file_path)
+        if not parsed:
+            info["error"] = "parser returned empty"
+            return "error", info
+
+    try:
+        source = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        info["error"] = f"read error: {e}"
+        return "error", info
+
+    hash_hex = sha256_first_4kb(file_path)
+
+    # Existing description layer (preserve untouched fields if any).
+    meta_path = files_dir / (rel + ".meta")
+    existing_meta_text = _read_meta_text(meta_path) if meta_path.exists() else None
+    existing_desc = (
+        _meta_describe.parse_meta_descriptions(existing_meta_text)
+        if existing_meta_text
+        else None
+    )
+
+    # Hash-cache: skip if a complete description exists for the current source.
+    if existing_desc and existing_desc.described_against_hash == hash_hex:
+        # Hash match implies the layer was generated against this source.
+        # Require at least a module description OR method descriptions.
+        if existing_desc.module_description or existing_desc.method_descriptions:
+            return "skipped", info
+
+    try:
+        desc = _meta_describe.describe_file(
+            rel_path=rel,
+            source=source,
+            parsed=parsed,
+            threshold=threshold,
+            model=model,
+            api_key=api_key,
+        )
+    except Exception as e:
+        info["error"] = f"{type(e).__name__}: {e}"
+        return "error", info
+
+    # Render and write the .meta with the new description layer.
+    block = _meta_describe.render_description_block(desc)
+    meta_text = render_meta(rel, parsed, hash_hex, existing_descriptions=block)
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(meta_text, encoding="utf-8")
+
+    info["method_count"] = len(desc.method_descriptions)
+    info["module_chars"] = len(desc.module_description or "")
+    return "ok", info
+
+
+def mode_describe(
+    project_root: Path,
+    *,
+    batch_size: int = 20,
+    llm_batch_size: int = 10,
+    threshold: int = 5,
+    model: str = "claude-haiku-4-5",
+    system_filter: str | None = None,
+    resume: bool = False,
+    api_key: str | None = None,
+    interactive: bool = True,
+) -> int:
+    """`/smith-index --describe` — bulk description pass.
+
+    Rule-4 compliant: JSONL log + checkpoint + --resume + summary.
+    Per plan.md "C2 — /smith-index --describe" and data-model.md §7.
+    """
+    start = time.monotonic()
+    index_dir = project_root / ".smith" / "index"
+    files_dir = index_dir / "files"
+    logs_dir = index_dir / "logs"
+    checkpoint_path = index_dir / ".smith-index-describe-checkpoint.json"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    files_dir.mkdir(parents=True, exist_ok=True)
+
+    run_ts = iso_now_for_filename()
+    log_path = logs_dir / f"smith-index-describe-{run_ts}.jsonl"
+
+    # Discover files.
+    discovered = walk_source_files(project_root)
+    if system_filter:
+        # Reuse IndexRun.resolve_system without instantiating a full
+        # IndexRun; build a lean instance just for resolution.
+        run_for_resolve = IndexRun(project_root, log_path)
+        discovered = [
+            f for f in discovered if run_for_resolve.resolve_system(f) == system_filter
+        ]
+
+    total = len(discovered)
+
+    # Apply skip set from --resume.
+    completed_resume: set[str] = set()
+    if resume:
+        # Pick most recent describe log.
+        candidates = sorted(logs_dir.glob("smith-index-describe-*.jsonl"))
+        if candidates:
+            try:
+                with open(candidates[-1], "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            rec = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if rec.get("status") == "ok" and rec.get("stage") == "describe":
+                            completed_resume.add(rec.get("item_id", ""))
+            except OSError:
+                pass
+        # Also load checkpoint's processed_files.
+        ck = load_checkpoint(checkpoint_path)
+        if ck and isinstance(ck.get("processed_files"), list):
+            for item in ck["processed_files"]:
+                if isinstance(item, str):
+                    completed_resume.add(item)
+
+    # Process.
+    succeeded = failed = skipped = 0
+    failure_records: list[tuple[str, str]] = []
+    processed_files: list[str] = []
+
+    log_fh = open(log_path, "a", buffering=1, encoding="utf-8")
+    try:
+
+        def _log(
+            rel: str,
+            stage: str,
+            status: str,
+            *,
+            error: str | None = None,
+            method_count: int = 0,
+            module_chars: int = 0,
+            batch_index: int = 0,
+        ) -> None:
+            rec = {
+                "timestamp": iso_now_ms(),
+                "item_id": rel,
+                "stage": stage,
+                "status": status,
+                "error": error,
+                "method_count": method_count,
+                "module_chars": module_chars,
+                "batch_index": batch_index,
+            }
+            try:
+                log_fh.write(json.dumps(rec) + "\n")
+            except OSError:
+                pass
+
+        batch_index = 0
+        i = 0
+        while i < len(discovered):
+            batch = discovered[i : i + batch_size]
+            batch_index += 1
+            i += batch_size
+
+            # Resume + initial filter pass for this batch.
+            target_batch: list[Path] = []
+            for fp in batch:
+                rel = str(fp.relative_to(project_root))
+                if rel in completed_resume:
+                    skipped += 1
+                    _log(
+                        rel,
+                        "skipped",
+                        "skipped",
+                        error="resume",
+                        batch_index=batch_index,
+                    )
+                    continue
+                target_batch.append(fp)
+
+            if not target_batch:
+                continue
+
+            # Operator approval (interactive only). Non-interactive callers
+            # (tests, CI) auto-approve.
+            if interactive and sys.stdin.isatty():
+                print(
+                    f"\nBatch {batch_index}: {len(target_batch)} files "
+                    f"(of {total} total)"
+                )
+                ans = input("  Approve batch? [Y/n/q/list]: ").strip().lower()
+                if ans == "q":
+                    print("Aborted by operator. Run with --resume to continue.")
+                    break
+                if ans == "list":
+                    for fp in target_batch:
+                        print(f"    {fp.relative_to(project_root)}")
+                    ans = input("  Approve batch? [Y/n]: ").strip().lower()
+                if ans == "n":
+                    for fp in target_batch:
+                        rel = str(fp.relative_to(project_root))
+                        skipped += 1
+                        _log(
+                            rel,
+                            "skipped",
+                            "skipped",
+                            error="operator-reject",
+                            batch_index=batch_index,
+                        )
+                    continue
+
+            # Sub-batch by LLM batch size (no parallelism here; helper
+            # batches internally per call).
+            for j in range(0, len(target_batch), llm_batch_size):
+                llm_chunk = target_batch[j : j + llm_batch_size]
+                for fp in llm_chunk:
+                    rel = str(fp.relative_to(project_root))
+                    status, info = _describe_one_file(
+                        project_root,
+                        files_dir,
+                        fp,
+                        threshold=threshold,
+                        model=model,
+                        api_key=api_key,
+                    )
+                    if status == "ok":
+                        succeeded += 1
+                        processed_files.append(rel)
+                        _log(
+                            rel,
+                            "describe",
+                            "ok",
+                            method_count=info["method_count"],
+                            module_chars=info["module_chars"],
+                            batch_index=batch_index,
+                        )
+                    elif status == "skipped":
+                        skipped += 1
+                        _log(
+                            rel,
+                            "skipped",
+                            "skipped",
+                            error=info.get("error"),
+                            batch_index=batch_index,
+                        )
+                    else:
+                        failed += 1
+                        failure_records.append((rel, info.get("error") or "?"))
+                        _log(
+                            rel,
+                            "failed",
+                            "error",
+                            error=info.get("error"),
+                            batch_index=batch_index,
+                        )
+
+                # Checkpoint after every LLM batch.
+                save_checkpoint(
+                    checkpoint_path,
+                    {
+                        "started_at": iso_now(),
+                        "total_files": total,
+                        "processed_files": processed_files,
+                        "approval_batch_size": batch_size,
+                        "llm_batch_size": llm_batch_size,
+                        "model": model,
+                        "system_filter": system_filter,
+                        "log_path": str(log_path),
+                        "last_batch_completed": batch_index,
+                    },
+                )
+    except KeyboardInterrupt:
+        print("\nInterrupted by user. Run with --resume to continue.")
+    finally:
+        try:
+            log_fh.close()
+        except OSError:
+            pass
+
+    duration = time.monotonic() - start
+    # Format duration as MmSs or just Ss.
+    minutes, seconds = divmod(int(duration), 60)
+    duration_str = f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
+    print(
+        f"\n/smith-index --describe: {total} files "
+        f"({succeeded} succeeded, {failed} failed, {skipped} skipped) "
+        f"in {duration_str}"
+    )
+    if failure_records:
+        print("  Failed:")
+        for rel, err in failure_records[:20]:
+            print(f"    - {rel} ({err})")
+    print(f"  Log: {log_path.relative_to(project_root)}")
+    return 0 if failed == 0 else 1
+
+
 def _refresh_full_aggregations(run: IndexRun) -> None:
     """After incremental update, re-scan .meta files to rebuild full
     `run.systems` and `run.stats` so the regenerated system / top manifests
@@ -1016,11 +1448,19 @@ def _refresh_full_aggregations(run: IndexRun) -> None:
         system = run.resolve_system(source_path)
         if system == "excluded":
             continue
+        # Salvage module description from .meta (if present) for the
+        # system manifest's Description column.
+        module_desc = ""
+        if _meta_describe is not None:
+            md = _meta_describe.parse_meta_descriptions(text)
+            if md and md.module_description:
+                module_desc = md.module_description
         entry = {
             "path": source_rel,
             "lines": lines_count,
             "exports": "(see .meta)",
             "exceeds": lines_count > THRESHOLD_300,
+            "module_description": module_desc,
         }
         run.systems.setdefault(system, []).append(entry)
         run.stats["total"] += 1
@@ -1286,6 +1726,40 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--to", dest="to_ref", help="Incremental to-ref")
     parser.add_argument("--root", default=".", help="Project root (default: cwd)")
     parser.add_argument("--system-paths", help="Path to system-paths.json")
+    # v2 description-layer flags.
+    parser.add_argument(
+        "--describe",
+        action="store_true",
+        help="Generate per-file LLM descriptions in .meta (Haiku 4.5).",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=20,
+        help="Files per operator approval batch (default 20).",
+    )
+    parser.add_argument(
+        "--llm-batch-size",
+        type=int,
+        default=10,
+        help="Files per LLM call group within an approved batch (default 10).",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=5,
+        help="Min method body lines for per-method description (default 5).",
+    )
+    parser.add_argument(
+        "--model",
+        default="claude-haiku-4-5",
+        help="LLM model id for --describe (default claude-haiku-4-5).",
+    )
+    parser.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help="Skip operator approval prompts (auto-approve all batches).",
+    )
     args = parser.parse_args(argv)
 
     project_root = Path(args.root).resolve()
@@ -1301,6 +1775,17 @@ def main(argv: list[str]) -> int:
         return mode_incremental(project_root, log_path, args.from_ref, args.to_ref)
     if args.init_system_paths:
         return mode_init_system_paths(project_root)
+    if args.describe:
+        return mode_describe(
+            project_root,
+            batch_size=args.batch_size,
+            llm_batch_size=args.llm_batch_size,
+            threshold=args.threshold,
+            model=args.model,
+            system_filter=args.system,
+            resume=args.resume,
+            interactive=not args.no_interactive,
+        )
 
     # Default: full rebuild (optionally filtered).
     system_paths = Path(args.system_paths) if args.system_paths else None
