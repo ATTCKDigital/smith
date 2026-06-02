@@ -173,6 +173,56 @@ If the bugfix execution fails, check config for auto-retry:
    - Modify unrelated files
    - Add unnecessary abstractions
 
+## Phase 3.5: Update `.meta` Descriptions for Touched Methods
+
+After every Write or Edit to a source file in this fix, refresh the
+file's `.meta` description layer to reflect the new or changed methods.
+This step is cheap because Claude already has the source open and parsed
+in working memory — it does NOT regenerate descriptions for untouched
+methods, and it does NOT call any LLM from the save hook (the save hook
+remains LLM-free per data-model.md §3.2). Per data-model.md §4 and
+research.md §6.
+
+Run once per modified source file (extensions: `.py`, `.js`, `.jsx`,
+`.ts`, `.tsx`):
+
+1. **Identify touched method ids.** Parse the file via the project
+   parser (`python3 ~/.smith/scripts/parse-python.py <file>` or
+   `node ~/.smith/scripts/parse-js.js <file>`) and diff the resulting
+   method-id set against `.smith/index/files/<file>.meta`'s `Id:`
+   entries. The 16-char hex ids ADDED or with a CHANGED signature are
+   the "touched" set. (Body-only edits do not change the id, per the
+   stable-method-id recipe in data-model.md §1.1.)
+2. **Determine `purpose_shifted`.** Set `true` when any of:
+   - a new top-level `export` or `__all__` entry was added,
+   - a new class was added,
+   - more than 50% of the file's methods are in the touched set,
+   - the file's primary responsibility shifted (judgment call).
+
+   Otherwise `false`.
+3. **Invoke the shared helper.** The helper updates
+   `.smith/index/files/<file>.meta` in place, regenerating descriptions
+   ONLY for the touched ids; untouched method descriptions are
+   preserved verbatim:
+   ```bash
+   python3 ~/.smith/scripts/meta_describe.py update-touched \
+     --rel-path <project-relative-path> \
+     --touched-ids <comma-separated-16hex-ids> \
+     --purpose-shifted <true|false>
+   ```
+   (In repo-dev layouts the helper lives at
+   `scripts/parsers/meta_describe.py` — use whichever path resolves
+   first.)
+4. **Failure handling.** If the helper is unavailable
+   (e.g. `meta_describe.py` not installed yet, `ANTHROPIC_API_KEY`
+   unset, or the LLM call times out), log a single line to the
+   session log and CONTINUE — the missing descriptions are flagged
+   as a non-blocking PR-body warning by `/smith-build` (see Phase 8 /
+   data-model.md §9). This step never blocks the fix.
+
+This step is skipped entirely for files where the diff only touches
+non-source extensions (`.css`, `.html`, `.sh`, `.md`, `.json`, ...).
+
 ## Phase 4: Docker Rebuild (if applicable)
 
 If any files changed belong to a Docker service:

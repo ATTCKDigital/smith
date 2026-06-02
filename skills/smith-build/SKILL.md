@@ -322,6 +322,172 @@ Source extensions in scope: `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.css`,
 
 This is a FLAG, never a blocker. Always proceed with PR creation.
 
+### 5.3.1 Pre-PR Description Coverage Scan
+
+In addition to the file-size flag, scan the diff for methods that were
+ADDED or EDITED in this PR but lack a `.meta` description. This is the
+v2 description-coverage check from data-model.md §9. Like the file-size
+flag, it is informational — the PR opens unconditionally.
+
+```bash
+# Reuse /tmp/smith-build-changed.txt from Step 5.3 above.
+> /tmp/smith-build-coverage-misses.txt
+
+while IFS= read -r f; do
+  case "$f" in
+    *.py|*.js|*.jsx|*.ts|*.tsx) ;;
+    *) continue ;;
+  esac
+  [ -f "$f" ] || continue
+
+  # Skip files inside excluded directories.
+  case "$f" in
+    vendor/*|*/vendor/*|node_modules/*|*/node_modules/*|.venv/*|*/.venv/*|dist/*|*/dist/*|build/*|*/build/*|.smith/*|*/.smith/*) continue ;;
+  esac
+
+  # Resolve parser path: prefer per-project override, then ~/.smith,
+  # then repo-shipped parsers.
+  case "$f" in
+    *.py)
+      for cand in .smith/scripts/parse-python.py "$HOME/.smith/scripts/parse-python.py" scripts/parsers/parse-python.py; do
+        [ -f "$cand" ] && PARSER="python3 $cand" && break
+      done ;;
+    *)
+      for cand in .smith/scripts/parse-js.js "$HOME/.smith/scripts/parse-js.js" scripts/parsers/parse-js.js; do
+        [ -f "$cand" ] && PARSER="node $cand" && break
+      done ;;
+  esac
+  [ -z "${PARSER:-}" ] && continue
+
+  # Parse the file at HEAD (current branch). Capture the (id, name, scope)
+  # triples plus class scope.
+  CUR_JSON=$($PARSER "$f" 2>/dev/null || true)
+  [ -z "$CUR_JSON" ] && continue
+
+  # Build a list of HEAD method ids and their qualified names.
+  python3 - "$f" "$CUR_JSON" >> /tmp/smith-build-coverage-misses.txt <<'PY' || true
+import json, os, sys, subprocess, re
+
+rel = sys.argv[1]
+cur = json.loads(sys.argv[2])
+
+# Collect (id, qualified_name) for HEAD.
+head_methods = []
+for fn in cur.get("functions") or []:
+    fid = fn.get("id")
+    name = fn.get("name", "")
+    if fid:
+        head_methods.append((fid, f"{rel}::{name}"))
+for cls in cur.get("classes") or []:
+    cname = cls.get("name", "")
+    for m in cls.get("methods") or []:
+        mid = m.get("id")
+        mname = m.get("name", "")
+        if mid:
+            head_methods.append((mid, f"{rel}::{cname}::{mname}"))
+
+# Compare against `git show main:<file>` parse to find added/changed ids.
+try:
+    main_src = subprocess.check_output(
+        ["git", "show", f"main:{rel}"], stderr=subprocess.DEVNULL
+    ).decode("utf-8", errors="replace")
+except subprocess.CalledProcessError:
+    main_src = None
+
+prev_ids = set()
+if main_src is not None:
+    # Re-parse main:<file>. The stable method id incorporates the
+    # project-relative module_path, so we MUST stage the bytes at the
+    # same relative path inside a scratch directory and run the parser
+    # with that directory as CWD. Otherwise the temp-file path leaks
+    # into the id hash and every method looks "added".
+    import tempfile, pathlib
+    suffix = pathlib.Path(rel).suffix
+    parser_cmd = os.environ.get("SMITH_PARSER_CMD", "")
+    if not parser_cmd:
+        if suffix == ".py":
+            for cand in (".smith/scripts/parse-python.py",
+                         os.path.expanduser("~/.smith/scripts/parse-python.py"),
+                         "scripts/parsers/parse-python.py"):
+                if os.path.isfile(cand):
+                    parser_cmd = f"python3 {os.path.abspath(cand)}"
+                    break
+        else:
+            for cand in (".smith/scripts/parse-js.js",
+                         os.path.expanduser("~/.smith/scripts/parse-js.js"),
+                         "scripts/parsers/parse-js.js"):
+                if os.path.isfile(cand):
+                    parser_cmd = f"node {os.path.abspath(cand)}"
+                    break
+    if parser_cmd:
+        with tempfile.TemporaryDirectory() as scratch:
+            staged = os.path.join(scratch, rel)
+            os.makedirs(os.path.dirname(staged), exist_ok=True)
+            with open(staged, "w", encoding="utf-8") as fh:
+                fh.write(main_src)
+            try:
+                out = subprocess.check_output(
+                    parser_cmd.split() + [rel],
+                    stderr=subprocess.DEVNULL,
+                    cwd=scratch,
+                )
+                prev = json.loads(out.decode("utf-8", errors="replace"))
+                for fn in prev.get("functions") or []:
+                    if fn.get("id"):
+                        prev_ids.add(fn["id"])
+                for cls in prev.get("classes") or []:
+                    for m in cls.get("methods") or []:
+                        if m.get("id"):
+                            prev_ids.add(m["id"])
+            except (subprocess.CalledProcessError, json.JSONDecodeError):
+                pass
+
+# Touched = HEAD ids not in main (added) OR signature changed (id differs).
+touched = [(fid, qname) for (fid, qname) in head_methods if fid not in prev_ids]
+
+# Load .meta description layer to check which touched ids have descriptions.
+meta_path = os.path.join(".smith", "index", "files", rel + ".meta")
+desc_ids = set()
+if os.path.isfile(meta_path):
+    in_funcs = False
+    current_id = None
+    with open(meta_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if line.startswith("## Functions") or line.startswith("## Classes"):
+                in_funcs = True
+                current_id = None
+                continue
+            if line.startswith("## ") and in_funcs:
+                in_funcs = False
+                current_id = None
+                continue
+            if in_funcs:
+                m = re.match(r"^\s*Id:\s+(\S+)", line)
+                if m:
+                    current_id = m.group(1)
+                    continue
+                m = re.match(r"^\s*Description:\s+(.+)$", line)
+                if m and current_id:
+                    if m.group(1).strip():
+                        desc_ids.add(current_id)
+                    current_id = None
+
+for fid, qname in touched:
+    if fid not in desc_ids:
+        print(f"- {qname} (id: {fid})")
+PY
+done < /tmp/smith-build-changed.txt
+```
+
+If `/tmp/smith-build-coverage-misses.txt` is non-empty, include a
+**"Description Coverage Warnings"** section in the PR body (see Step 5.4
+template). If empty, omit the section entirely.
+
+This is a FLAG, never a blocker. Always proceed with PR creation. If
+`git diff main` returns no files (clean tree, target branch ahead), the
+section is a no-op. Per data-model.md §9.3.
+
 ### 5.4 Create PR & Merge
 ```bash
 gh pr create --title "<short title>" --body "$(cat <<'EOF'
@@ -340,6 +506,19 @@ for decomposition in follow-up work:
 <oversized file list, e.g.:>
 - `backend/src/api/v1/products.py` — 1,250 lines (exceeds 300)
 - `services/billing/main.py` — 487 lines (exceeds 300)
+
+## Description Coverage Warnings
+<include this section only when /tmp/smith-build-coverage-misses.txt is non-empty>
+
+<N> methods in this diff lack `.meta` descriptions:
+<bullet list from /tmp/smith-build-coverage-misses.txt, e.g.:>
+- backend/src/services/webhook.py::WebhookRetryHandler::backoff (id: 4b8d6e2a9f1c0e7d)
+- backend/src/services/webhook.py::WebhookRetryHandler::dead_letter (id: a3f0c8d2e7b14955)
+- frontend/src/lib/api/products.ts::fetchProductBundle (id: 9c1d4e0a8f2b5c63)
+
+Run `/smith-index --describe --system <name>` to backfill before merge,
+or rely on the next `/smith-bugfix`/`/smith-new` workflow to update
+descriptions for touched methods in-context.
 
 ## Release notes
 See specs/<feature>/release.md

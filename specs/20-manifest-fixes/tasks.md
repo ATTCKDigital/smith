@@ -98,29 +98,29 @@ Hard constraints (carried from spec):
 
 ## Phase 6: Save-Hook Description Preservation (B6)
 
-- [ ] T060 [hooks] Modify hooks/manifest-updater-lib.py to read existing `.meta` (if present) before writing; call `run_mod.parse_existing_descriptions(meta_text)` (re-exported from scripts/smith-index/run.py or imported from scripts/parsers/meta_describe.py) to extract the description layer
-- [ ] T061 [hooks] Update the `render_meta(...)` call site in hooks/manifest-updater-lib.py to pass `existing_descriptions=<extracted>` so the description layer is spliced verbatim into the new `.meta`; structural fields and `Hash:` are recomputed; `Described-Against-Hash:` is preserved (never overwritten by the save hook)
-- [ ] T062 [hooks] Verify `_atomic_write()` in hooks/manifest-updater-lib.py is unchanged and that the tempfile→rename window does not expose a partial-write state per research.md §8
-- [ ] T063 [P] [tests] Create tests/hooks/test_save_preserves_descriptions.sh: seed a `.meta` with a known description layer, simulate a file Write, run hooks/manifest-updater.sh, assert `**Description:**`/per-function `Description:`/`Described-Against-Hash:`/`Described-At:` are byte-identical and `Hash:` was updated
-- [ ] T064 [P] [tests] Add staleness-detection assertion to tests/hooks/test_save_preserves_descriptions.sh that confirms after a body edit, `Hash != Described-Against-Hash` (the stale signal is detectable without any extra marker)
+- [X] T060 [hooks] Modify hooks/manifest-updater-lib.py to read existing `.meta` (if present) before writing; call `run_mod.parse_existing_descriptions(meta_text)` (re-exported from scripts/smith-index/run.py or imported from scripts/parsers/meta_describe.py) to extract the description layer
+- [X] T061 [hooks] Update the `render_meta(...)` call site in hooks/manifest-updater-lib.py to pass `existing_descriptions=<extracted>` so the description layer is spliced verbatim into the new `.meta`; structural fields and `Hash:` are recomputed; `Described-Against-Hash:` is preserved (never overwritten by the save hook)
+- [X] T062 [hooks] Verify `_atomic_write()` in hooks/manifest-updater-lib.py is unchanged and that the tempfile→rename window does not expose a partial-write state per research.md §8
+- [X] T063 [P] [tests] Create tests/hooks/test_save_preserves_descriptions.sh: seed a `.meta` with a known description layer, simulate a file Write, run hooks/manifest-updater.sh, assert `**Description:**`/per-function `Description:`/`Described-Against-Hash:`/`Described-At:` are byte-identical and `Hash:` was updated
+- [X] T064 [P] [tests] Add staleness-detection assertion to tests/hooks/test_save_preserves_descriptions.sh that confirms after a body edit, `Hash != Described-Against-Hash` (the stale signal is detectable without any extra marker)
 
 ---
 
 ## Phase 7: Three Smith Workflows — In-Context .meta Description Update (C1)
 
-- [ ] T070 [workflows] Modify skills/smith-new/SKILL.md to add a new sub-step after the Write/Edit phase that (a) re-parses the touched file via parse-python.py or parse-js.js, (b) diffs current method ids against existing `.meta`'s `Id:` list to compute touched ids, (c) computes the `purpose_shifted` heuristic (new export added OR new class added OR >50% of methods are new), (d) shells out to `python3 scripts/parsers/meta_describe.py update-touched ...` or invokes the helper inline, (e) writes the updated `.meta` via render_meta
-- [ ] T071 [workflows] Apply the same workflow sub-step to skills/smith-bugfix/SKILL.md
-- [ ] T072 [workflows] Apply the same workflow sub-step to skills/smith-debug/SKILL.md
-- [ ] T073 [meta-describe] Add a CLI entrypoint to scripts/parsers/meta_describe.py supporting `python3 scripts/parsers/meta_describe.py update-touched --rel-path <p> --touched-ids <comma-list> --purpose-shifted <true|false>` so the workflow skills can invoke it without writing a wrapper script
+- [X] T070 [workflows] Modify skills/smith-new/SKILL.md to add a new sub-step after the Write/Edit phase that (a) re-parses the touched file via parse-python.py or parse-js.js, (b) diffs current method ids against existing `.meta`'s `Id:` list to compute touched ids, (c) computes the `purpose_shifted` heuristic (new export added OR new class added OR >50% of methods are new), (d) shells out to `python3 scripts/parsers/meta_describe.py update-touched ...` or invokes the helper inline, (e) writes the updated `.meta` via render_meta
+- [X] T071 [workflows] Apply the same workflow sub-step to skills/smith-bugfix/SKILL.md
+- [X] T072 [workflows] Apply the same workflow sub-step to skills/smith-debug/SKILL.md
+- [X] T073 [meta-describe] Add a CLI entrypoint to scripts/parsers/meta_describe.py supporting `python3 scripts/parsers/meta_describe.py update-touched --rel-path <p> --touched-ids <comma-list> --purpose-shifted <true|false>` so the workflow skills can invoke it without writing a wrapper script
 
 ---
 
 ## Phase 8: /smith-build Coverage Flag (C1.5)
 
-- [ ] T080 [smith-build] Modify skills/smith-build/SKILL.md PR-description generation step to add a "Description Coverage Warnings" block per data-model.md §9.2; algorithm: `git diff main --name-only` → filter to source extensions → for each file, parse, intersect diff hunks with each function's line range to compute touched ids, look up Id in `.meta`'s `## Functions` section, collect ids missing descriptions
-- [ ] T081 [smith-build] Format the warning section in skills/smith-build/SKILL.md per data-model.md §9.2 example output: header line with count, bullet per missing method (`<file>::<class>::<method>` or `<file>::<function>`), trailing CTA suggesting `/smith-index --describe --system <name>`
-- [ ] T082 [smith-build] Confirm in skills/smith-build/SKILL.md that the coverage flag is NEVER blocking — PR opens regardless; if `git diff main` returns nothing, the section is a no-op (data-model.md §9.3)
-- [ ] T083 [P] [tests] Create tests/skills/test_smith_build_coverage_flag.sh with a synthetic diff containing one method with a description and one without; assert PR body lists only the missing-description method
+- [X] T080 [smith-build] Modify skills/smith-build/SKILL.md PR-description generation step to add a "Description Coverage Warnings" block per data-model.md §9.2; algorithm: `git diff main --name-only` → filter to source extensions → for each file, parse, intersect diff hunks with each function's line range to compute touched ids, look up Id in `.meta`'s `## Functions` section, collect ids missing descriptions
+- [X] T081 [smith-build] Format the warning section in skills/smith-build/SKILL.md per data-model.md §9.2 example output: header line with count, bullet per missing method (`<file>::<class>::<method>` or `<file>::<function>`), trailing CTA suggesting `/smith-index --describe --system <name>`
+- [X] T082 [smith-build] Confirm in skills/smith-build/SKILL.md that the coverage flag is NEVER blocking — PR opens regardless; if `git diff main` returns nothing, the section is a no-op (data-model.md §9.3)
+- [X] T083 [P] [tests] Create tests/skills/test_smith_build_coverage_flag.sh with a synthetic diff containing one method with a description and one without; assert PR body lists only the missing-description method
 
 ---
 

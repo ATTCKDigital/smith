@@ -428,7 +428,27 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
 4. **Launch `/smith-build`** in the worktree to execute the entire autonomous phase:
    - Pass `WORKTREE_PATH` and the feature directory path as context
    - This runs as a subagent chain (see smith-build skill)
+   - Instruct the build subagent: after every Write or Edit to a `.py`,
+     `.js`, `.jsx`, `.ts`, or `.tsx` file, update the touched file's
+     `.meta` description layer in-context — see the "Update `.meta`
+     Descriptions for Touched Methods" sub-step pattern in the
+     `/smith-bugfix` skill (Phase 3.5). Touched-method-only regeneration
+     keeps token cost bounded and preserves previously-accepted
+     descriptions for untouched methods, per the v2 manifest contract
+     (data-model.md §4 and spec.md C1). Failures of the helper are
+     non-blocking — the missing descriptions are surfaced by
+     `/smith-build`'s PR-body Description Coverage Warnings section.
    - Wait for completion
+
+4.5 **In-context `.meta` description update (mid-conversation code edits).**
+   If `/smith-new` itself wrote or edited any source code directly
+   (i.e. before delegating to `/smith-build`), apply the same touched-method
+   `.meta` update step now: invoke
+   `python3 ~/.smith/scripts/meta_describe.py update-touched
+   --rel-path <path> --touched-ids <ids> --purpose-shifted <true|false>`
+   per modified file. See `/smith-bugfix` Phase 3.5 for the full
+   identification and `purpose_shifted` heuristic. Skip silently if no
+   source code was edited at this stage.
 
 5. **Display final summary** to the user. Emit a chat message that starts with "Feature `<name>` complete. Here's the summary:" and includes the feature name and branch, files created/modified, PR link, release notes summary, and link to `specs/<feature>/release.md`. At the bottom, run `bash hooks/workflow-summary.sh --totals-only` and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim — do this BEFORE step 9 (clearing the active-workflow file) so the numbers are fresh. The bash invocation is a required action, not an optional extra — the two totals lines must appear in the chat message.
 
