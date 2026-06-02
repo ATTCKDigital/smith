@@ -26,6 +26,13 @@ SCHEMA_PATH = os.path.join(
     "contracts",
     "parser-output.schema.json",
 )
+SCHEMA_V2_PATH = os.path.join(
+    REPO,
+    "scripts",
+    "parsers",
+    "contracts",
+    "parser-output-v2.schema.json",
+)
 PY_PARSER = os.path.join(REPO, "scripts", "parsers", "parse-python.py")
 JS_PARSER = os.path.join(REPO, "scripts", "parsers", "parse-js.js")
 PY_FIXTURES = os.path.join(REPO, "tests", "parsers", "fixtures", "python")
@@ -33,7 +40,13 @@ JS_FIXTURES = os.path.join(REPO, "tests", "parsers", "fixtures", "js")
 
 
 def _load_schema() -> dict:
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
+    """Load the v2 parser-output schema (authoritative as of v2).
+
+    v2 is structurally identical to v1 except `id` is now required on
+    every function/method entry. Fixtures must conform to v2 — v1's
+    `additionalProperties: false` would reject the new `id` field.
+    """
+    with open(SCHEMA_V2_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -159,6 +172,66 @@ class ParserOutputSchemaTests(unittest.TestCase):
         """Sanity: the homegrown validator catches at least obvious violations."""
         with self.assertRaises(SchemaError):
             validate({"path": "x"}, self.schema)  # missing required keys
+
+
+class ParserOutputV2SchemaTests(unittest.TestCase):
+    """Validate parser fixture output against v2 schema (requires `id`)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(SCHEMA_V2_PATH, "r", encoding="utf-8") as f:
+            cls.schema = json.load(f)
+
+    def test_python_fixtures_have_id_on_every_function_and_method(self):
+        import re
+
+        id_re = re.compile(r"^[0-9a-f]{16}$")
+        names = [n for n in os.listdir(PY_FIXTURES) if n.endswith(".py")]
+        for name in names:
+            with self.subTest(fixture=name):
+                out = _parse_python(os.path.join(PY_FIXTURES, name))
+                for f in out.get("functions", []):
+                    self.assertIn("id", f, f"missing id on {name}::{f.get('name')}")
+                    self.assertRegex(f["id"], id_re)
+                for c in out.get("classes", []):
+                    for m in c.get("methods", []):
+                        self.assertIn(
+                            "id",
+                            m,
+                            f"missing id on {name}::{c.get('name')}.{m.get('name')}",
+                        )
+                        self.assertRegex(m["id"], id_re)
+
+    def test_js_fixtures_have_id_on_every_function_and_method(self):
+        import re
+
+        id_re = re.compile(r"^[0-9a-f]{16}$")
+        names = [
+            n
+            for n in os.listdir(JS_FIXTURES)
+            if n.endswith((".js", ".jsx", ".ts", ".tsx"))
+        ]
+        for name in names:
+            with self.subTest(fixture=name):
+                out = _parse_js(os.path.join(JS_FIXTURES, name))
+                for f in out.get("functions", []):
+                    self.assertIn("id", f, f"missing id on {name}::{f.get('name')}")
+                    self.assertRegex(f["id"], id_re)
+                for c in out.get("classes", []):
+                    for m in c.get("methods", []):
+                        self.assertIn(
+                            "id",
+                            m,
+                            f"missing id on {name}::{c.get('name')}.{m.get('name')}",
+                        )
+                        self.assertRegex(m["id"], id_re)
+
+    def test_v2_schema_validates_python_fixtures(self):
+        names = [n for n in os.listdir(PY_FIXTURES) if n.endswith(".py")]
+        for name in names:
+            with self.subTest(fixture=name):
+                out = _parse_python(os.path.join(PY_FIXTURES, name))
+                _try_jsonschema_validate(out, self.schema)
 
 
 if __name__ == "__main__":

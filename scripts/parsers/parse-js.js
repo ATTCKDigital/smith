@@ -18,8 +18,47 @@
 
 "use strict";
 
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+
+// --- Stable method id (v2) -------------------------------------------------
+function canonicalParam(p) {
+  const name = (p && p.name) || "";
+  let typ = p && p.type;
+  if (typ === null || typ === undefined || typ === "") typ = "_";
+  let def = p && p.default;
+  if (def === null || def === undefined || def === "") def = "_";
+  return name + ":" + typ + "=" + def;
+}
+
+function canonicalSignature(params, returnType) {
+  const body = (params || []).map(canonicalParam).join(",");
+  const rt =
+    returnType === null || returnType === undefined || returnType === ""
+      ? "_"
+      : returnType;
+  return body + "->" + rt;
+}
+
+function normalizeModulePath(p) {
+  if (!p) return p;
+  let s = p.split(path.sep).join("/");
+  const cwd = process.cwd().split(path.sep).join("/").replace(/\/$/, "") + "/";
+  if (s.startsWith(cwd)) s = s.slice(cwd.length);
+  if (s.startsWith("./")) s = s.slice(2);
+  return s;
+}
+
+function stableMethodId(modulePath, scopeChain, name, params, returnType) {
+  const sig = canonicalSignature(params, returnType);
+  const canon = modulePath + "::" + scopeChain + "::" + name + "::" + sig;
+  return crypto
+    .createHash("sha256")
+    .update(canon, "utf8")
+    .digest("hex")
+    .slice(0, 16);
+}
 
 // --- Load vendored parsers --------------------------------------------------
 let acorn = null;
@@ -469,49 +508,58 @@ function extractRoutes(ast, source) {
   return out;
 }
 
-function extractFunctions(ast, source) {
+function extractFunctions(ast, source, modulePath) {
   // Top-level function declarations + arrow/function expressions bound
   // to a top-level const.
+  modulePath = modulePath || "";
   const out = [];
+  const push = (name, line, params, return_type, is_async) => {
+    out.push({
+      id: stableMethodId(modulePath, "", name, params, return_type),
+      name,
+      line,
+      params,
+      return_type,
+      docstring: null,
+      is_async,
+    });
+  };
   for (const node of ast.body || []) {
     if (!node) continue;
     if (node.type === "FunctionDeclaration") {
-      out.push({
-        name: (node.id && node.id.name) || "anonymous",
-        line: node.loc.start.line,
-        params: extractParams(node, source),
-        return_type: fnReturnType(node, source),
-        docstring: null,
-        is_async: !!node.async,
-      });
+      push(
+        (node.id && node.id.name) || "anonymous",
+        node.loc.start.line,
+        extractParams(node, source),
+        fnReturnType(node, source),
+        !!node.async,
+      );
     } else if (
       node.type === "ExportNamedDeclaration" &&
       node.declaration &&
       node.declaration.type === "FunctionDeclaration"
     ) {
       const d = node.declaration;
-      out.push({
-        name: (d.id && d.id.name) || "anonymous",
-        line: d.loc.start.line,
-        params: extractParams(d, source),
-        return_type: fnReturnType(d, source),
-        docstring: null,
-        is_async: !!d.async,
-      });
+      push(
+        (d.id && d.id.name) || "anonymous",
+        d.loc.start.line,
+        extractParams(d, source),
+        fnReturnType(d, source),
+        !!d.async,
+      );
     } else if (
       node.type === "ExportDefaultDeclaration" &&
       node.declaration &&
       node.declaration.type === "FunctionDeclaration"
     ) {
       const d = node.declaration;
-      out.push({
-        name: (d.id && d.id.name) || "default",
-        line: d.loc.start.line,
-        params: extractParams(d, source),
-        return_type: fnReturnType(d, source),
-        docstring: null,
-        is_async: !!d.async,
-      });
+      push(
+        (d.id && d.id.name) || "default",
+        d.loc.start.line,
+        extractParams(d, source),
+        fnReturnType(d, source),
+        !!d.async,
+      );
     } else if (node.type === "VariableDeclaration") {
       for (const decl of node.declarations) {
         if (!decl.id || !decl.id.name) continue;
@@ -521,14 +569,35 @@ function extractFunctions(ast, source) {
           (init.type === "ArrowFunctionExpression" ||
             init.type === "FunctionExpression")
         ) {
-          out.push({
-            name: decl.id.name,
-            line: decl.loc.start.line,
-            params: extractParams(init, source),
-            return_type: fnReturnType(init, source),
-            docstring: null,
-            is_async: !!init.async,
-          });
+          push(
+            decl.id.name,
+            decl.loc.start.line,
+            extractParams(init, source),
+            fnReturnType(init, source),
+            !!init.async,
+          );
+        }
+      }
+    } else if (
+      node.type === "ExportNamedDeclaration" &&
+      node.declaration &&
+      node.declaration.type === "VariableDeclaration"
+    ) {
+      for (const decl of node.declaration.declarations) {
+        if (!decl.id || !decl.id.name) continue;
+        const init = decl.init;
+        if (
+          init &&
+          (init.type === "ArrowFunctionExpression" ||
+            init.type === "FunctionExpression")
+        ) {
+          push(
+            decl.id.name,
+            decl.loc.start.line,
+            extractParams(init, source),
+            fnReturnType(init, source),
+            !!init.async,
+          );
         }
       }
     }
@@ -536,7 +605,8 @@ function extractFunctions(ast, source) {
   return out;
 }
 
-function extractClasses(ast, source) {
+function extractClasses(ast, source, modulePath) {
+  modulePath = modulePath || "";
   const out = [];
   for (const node of ast.body || []) {
     if (!node) continue;
@@ -551,6 +621,7 @@ function extractClasses(ast, source) {
       cls = node.declaration;
     }
     if (!cls) continue;
+    const clsName = (cls.id && cls.id.name) || "anonymous";
     const methods = [];
     if (cls.body && cls.body.body) {
       for (const m of cls.body.body) {
@@ -558,12 +629,17 @@ function extractClasses(ast, source) {
           const name =
             m.key.name ||
             (m.key.value !== undefined ? String(m.key.value) : null);
-          if (name) methods.push({ name, line: m.loc.start.line });
+          if (name) {
+            const params = extractParams(m.value || {}, source);
+            const ret = fnReturnType(m.value || {}, source);
+            const mid = stableMethodId(modulePath, clsName, name, params, ret);
+            methods.push({ id: mid, name, line: m.loc.start.line });
+          }
         }
       }
     }
     const entry = {
-      name: (cls.id && cls.id.name) || "anonymous",
+      name: clsName,
       line: cls.loc.start.line,
       methods,
     };
@@ -636,6 +712,7 @@ function parse(filepath) {
     return result;
   }
   result.lines = countLines(source);
+  const modulePath = normalizeModulePath(filepath);
 
   if (!acorn) {
     // Vendored parser missing — fall back to regex.
@@ -695,12 +772,12 @@ function parse(filepath) {
   }
 
   try {
-    result.functions = extractFunctions(ast, source);
+    result.functions = extractFunctions(ast, source, modulePath);
   } catch (e) {
     result.errors.push({ message: "functions: " + e.message });
   }
   try {
-    result.classes = extractClasses(ast, source);
+    result.classes = extractClasses(ast, source, modulePath);
   } catch (e) {
     result.errors.push({ message: "classes: " + e.message });
   }

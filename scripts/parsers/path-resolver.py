@@ -21,10 +21,140 @@ Both interfaces are pure — no side effects, no filesystem writes.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import sys
 from typing import Any
+
+# Glob characters not allowed in v1 `paths:` entries (per data-model.md §8.1).
+_GLOB_CHARS = set("*?[]{}!")
+
+
+# --- Tier 1: `.specify/systems/<name>/spec.md` frontmatter -----------------
+def _parse_yaml_frontmatter(path: str) -> dict[str, object]:
+    """Read top-of-file YAML frontmatter from `path`.
+
+    Recognised keys: `system`, `status`, `paths`, `also_affects`.
+    Everything else is ignored. Malformed input returns `{}`.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return {}
+    if not text.startswith("---\n"):
+        return {}
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        # Trailing `\n---` at EOF.
+        end_eof = text.find("\n---", 4)
+        if end_eof == -1:
+            return {}
+        body = text[4:end_eof]
+    else:
+        body = text[4:end]
+    out: dict[str, object] = {}
+    current_list_key: str | None = None
+    current_list: list[str] = []
+    for raw_line in body.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            current_list_key = None
+            continue
+        if (line.startswith("  - ") or line.startswith("- ")) and current_list_key:
+            item = line[line.index("-") + 1 :].strip().strip('"').strip("'")
+            current_list.append(item)
+            out[current_list_key] = current_list
+            continue
+        if ":" in line and not line.startswith(" "):
+            key, _, val = line.partition(":")
+            key = key.strip()
+            val = val.strip()
+            if val == "":
+                current_list_key = key
+                current_list = []
+                out[key] = current_list
+            else:
+                current_list_key = None
+                out[key] = val.strip('"').strip("'")
+    return out
+
+
+def _has_glob(s: str) -> bool:
+    return any(c in _GLOB_CHARS for c in s)
+
+
+def _systems_dir_mtime(project_root: str) -> int:
+    systems_dir = os.path.join(project_root or ".", ".specify", "systems")
+    try:
+        return os.stat(systems_dir).st_mtime_ns
+    except OSError:
+        return 0
+
+
+@functools.lru_cache(maxsize=8)
+def _load_declared_paths_cached(
+    project_root: str, mtime_ns: int
+) -> tuple[tuple[str, str], ...]:
+    """Inner cached function keyed by (project_root, mtime_ns).
+
+    mtime_ns is the `st_mtime_ns` of `<project_root>/.specify/systems/`.
+    When the systems dir is modified, the key changes and we reload.
+    """
+    _ = mtime_ns  # part of cache key only
+    return _scan_declared_paths(project_root)
+
+
+def _scan_declared_paths(project_root: str) -> tuple[tuple[str, str], ...]:
+    """Walk `<project_root>/.specify/systems/*/spec.md`, parse frontmatter,
+    and return a tuple of (prefix, system_id) sorted by prefix length desc.
+
+    Defensive: drops any entry containing glob characters (logs to stderr
+    when SMITH_DEBUG=1). Returns () if the directory does not exist.
+    """
+    systems_dir = os.path.join(project_root or ".", ".specify", "systems")
+    if not os.path.isdir(systems_dir):
+        return ()
+    debug = os.environ.get("SMITH_DEBUG") == "1"
+    pairs: list[tuple[str, str]] = []
+    try:
+        entries = sorted(os.listdir(systems_dir))
+    except OSError:
+        return ()
+    for name in entries:
+        spec_path = os.path.join(systems_dir, name, "spec.md")
+        if not os.path.isfile(spec_path):
+            continue
+        fm = _parse_yaml_frontmatter(spec_path)
+        if not fm:
+            continue
+        system_id = fm.get("system") or name
+        if not isinstance(system_id, str) or not system_id:
+            system_id = name
+        paths = fm.get("paths") or []
+        if not isinstance(paths, list):
+            continue
+        for prefix in paths:
+            if not isinstance(prefix, str) or not prefix:
+                continue
+            if _has_glob(prefix):
+                if debug:
+                    sys.stderr.write(
+                        f"path-resolver: dropping glob prefix {prefix!r} "
+                        f"from {spec_path}\n"
+                    )
+                continue
+            pairs.append((prefix, system_id))
+    pairs.sort(key=lambda t: len(t[0]), reverse=True)
+    return tuple(pairs)
+
+
+def _load_declared_paths(project_root: str) -> tuple[tuple[str, str], ...]:
+    """Public-ish wrapper that supplies the mtime cache key."""
+    mt = _systems_dir_mtime(project_root)
+    return _load_declared_paths_cached(project_root or "", mt)
+
 
 # Directories whose content is uniformly excluded from system indexing.
 EXCLUDED_TOP_LEVEL = {
@@ -126,6 +256,18 @@ def _apply_heuristic(rel_path: str) -> str:
     return f"system-{top}"
 
 
+# Sentinels recording which tier matched last (diagnostics only).
+_LAST_TIER: dict[str, str] = {"tier": ""}
+
+
+def _last_matched_tier() -> str:
+    """Diagnostic: which tier produced the most recent resolve() result.
+
+    Returns one of "", "tier1", "tier2", "tier3".
+    """
+    return _LAST_TIER.get("tier", "")
+
+
 def resolve(
     file_path: str,
     project_root: str = "",
@@ -134,10 +276,15 @@ def resolve(
 ) -> str:
     """Resolve `file_path` to a Smith system name.
 
+    Tier order:
+      1. `.specify/systems/<name>/spec.md` frontmatter (longest-prefix wins)
+      2. Explicit `system-paths.json` overrides (longest-prefix wins)
+      3. Heuristic (services/<X>/, backend/<X>/, etc.)
+
     Args:
         file_path: Source file path. May be absolute or relative.
-        project_root: Optional. If given, used to strip the prefix from
-            absolute file_paths.
+        project_root: Optional. Used to strip prefix from absolute
+            file_paths AND as the root to look for `.specify/systems/`.
         system_paths_json: Optional. Path to a `system-paths.json` file
             with explicit `rules` list. Missing/unreadable file falls
             through to heuristic.
@@ -152,6 +299,14 @@ def resolve(
     """
     rel = _normalise(file_path, project_root)
 
+    # Tier 1: `.specify/systems/<name>/spec.md` frontmatter.
+    declared = _load_declared_paths(project_root or "")
+    for prefix, system_id in declared:
+        if rel.startswith(prefix):
+            _LAST_TIER["tier"] = "tier1"
+            return system_id
+
+    # Tier 2: explicit overrides (`system-paths.json`).
     overrides_data: dict[str, Any] | None = overrides_dict
     if overrides_data is None and system_paths_json:
         try:
@@ -171,13 +326,17 @@ def resolve(
 
     explicit = _apply_overrides(rel, rules, explicit_default)
     if explicit is not None:
+        _LAST_TIER["tier"] = "tier2"
         return explicit
 
     # If the overrides file declares an explicit default, honor it (per
     # data-model.md section 6: "If none match, return `default`.").
     if has_explicit_default:
+        _LAST_TIER["tier"] = "tier2"
         return explicit_default
 
+    # Tier 3: heuristic.
+    _LAST_TIER["tier"] = "tier3"
     return _apply_heuristic(rel)
 
 

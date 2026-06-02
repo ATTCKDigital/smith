@@ -32,38 +32,38 @@ Hard constraints (carried from spec):
 
 ## Phase 1: Setup (Foundation)
 
-- [ ] T001 [setup] Verify v1 test directories `tests/parsers/`, `tests/hooks/`, `tests/skills/`, `tests/e2e/`, `tests/contracts/` exist and contain the v1 baseline tests at tests/
-- [ ] T002 [P] [setup] Create new skill directory at skills/smith-migrate-system-paths/
-- [ ] T003 [P] [setup] Create helper script directory at skills/smith-migrate-system-paths/scripts/
-- [ ] T004 [P] [setup] Copy contract `parser-output-v2.schema.json` from specs/20-manifest-fixes/contracts/ into the consumed location at scripts/parsers/contracts/parser-output-v2.schema.json
-- [ ] T005 [P] [setup] Copy contract `meta-description-layer.schema.json` from specs/20-manifest-fixes/contracts/ into scripts/parsers/contracts/meta-description-layer.schema.json
-- [ ] T006 [P] [setup] Copy contract `system-spec-frontmatter.schema.json` from specs/20-manifest-fixes/contracts/ into scripts/parsers/contracts/system-spec-frontmatter.schema.json
-- [ ] T007 [setup] Confirm `.smith/index/logs/` directory creation is handled at runtime by `mode_describe()` (no on-disk seed needed); add an `os.makedirs(..., exist_ok=True)` requirement to T030 acceptance
+- [X] T001 [setup] Verify v1 test directories `tests/parsers/`, `tests/hooks/`, `tests/skills/`, `tests/e2e/`, `tests/contracts/` exist and contain the v1 baseline tests at tests/
+- [X] T002 [P] [setup] Create new skill directory at skills/smith-migrate-system-paths/
+- [X] T003 [P] [setup] Create helper script directory at skills/smith-migrate-system-paths/scripts/
+- [X] T004 [P] [setup] Copy contract `parser-output-v2.schema.json` from specs/20-manifest-fixes/contracts/ into the consumed location at scripts/parsers/contracts/parser-output-v2.schema.json
+- [X] T005 [P] [setup] Copy contract `meta-description-layer.schema.json` from specs/20-manifest-fixes/contracts/ into scripts/parsers/contracts/meta-description-layer.schema.json
+- [X] T006 [P] [setup] Copy contract `system-spec-frontmatter.schema.json` from specs/20-manifest-fixes/contracts/ into scripts/parsers/contracts/system-spec-frontmatter.schema.json
+- [X] T007 [setup] Confirm `.smith/index/logs/` directory creation is handled at runtime by `mode_describe()` (no on-disk seed needed); add an `os.makedirs(..., exist_ok=True)` requirement to T030 acceptance
 
 ---
 
 ## Phase 2: Parsers — Stable Method ID (B1, B2)
 
-- [ ] T010 [parsers] Add `_stable_method_id(module_path, scope_chain, name, params, return_type)` helper to scripts/parsers/parse-python.py implementing the recipe from research.md §1 (`sha256(f"{module_path}::{scope_chain}::{name}::{canonical_signature}".encode()).hexdigest()[:16]`); canonical_signature joins `params` as `name:type=default` (underscore for missing) and appends `->return_type`
-- [ ] T011 [parsers] Inject `"id": <hex>` into each entry of `result["functions"]` and into each method under `result["classes"][*]["methods"]` in scripts/parsers/parse-python.py; preserve all existing structural fields including `docstring` if currently emitted (render layer ignores it)
-- [ ] T012 [P] [parsers] Add `stableMethodId(modulePath, scopeChain, name, params, returnType)` helper to scripts/parsers/parse-js.js using `crypto.createHash('sha256')`; same canonical-signature recipe as T010
-- [ ] T013 [P] [parsers] Inject `id` field into each entry of `result.functions`, each method under `result.classes[*].methods`, and each exported function in `result.exports` in scripts/parsers/parse-js.js
-- [ ] T014 [parsers] Update scripts/parsers/contracts/parser-output-v2.schema.json validation rules in the parser-output-v2 contract to require `id` (16-char lowercase hex) on every function/method entry
-- [ ] T015 [P] [tests] Create tests/parsers/test_stable_id_python.py exercising the id stability matrix from research.md §1 (rename changes id, body edit preserves id, reorder preserves id, param add/remove changes id, return-type change changes id, file move changes id, two files with same fn name produce distinct ids)
-- [ ] T016 [P] [tests] Create tests/parsers/test_stable_id_js.sh covering the same id stability matrix for JS/TS via scripts/parsers/parse-js.js
-- [ ] T017 [P] [tests] Add contract test in tests/contracts/test_parser_output_schema.py asserting parser output conforms to scripts/parsers/contracts/parser-output-v2.schema.json (`id` present and well-formed on every function/method)
+- [X] T010 [parsers] Add `_stable_method_id(module_path, scope_chain, name, params, return_type)` helper to scripts/parsers/parse-python.py implementing the recipe from research.md §1 (`sha256(f"{module_path}::{scope_chain}::{name}::{canonical_signature}".encode()).hexdigest()[:16]`); canonical_signature joins `params` as `name:type=default` (underscore for missing) and appends `->return_type`
+- [X] T011 [parsers] Inject `"id": <hex>` into each entry of `result["functions"]` and into each method under `result["classes"][*]["methods"]` in scripts/parsers/parse-python.py; preserve all existing structural fields including `docstring` if currently emitted (render layer ignores it)
+- [X] T012 [P] [parsers] Add `stableMethodId(modulePath, scopeChain, name, params, returnType)` helper to scripts/parsers/parse-js.js using `crypto.createHash('sha256')`; same canonical-signature recipe as T010
+- [X] T013 [P] [parsers] Inject `id` field into each entry of `result.functions`, each method under `result.classes[*].methods`, and each exported function in `result.exports` in scripts/parsers/parse-js.js
+- [X] T014 [parsers] Update scripts/parsers/contracts/parser-output-v2.schema.json validation rules in the parser-output-v2 contract to require `id` (16-char lowercase hex) on every function/method entry
+- [X] T015 [P] [tests] Create tests/parsers/test_stable_id_python.py exercising the id stability matrix from research.md §1 (rename changes id, body edit preserves id, reorder preserves id, param add/remove changes id, return-type change changes id, file move changes id, two files with same fn name produce distinct ids)
+- [X] T016 [P] [tests] Create tests/parsers/test_stable_id_js.sh covering the same id stability matrix for JS/TS via scripts/parsers/parse-js.js
+- [X] T017 [P] [tests] Add contract test in tests/contracts/test_parser_output_schema.py asserting parser output conforms to scripts/parsers/contracts/parser-output-v2.schema.json (`id` present and well-formed on every function/method)
 
 ---
 
 ## Phase 3: Resolver — `.specify/systems/` Tier 1 (A4)
 
-- [ ] T020 [resolver] Add `_parse_yaml_frontmatter(path)` stdlib helper to scripts/parsers/path-resolver.py per research.md §2; recognized keys: `system`, `status`, `paths`, `also_affects`; malformed → return `{}`
-- [ ] T021 [resolver] Add `_load_declared_paths(project_root)` function to scripts/parsers/path-resolver.py that scans `<project_root>/.specify/systems/*/spec.md`, parses frontmatter, returns `list[tuple[prefix, system_id]]` sorted by `len(prefix)` descending
-- [ ] T022 [resolver] Wrap `_load_declared_paths` in `functools.lru_cache(maxsize=8)` keyed by `(project_root, os.stat(systems_dir).st_mtime_ns)` per data-model.md §6.3
-- [ ] T023 [resolver] Modify `resolve()` in scripts/parsers/path-resolver.py to call tier 1 (declared paths) before existing tier 2 (`system-paths.json`) and tier 3 (heuristic); on tier-1 match return the matched `system_id`
-- [ ] T024 [resolver] Add defensive filter in `_load_declared_paths` that drops any `paths:` entry containing glob characters (`*?[]{}!`) per data-model.md §8.1 — silent drop with optional `SMITH_DEBUG=1` stderr log
-- [ ] T025 [P] [tests] Create tests/parsers/test_path_resolver_tier1.py covering: (a) matching prefix returns correct system, (b) `.specify/systems/` absent → falls through to tier 2/3 unchanged from v1, (c) tier-1 hit beats tier-2 + tier-3, (d) longest-prefix wins for `services/auth/` vs `services/auth/oauth/`, (e) entries with glob characters rejected, (f) malformed frontmatter silently ignored
-- [ ] T026 [P] [tests] Snapshot regression test in tests/e2e/test_resolver_with_specify_systems.sh confirming a fixture project with `.specify/systems/<name>/spec.md` frontmatter produces the expected system bucketing
+- [X] T020 [resolver] Add `_parse_yaml_frontmatter(path)` stdlib helper to scripts/parsers/path-resolver.py per research.md §2; recognized keys: `system`, `status`, `paths`, `also_affects`; malformed → return `{}`
+- [X] T021 [resolver] Add `_load_declared_paths(project_root)` function to scripts/parsers/path-resolver.py that scans `<project_root>/.specify/systems/*/spec.md`, parses frontmatter, returns `list[tuple[prefix, system_id]]` sorted by `len(prefix)` descending
+- [X] T022 [resolver] Wrap `_load_declared_paths` in `functools.lru_cache(maxsize=8)` keyed by `(project_root, os.stat(systems_dir).st_mtime_ns)` per data-model.md §6.3
+- [X] T023 [resolver] Modify `resolve()` in scripts/parsers/path-resolver.py to call tier 1 (declared paths) before existing tier 2 (`system-paths.json`) and tier 3 (heuristic); on tier-1 match return the matched `system_id`
+- [X] T024 [resolver] Add defensive filter in `_load_declared_paths` that drops any `paths:` entry containing glob characters (`*?[]{}!`) per data-model.md §8.1 — silent drop with optional `SMITH_DEBUG=1` stderr log
+- [X] T025 [P] [tests] Create tests/parsers/test_path_resolver_tier1.py covering: (a) matching prefix returns correct system, (b) `.specify/systems/` absent → falls through to tier 2/3 unchanged from v1, (c) tier-1 hit beats tier-2 + tier-3, (d) longest-prefix wins for `services/auth/` vs `services/auth/oauth/`, (e) entries with glob characters rejected, (f) malformed frontmatter silently ignored
+- [X] T026 [P] [tests] Snapshot regression test in tests/e2e/test_resolver_with_specify_systems.sh confirming a fixture project with `.specify/systems/<name>/spec.md` frontmatter produces the expected system bucketing
 
 ---
 
