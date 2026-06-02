@@ -126,21 +126,21 @@ Hard constraints (carried from spec):
 
 ## Phase 9: A1 + A2 — system-spec-template + /smith init Wiring
 
-- [ ] T090 [init] Create skills/smith/templates/system-spec-template.md per plan.md "A1 — system-spec-template.md" with YAML frontmatter (`system`, `status`, `paths`, `also_affects`) and prose body sections (Purpose, Owners, Files & Components, Interfaces, Dependencies); body is free-form
-- [ ] T091 [init] Modify skills/smith/SKILL.md to add Phase 4.X "Scaffold System Specs (Optional)" sub-step per plan.md "A2 — /smith init Sub-Step": prompt operator yes/skip, on yes prompt for comma-separated system ids, for each id prompt for `paths:` entries one-at-a-time terminating on empty input, copy template to `.specify/systems/<id>/spec.md` with substitutions
-- [ ] T092 [init] Add validation in the A2 sub-step prose to reject `paths:` entries containing glob characters (`*?[]{}!`) with re-prompt and to auto-append trailing `/` per data-model.md §5.3
-- [ ] T093 [P] [tests] Create tests/skills/test_smith_init_system_specs.sh exercising the scaffold sub-step end-to-end: simulated operator input creates two system specs with frontmatter, files written under `.specify/systems/<name>/spec.md`, frontmatter conforms to system-spec-frontmatter.schema.json
+- [X] T090 [init] Create skills/smith/templates/system-spec-template.md per plan.md "A1 — system-spec-template.md" with YAML frontmatter (`system`, `status`, `paths`, `also_affects`) and prose body sections (Purpose, Owners, Files & Components, Interfaces, Dependencies); body is free-form
+- [X] T091 [init] Modify skills/smith/SKILL.md to add Phase 4.X "Scaffold System Specs (Optional)" sub-step per plan.md "A2 — /smith init Sub-Step": prompt operator yes/skip, on yes prompt for comma-separated system ids, for each id prompt for `paths:` entries one-at-a-time terminating on empty input, copy template to `.specify/systems/<id>/spec.md` with substitutions
+- [X] T092 [init] Add validation in the A2 sub-step prose to reject `paths:` entries containing glob characters (`*?[]{}!`) with re-prompt and to auto-append trailing `/` per data-model.md §5.3
+- [X] T093 [P] [tests] Create tests/skills/test_smith_init_system_specs.sh exercising the scaffold sub-step end-to-end: simulated operator input creates two system specs with frontmatter, files written under `.specify/systems/<name>/spec.md`, frontmatter conforms to system-spec-frontmatter.schema.json
 
 ---
 
 ## Phase 10: A3 — /smith-migrate-system-paths Skill
 
-- [ ] T100 [A3] Create skills/smith-migrate-system-paths/SKILL.md (full skill — frontmatter + prose instructions) per plan.md "A3 — /smith-migrate-system-paths"; flow: enumerate `.specify/systems/*/spec.md`, skip files already having non-empty `paths:` frontmatter, run propose_paths.py, present per-system proposal, on accept inject frontmatter ABOVE existing body preserving body verbatim
-- [ ] T101 [A3] Create skills/smith-migrate-system-paths/scripts/propose_paths.py implementing the heuristic from research.md §4: regex matchers (backticked dir, backticked file, code-fence file, bullet path, `services/<X>/`, `backend/<X>/`, `frontend/<X>/`, `apps/<X>/`, `packages/<X>/`), score = `Σ position_weight` where `position_weight = max(0.3, 1.0 - line_index/total_lines)`, return top-N (default 5)
-- [ ] T102 [A3] Add validation step in propose_paths.py output: drop any candidate prefix containing glob characters before presenting; auto-append trailing `/` to candidates lacking it
-- [ ] T103 [A3] Add frontmatter-injection routine in skills/smith-migrate-system-paths/SKILL.md prose: if file already has `---` ... `---` frontmatter block but no `paths:`, insert only the `paths:` field inside the existing block; if no frontmatter, prepend a fresh block before any prose, preserving the body verbatim including blank lines
-- [ ] T104 [A3] Add summary-report step at end of A3 skill prose per spec.md A3: lines listing migrated count, skipped-already-has-paths count, skipped-by-user count
-- [ ] T105 [P] [tests] Create tests/skills/test_smith_migrate_system_paths.sh with a fixture project containing hand-authored prose system specs (no YAML frontmatter): run A3, assert per-system proposal table is generated, simulated accept-all writes frontmatter above body, body bytes are unchanged
+- [X] T100 [A3] Create skills/smith-migrate-system-paths/SKILL.md (full skill — frontmatter + prose instructions) per plan.md "A3 — /smith-migrate-system-paths"; flow: enumerate `.specify/systems/*/spec.md`, skip files already having non-empty `paths:` frontmatter, run propose_paths.py, present per-system proposal, on accept inject frontmatter ABOVE existing body preserving body verbatim
+- [X] T101 [A3] Create skills/smith-migrate-system-paths/scripts/propose_paths.py implementing the heuristic from research.md §4: regex matchers (backticked dir, backticked file, code-fence file, bullet path, `services/<X>/`, `backend/<X>/`, `frontend/<X>/`, `apps/<X>/`, `packages/<X>/`), score = `Σ position_weight` where `position_weight = max(0.3, 1.0 - line_index/total_lines)`, return top-N (default 5)
+- [X] T102 [A3] Add validation step in propose_paths.py output: drop any candidate prefix containing glob characters before presenting; auto-append trailing `/` to candidates lacking it
+- [X] T103 [A3] Add frontmatter-injection routine in skills/smith-migrate-system-paths/SKILL.md prose: if file already has `---` ... `---` frontmatter block but no `paths:`, insert only the `paths:` field inside the existing block; if no frontmatter, prepend a fresh block before any prose, preserving the body verbatim including blank lines
+- [X] T104 [A3] Add summary-report step at end of A3 skill prose per spec.md A3: lines listing migrated count, skipped-already-has-paths count, skipped-by-user count
+- [X] T105 [P] [tests] Create tests/skills/test_smith_migrate_system_paths.sh with a fixture project containing hand-authored prose system specs (no YAML frontmatter): run A3, assert per-system proposal table is generated, simulated accept-all writes frontmatter above body, body bytes are unchanged
 
 ---
 

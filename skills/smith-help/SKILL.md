@@ -86,6 +86,7 @@ PROJECT
   /smith-constitution     Create or update project constitution
   /smith-taskstoissues    Convert tasks.md to GitHub Issues
   /smith-migrate-specs    Migrate flat specs into system-based hierarchy
+  /smith-migrate-system-paths  Add `paths:` frontmatter to existing system specs
 
 SESSION
   /smith-finish           Commit, push, merge, update specs, clean workspace
@@ -544,6 +545,39 @@ BEHAVIOR
   Processes one feature at a time with user confirmation.
   Copies files (originals preserved in specs/ until manually removed).
   Adds frontmatter with primary_system, also_affects, status.
+```
+
+#### `migrate-system-paths`
+
+```
+/smith-migrate-system-paths — Add `paths:` Frontmatter to System Specs
+
+One-time migration that scans existing .specify/systems/system-*/spec.md
+prose for path-like references (services/<X>/, backend/<X>/, frontend/<X>/,
+etc.), proposes a paths: list per system, and after operator confirmation
+injects YAML frontmatter ABOVE the existing body. Body bytes are preserved
+verbatim. Re-runs are idempotent (skips files that already have paths:).
+
+USAGE
+  /smith-migrate-system-paths
+  /smith-migrate-system-paths --dry-run             Show proposals without writing
+  /smith-migrate-system-paths --top-n N             Max proposals per system (default 5)
+  /smith-migrate-system-paths --auto-confirm        Accept all (tests only)
+
+WHEN TO USE
+  After Smith manifest v2 is in use and you want path-resolver tier 1
+  (declared paths) to take over from tier 3 (heuristic). Run this once
+  per project that grew system specs as prose.
+
+WHEN NOT TO USE
+  - No .specify/systems/ exists — use `/smith` Phase 4.8 instead.
+  - System specs already have paths: in frontmatter — skipped automatically.
+  - You want to migrate feature folders — that's `/smith-migrate-specs`.
+
+NEXT STEPS
+  Run `/smith-index` after migration so per-system manifests pick up the
+  new tier-1 buckets. Optionally run `/smith-index --describe` to backfill
+  description layer.
 ```
 
 #### `bank`
