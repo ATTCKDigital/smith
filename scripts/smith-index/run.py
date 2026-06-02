@@ -83,17 +83,41 @@ REPO_ROOT = THIS_DIR.parent.parent  # smith-manifest-system root
 PARSER_DIR_REPO = REPO_ROOT / "scripts" / "parsers"
 PARSER_DIR_GLOBAL = Path.home() / ".smith" / "scripts"
 
-# Add path-resolver location to sys.path so we can `import path_resolver`.
+# Add parser locations to sys.path so we can `import path_resolver` etc.
+# Prefer the dev-tree layout (PARSER_DIR_REPO) for in-tree runs, then fall
+# back to the production install layout (PARSER_DIR_GLOBAL = ~/.smith/scripts/,
+# flat — that's how install-parsers.sh stages them). This dual-layout matters
+# because when run.py is installed to ~/.smith/scripts/smith-index/run.py,
+# REPO_ROOT computes to ~/.smith/ and PARSER_DIR_REPO points at
+# ~/.smith/scripts/parsers/ — which doesn't exist in the flat install layout.
 sys.path.insert(0, str(PARSER_DIR_REPO))
+sys.path.insert(0, str(PARSER_DIR_GLOBAL))
+
+
+def _resolve_parser_module_path(filename: str) -> Path | None:
+    """Return the first existing path for a parser-layer module file.
+
+    Tries PARSER_DIR_REPO (dev-tree, scripts/parsers/<name>) first,
+    falls back to PARSER_DIR_GLOBAL (production install, ~/.smith/scripts/<name>).
+    Returns None if neither exists — callers degrade gracefully.
+    """
+    for candidate in (PARSER_DIR_REPO / filename, PARSER_DIR_GLOBAL / filename):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 try:
     import importlib.util as _ilu
 
-    _spec = _ilu.spec_from_file_location(
-        "path_resolver", PARSER_DIR_REPO / "path-resolver.py"
-    )
-    if _spec and _spec.loader:
-        path_resolver = _ilu.module_from_spec(_spec)
-        _spec.loader.exec_module(path_resolver)  # type: ignore[attr-defined]
+    _pr_path = _resolve_parser_module_path("path-resolver.py")
+    if _pr_path:
+        _spec = _ilu.spec_from_file_location("path_resolver", _pr_path)
+        if _spec and _spec.loader:
+            path_resolver = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(path_resolver)  # type: ignore[attr-defined]
+        else:
+            path_resolver = None  # type: ignore[assignment]
     else:
         path_resolver = None  # type: ignore[assignment]
 except Exception:
@@ -103,14 +127,16 @@ except Exception:
 # descriptions never call it. `parse_existing_descriptions` is re-exported
 # here so the save hook can import a single name from run.py.
 try:
-    _md_spec = _ilu.spec_from_file_location(
-        "meta_describe", PARSER_DIR_REPO / "meta_describe.py"
-    )
-    if _md_spec and _md_spec.loader:
-        _meta_describe = _ilu.module_from_spec(_md_spec)
-        # Python 3.14 dataclass needs the module in sys.modules during exec.
-        sys.modules["meta_describe"] = _meta_describe
-        _md_spec.loader.exec_module(_meta_describe)  # type: ignore[attr-defined]
+    _md_path = _resolve_parser_module_path("meta_describe.py")
+    if _md_path:
+        _md_spec = _ilu.spec_from_file_location("meta_describe", _md_path)
+        if _md_spec and _md_spec.loader:
+            _meta_describe = _ilu.module_from_spec(_md_spec)
+            # Python 3.14 dataclass needs the module in sys.modules during exec.
+            sys.modules["meta_describe"] = _meta_describe
+            _md_spec.loader.exec_module(_meta_describe)  # type: ignore[attr-defined]
+        else:
+            _meta_describe = None  # type: ignore[assignment]
     else:
         _meta_describe = None  # type: ignore[assignment]
 except Exception:
