@@ -2,7 +2,7 @@
 feature: 20-manifest-fixes
 branch: 20-manifest-fixes
 generated: 2026-05-28
-status: AWAITING ANSWERS
+status: ANSWERED
 spec: ./spec.md
 plan: ./plan.md
 note: Reconstructed 2026-06-02 from conversation after /tmp/ was cleared. Q1-Q8 answered; Q9-Q11 open. Other artifacts (spec, plan, data-model, contracts) regenerate via subagent after gate completes.
@@ -65,7 +65,7 @@ note: Reconstructed 2026-06-02 from conversation after /tmp/ was cleared. Q1-Q8 
 
 **Recommended:** **B** — flag via hash mismatch. Keeps the hook structural-only, gives the navigator a real "this description may be stale" signal, leaves bulk regeneration where it belongs (explicit `/smith-index`). Auto-queue (C) is a reasonable v3 follow-on once the staleness marker exists.
 
-**Answer:** ___
+**Answer:** B — flag via hash mismatch (`Described-Against-Hash` in `.meta`; navigator surfaces staleness). Auto-queue deferred to v3.
 
 ---
 
@@ -82,7 +82,7 @@ note: Reconstructed 2026-06-02 from conversation after /tmp/ was cleared. Q1-Q8 
 
 **Recommended:** **A** — Haiku 4.5, batched (N=10), behind a `--describe` flag, with Rule 4 checkpoint/resume (per-file granularity), JSONL log at `logs/smith-index-describe-<timestamp>.jsonl`, and hash-caching so re-runs skip unchanged already-described files. Keeps fast structure-only rebuild as default, makes LLM cost explicit, satisfies Rule 4, matches v1's Haiku choice for `/smith-navigate`.
 
-**Answer:** ___
+**Answer:** A — Haiku 4.5, batched N=10, `--describe` flag (opt-in), Rule 4 per-file checkpoint + JSONL log + `--resume`, hash-cached skip-unchanged on re-runs.
 
 ---
 
@@ -99,4 +99,4 @@ note: Reconstructed 2026-06-02 from conversation after /tmp/ was cleared. Q1-Q8 
 
 **Recommended:** **A** — touched methods only (plus per-module description when file purpose shifts). Matches the "cheap because in-context" rationale, minimizes churn, respects already-reviewed descriptions. Whole-file refresh belongs to `/smith-index --describe` (C2). Option C is a reasonable enhancement if empty/stale files prove common.
 
-**Answer:** ___
+**Answer:** A — touched methods only (plus per-module description when the file's purpose shifts). Whole-file refresh remains the job of `/smith-index --describe`.
