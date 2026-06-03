@@ -483,12 +483,15 @@ maintenance:
 # Resume after a SIGINT mid-run
 /smith-index --resume
 
-# v2: bulk-generate LLM descriptions (opt-in, Haiku 4.5; Rule-4 compliant)
-/smith-index --describe                        # interactive, full project
-/smith-index --describe --system system-04-webhooks   # one system only
-/smith-index --describe --batch-size 30 --threshold 5 # tune approval/LLM batches
-/smith-index --describe --resume               # continue interrupted run
-/smith-index --describe --no-interactive       # auto-approve all batches
+# v3 (PR #23): bulk-generate LLM descriptions via Task sub-agents
+# (subscription-billed; no ANTHROPIC_API_KEY required)
+/smith-index --describe                            # interactive, full project
+/smith-index --describe --yes                      # skip pre-flight confirm gate
+/smith-index --describe --system system-04-webhooks  # one system only
+/smith-index --describe --batch-size 10            # checkpoint batch size
+/smith-index --describe --per-method-threshold 15  # per-method-split cutoff
+/smith-index --describe --resume                   # continue interrupted run
+/smith-index --describe --skip-model-probe         # bypass Haiku-override probe
 
 # v2: retrofit existing system specs with `paths:` frontmatter
 /smith-migrate-system-paths                    # interactive

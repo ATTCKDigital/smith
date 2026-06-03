@@ -283,15 +283,21 @@ not written or edited any source file.
 
 If the workflow DID write or edit any source file (e.g. a one-line
 probe insertion that was committed by accident, or a future evolution
-that allows targeted instrumentation), apply the same touched-method
-`.meta` description update used by `/smith-bugfix` Phase 3.5:
+that allows targeted instrumentation), apply the v3 inline
+Task-spawning prose from `/smith-bugfix` Phase 3.5 step 3:
 
-```bash
-python3 ~/.smith/scripts/meta_describe.py update-touched \
-  --rel-path <project-relative-path> \
-  --touched-ids <comma-separated-16hex-ids> \
-  --purpose-shifted <true|false>
-```
+1. `python3 ~/.smith/scripts/describe_discover.py --rel-path <p>
+   --touched-only --touched-ids <ids>`
+2. `python3 ~/.smith/scripts/describe_write.py build-prompt
+   --rel-path <p> --method-ids <ids> [--module --purpose-shifted true]`
+3. Spawn ONE Task: `subagent_type=general, model=claude-haiku-4-5`,
+   prompt = output of step 2.
+4. Pipe the Task's JSON output into `python3 ~/.smith/scripts/
+   describe_write.py apply --update-touched --rel-path <p>
+   --purpose-shifted <true|false>`.
+
+Subscription billing via session auth (v3 / PR #23 inverted the
+orchestration; the v2 `ANTHROPIC_API_KEY` shell-out path is removed).
 
 See `/smith-bugfix` Phase 3.5 for full identification, the
 `purpose_shifted` heuristic, and failure handling. The save hook

@@ -1,7 +1,7 @@
 ---
 name: smith-index
-description: Build and maintain the project manifest under .smith/index/. Full rebuild scans every source file, runs language parsers, and writes per-file .meta, per-system manifests, and a top-level summary. Supports --check (hash-only staleness), --system (partial rebuild), --incremental (git-diff scope), --migrate-templates (constitution.md / CLAUDE.md), --init-system-paths, and --resume.
-argument-hint: [--check | --system <name> | --incremental | --migrate-templates | --init-system-paths | --resume] [--from <ref> --to <ref>] [--root <path>] [--system-paths <path>]
+description: Build and maintain the project manifest under .smith/index/. Full rebuild scans every source file, runs language parsers, and writes per-file .meta, per-system manifests, and a top-level summary. Supports --check (hash-only staleness), --system (partial rebuild), --incremental (git-diff scope), --describe (per-file LLM descriptions via Task sub-agents — subscription billing), --migrate-templates (constitution.md / CLAUDE.md), --init-system-paths, and --resume.
+argument-hint: [--check | --system <name> | --incremental | --describe | --migrate-templates | --init-system-paths | --resume] [--from <ref> --to <ref>] [--batch-size <n>] [--per-method-threshold <n>] [--yes] [--skip-model-probe] [--root <path>] [--system-paths <path>]
 ---
 
 # Smith Index
@@ -86,6 +86,196 @@ Partial rebuild restricted to files mapped to one system. Useful after
 adding a single feature: refreshes that system's `.meta` files and
 `systems/<name>.md` without re-walking the entire tree. Top-level
 `manifest.md` Stats section is also updated.
+
+### `/smith-index --describe`
+
+Generate per-file LLM descriptions in the `.meta` description layer.
+Unlike all other modes, `--describe` is orchestrated BY this skill
+prose itself — not by `run.py`. The skill drives a discovery →
+batched-spawn → write loop, spawning one Task sub-agent per file (or
+per method on dense files) that returns a MetaDescription JSON. Each
+spawned Task inherits the session's Claude Code auth → **subscription
+billing**, not API-key billing.
+
+**Single backend.** v3 (PR #23) removed the v2 direct-HTTPS path. The
+2am scheduler invokes `claude --print -p "/smith-queue process ..."`
+which IS a Claude Code session — Task spawning works there too. No
+`--llm-backend` flag, no `CLAUDE_HEADLESS` env var.
+
+#### Step 0 — Runtime model probe
+
+Before any bulk work, spawn ONE small Task with:
+
+```yaml
+subagent_type: general
+model: claude-haiku-4-5
+prompt: "Respond with exactly: MODEL_OK"
+```
+
+If the response doesn't arrive cleanly OR the trimmed response text
+is not exactly `MODEL_OK` (heuristic: a Haiku model honoring the
+override responds crisply; an Opus/Sonnet primary will be more
+verbose), abort with:
+
+> ERROR: Could not verify Haiku model override. Running the bulk
+> loop on the session's primary model would inflate subscription
+> cost ~30×. Verify your Task tool subagent type supports the model
+> parameter. Pass `--skip-model-probe` to override at your own risk.
+
+`--skip-model-probe` bypasses this check.
+
+#### Step 1 — Discovery
+
+```bash
+python3 ~/.smith/scripts/describe_discover.py \
+  --root "$ROOT" \
+  ${SYSTEM:+--system "$SYSTEM"} \
+  --threshold "${THRESHOLD:-5}"
+```
+
+(Use the repo-relative path `scripts/parsers/describe_discover.py`
+if `~/.smith/scripts/` does not resolve.)
+
+Parse the JSON output. Each entry has `rel_path`, `source_hash`,
+`parser_output`, `qualifying_method_ids`, `existing_description`,
+`cache_hit`, `system`. Drop entries with `cache_hit=true` — these
+are no-ops (their `.meta` already matches the current source hash).
+
+#### Step 2 — Resume filter
+
+If `--resume` was passed:
+
+```bash
+python3 ~/.smith/scripts/describe_checkpoint.py load-completed \
+  --log-dir ~/.smith/logs \
+  --state .smith/index/.smith-index-describe-checkpoint.json
+```
+
+Filter the remaining files to exclude completed `rel_path` values.
+
+#### Step 3 — Pre-flight estimate + confirmation gate
+
+After filtering, count files needing description (N) and sum their
+`qualifying_method_ids` counts (M). Identify files where
+`len(qualifying_method_ids) > 15` (the per-method-split threshold);
+each such file contributes that many Tasks instead of 1. Let T be the
+total Task count.
+
+Print to stderr:
+
+```
+/smith-index --describe pre-flight summary
+─────────────────────────────────────────────
+  Files needing description: N
+  Qualifying methods total: M
+  Per-method-split threshold: 15 (configurable via --per-method-threshold)
+  Per-method-split files: K
+  Estimated Tasks to spawn: T
+  Estimated wall time: ~W minutes (5s/Task sequential)
+```
+
+Then ask: `Proceed? (y/N):`. Read one line from stdin. Accept
+`y`/`yes` (case-insensitive). `--yes` bypasses the gate (required for
+the scheduler).
+
+#### Step 4 — Sequential Task spawning loop
+
+Batch the remaining files in groups of 10 (default; override with
+`--batch-size`). For each batch, process files **sequentially**
+(one at a time — no parallel tool-use block — simpler per-Task error
+handling, visible progress logging).
+
+For each file in the batch:
+
+1. **Per-method-split decision.** If
+   `len(qualifying_method_ids) > 15` (default; override with
+   `--per-method-threshold`), spawn one Task PER METHOD. Otherwise
+   one Task for the whole file.
+
+2. **Build the prompt body.** Assemble via the helper (single source
+   of truth for prompt template):
+   ```bash
+   PROMPT=$(python3 ~/.smith/scripts/describe_write.py build-prompt \
+     --rel-path "$REL" --root "$ROOT" \
+     --method-ids "<comma-separated-ids>" --module)
+   ```
+
+3. **Spawn the Task.**
+   ```yaml
+   subagent_type: general
+   model: claude-haiku-4-5
+   prompt: |
+     <PROMPT body from step 2>
+   ```
+
+4. **Retry on failure (exponential backoff).** If the Task call
+   fails or returns malformed JSON or `status="error"`, retry with
+   backoff 5s → 10s → 20s. Max 3 attempts. After 3, log a `failed`
+   JSONL record and move to the next file. Do NOT abort the run.
+
+5. **STUB MODE.** If `SMITH_TASK_STUB=1` is set in the env, skip
+   the Task spawn entirely. Pipe the canned fixture into the writer:
+   ```bash
+   python3 ~/.smith/scripts/describe_write.py apply --from-stub \
+     tests/fixtures/task-stub-responses.json \
+     --rel-path "$REL" --root "$ROOT" --hash "$HASH"
+   ```
+   The stub fails loud (exit 4) if any qualifying method id is not
+   in the fixture. Tests set `SMITH_TASK_STUB=1`; users never do.
+
+6. **Apply the result.** Pipe the Task's JSON output into the writer:
+   ```bash
+   echo "$TASK_OUTPUT" | \
+     python3 ~/.smith/scripts/describe_write.py apply \
+       --rel-path "$REL" --root "$ROOT" --hash "$HASH"
+   ```
+
+7. **Append a checkpoint record.** One JSONL line per file:
+   ```bash
+   python3 ~/.smith/scripts/describe_checkpoint.py append \
+     --log "$LOG_PATH" \
+     --record "$(printf '{"item_id":"%s","stage":"describe",
+                          "status":"ok","backend":"task",
+                          "method_count":%d,"module_chars":%d,
+                          "batch_index":%d,"retry_count":%d}' \
+                "$REL" "$N" "$M" "$BATCH_IDX" "$RETRIES")"
+   ```
+
+   Then persist checkpoint state:
+   ```bash
+   python3 ~/.smith/scripts/describe_checkpoint.py save \
+     --path .smith/index/.smith-index-describe-checkpoint.json \
+     --processed "$REL"
+   ```
+
+#### Step 5 — Summary
+
+After all batches complete (or on abort):
+
+```bash
+python3 ~/.smith/scripts/describe_checkpoint.py summary \
+  --log "$LOG_PATH" --start-iso "$START_ISO"
+```
+
+Format: `/smith-index --describe: N files described
+(succeeded=S failed=F skipped=K) in T.Ts`.
+
+On clean completion, remove the checkpoint state file. On Ctrl-C or
+fatal error, leave it in place so `--resume` works.
+
+#### Failure handling
+
+- **Per-Task failure.** Exponential backoff retry (5s → 10s → 20s,
+  max 3). After 3, log `failed`, continue. No run-level abort.
+- **Helper script failure (non-zero exit).** Surface stderr; record
+  a `failed` JSONL entry; continue.
+- **Model probe failure.** Hard abort before any bulk work, with the
+  clear-error message above. `--skip-model-probe` overrides.
+- **Missing helper at install location.** If
+  `~/.smith/scripts/describe_discover.py` is not found, fall through
+  to the repo-relative path `scripts/parsers/describe_discover.py`.
+  If neither resolves, exit 78 (`EX_CONFIG`) with: "Smith helpers not
+  installed. Run `npx skills add ATTCKDigital/smith` to install."
 
 ### `/smith-index --migrate-templates`
 
@@ -197,6 +387,10 @@ Requirement 5). On a fresh project this:
 /smith-index --system system-backend  # rebuild one system
 /smith-index --incremental            # re-parse `git diff ORIG_HEAD..HEAD`
 /smith-index --incremental --from HEAD~1 --to HEAD
+/smith-index --describe               # generate LLM descriptions (Task-spawned)
+/smith-index --describe --yes         # skip the pre-flight confirm gate
+/smith-index --describe --system foo  # describe one system only
+/smith-index --describe --resume      # resume an interrupted describe run
 /smith-index --migrate-templates      # patch constitution.md / CLAUDE.md
 /smith-index --init-system-paths      # write stub system-paths.json
 /smith-index --resume                 # continue interrupted run
@@ -215,9 +409,18 @@ Requirement 5). On a fresh project this:
 
 ## Implementation reference
 
-- Entry: `scripts/smith-index/run.sh` → `scripts/smith-index/run.py`
+- Entry (all modes except `--describe`): `scripts/smith-index/run.sh` →
+  `scripts/smith-index/run.py`
+- Entry (`--describe` only): this skill's prose drives the loop directly,
+  using the helpers below.
 - Parsers: `scripts/parsers/parse-python.py`, `scripts/parsers/parse-js.js`
 - Path resolver: `scripts/parsers/path-resolver.py`
 - Parser-lib helper: `scripts/parsers/parser-lib.sh`
+- v3 description helpers:
+  `scripts/parsers/describe_discover.py`,
+  `scripts/parsers/describe_write.py`,
+  `scripts/parsers/describe_checkpoint.py`,
+  `scripts/parsers/index_common.py` (shared utilities),
+  `scripts/parsers/meta_describe.py` (structural; LLM-call-free).
 - Templates: `templates/constitution-additions.md`,
   `templates/claude-md-additions.md`

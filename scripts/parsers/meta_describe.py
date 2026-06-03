@@ -8,8 +8,7 @@ code path. The bulk and incremental description loops now live in
 skill prose (skills/smith-index/SKILL.md and the three workflow
 SKILL.md files), spawning Task sub-agents that inherit Claude Code
 session auth → subscription billing. This module is purely structural
-— it has no `urllib` import, no `ANTHROPIC_API_KEY` read, and no CLI
-entrypoint.
+— no HTTP client, no API key reads, no CLI entrypoint.
 
 Public API (consumed by run.py, describe_discover.py, describe_write.py,
 and hooks/manifest-updater-lib.py):
