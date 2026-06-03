@@ -75,16 +75,17 @@ When triggered by natural language, synthesize the conversation history into a c
 
 ## Phase 1: Worktree Setup
 
-Every bugfix always runs in an isolated git worktree branched from `origin/main`. The user's current working directory and branch are NEVER touched, and concurrent Smith sessions cannot collide on the shared working tree. There is no "switch to main / stash / cancel" branching logic — the worktree is mandatory.
+Every bugfix always runs in an isolated git worktree branched from the configured base branch (`origin/$BASE_BRANCH`, defaulting to `origin/main`). The user's current working directory and branch are NEVER touched, and concurrent Smith sessions cannot collide on the shared working tree. There is no "switch to base / stash / cancel" branching logic — the worktree is mandatory.
 
 0. **Generate fix slug** (2-4 words) from the fix description. Store as `$SLUG`. Derive:
    - `BRANCH=fix/$SLUG`
    - `WORKTREE_PATH=/tmp/smith-bugfix-$SLUG`
    - `PRIMARY_REPO=<current working directory — capture before entering the worktree>`
 
-1. **Fetch latest main** (does NOT change the user's current branch):
+1. **Resolve the configured base branch, then fetch it** (does NOT change the user's current branch). Smith reads the project's integration branch from the constitution; it falls back to `main` when unconfigured:
    ```bash
-   git fetch origin main
+   BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+   git fetch origin "$BASE_BRANCH"
    ```
 
 2. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/` in the **primary repo** (not the worktree, which doesn't exist yet):
@@ -101,9 +102,9 @@ Every bugfix always runs in an isolated git worktree branched from `origin/main`
    ```
    If a yaml file with the same `SAFE_BRANCH` already exists, another session is already using that branch — pick a new slug (e.g., append `-2`) and retry. The file is cleared by the Workflow Cleanup step at the end.
 
-3. **Create the worktree with the fix branch from `origin/main`**:
+3. **Create the worktree with the fix branch from the configured base branch (`origin/$BASE_BRANCH`)**:
    ```bash
-   git worktree add "$WORKTREE_PATH" -b "$BRANCH" origin/main
+   git worktree add "$WORKTREE_PATH" -b "$BRANCH" "origin/$BASE_BRANCH"
    ```
    The user's current branch is completely unaffected. They can be on `main`, a feature branch, or a detached HEAD — this workflow will not interfere.
 
@@ -294,7 +295,8 @@ git push -u origin fix/<slug>
 
 ### 7.3 Create PR & Merge
 ```bash
-gh pr create --title "fix: <short title>" --body "$(cat <<'EOF'
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+gh pr create --base "$BASE_BRANCH" --title "fix: <short title>" --body "$(cat <<'EOF'
 ## Summary
 <1-3 bullet points describing the fix>
 
@@ -317,15 +319,15 @@ EOF
 Then merge **from the primary repo directory** (never from the worktree — `gh pr merge` fails with "main already checked out" otherwise):
 ```bash
 cd "$PRIMARY_REPO" && gh pr merge <pr-number> --squash --delete-branch
-cd "$PRIMARY_REPO" && git pull origin main
+cd "$PRIMARY_REPO" && git pull origin "$(.specify/scripts/bash/get-base-branch.sh)"
 ```
 
-### 7.4 Update primary repo's main
-Already covered by `git pull` above. The user's working branch in the primary repo is untouched — only the main branch ref moves forward. If the user was on main, they now see the merged changes; if they were on another branch, main is updated but their checkout is not.
+### 7.4 Update primary repo's base branch
+Already covered by `git pull` above. The user's working branch in the primary repo is untouched — only the base branch ref moves forward. If the user was on the base branch, they now see the merged changes; if they were on another branch, the base branch is updated but their checkout is not.
 
 ## Phase 8: Post-Merge Rebuild & Summary
 
-### 8.1 Rebuild affected services (on main, from the primary repo)
+### 8.1 Rebuild affected services (on the base branch, from the primary repo)
 ```bash
 cd "$PRIMARY_REPO" && docker compose up -d --build <service-name>
 cd "$PRIMARY_REPO" && bash scripts/health-check.sh

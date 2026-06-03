@@ -277,9 +277,9 @@ These steps apply whether processing a single task or batch. **The queue entry i
    ```
    Do NOT checkout the branch in the main working directory — the worktree is an isolated copy.
 7. **Run `/smith-build`** within the worktree directory, using `spec_path` from the queue entry frontmatter to locate spec artifacts. This handles task generation, implementation, and initial testing.
-8. **Rebuild affected Docker services.** Identify which services were modified:
+8. **Rebuild affected Docker services.** Identify which services were modified (diff against the configured base branch):
    ```bash
-   git diff main --name-only | grep '^services/' | cut -d'/' -f2 | sort -u
+   git diff "$(.specify/scripts/bash/get-base-branch.sh)" --name-only | grep '^services/' | cut -d'/' -f2 | sort -u
    ```
    For each affected service: `docker compose up -d --build <service-name>`. Wait for healthy status. **If Docker build fails:** mark `failed`, STOP.
 9. **Run final tests** to verify the build is healthy:
@@ -288,14 +288,14 @@ These steps apply whether processing a single task or batch. **The queue entry i
    - Playwright tests for changed components if applicable
    **If tests fail:** mark `failed`, STOP.
 10. **Push the branch** if not already pushed: `git push -u origin <branch>`
-11. **Create PR** via `gh pr create`. **If fails:** mark `failed`, STOP.
+11. **Create PR** via `gh pr create --base "$(.specify/scripts/bash/get-base-branch.sh)"` (the actual PR creation is performed by `/smith-build`, which already targets the configured base branch; if creating it here directly, pass `--base` explicitly). **If fails:** mark `failed`, STOP.
 12. **Merge PR** via `gh pr merge <number> --squash --delete-branch`. **If fails (conflicts, checks):** mark `failed`, leave PR open, STOP.
-13. **Return to main:** `git checkout main && git pull origin main`
+13. **Return to the base branch:** `BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh); git checkout "$BASE_BRANCH" && git pull origin "$BASE_BRANCH"`
 14. **Update system specs, CHANGELOG.md, STATUS.md:**
     - Read `primary_system` and `also_affects` from queue entry
     - Update `.specify/systems/<system>/spec.md` with dated implementation history
     - Update CHANGELOG.md and STATUS.md
-    - Commit and push spec updates to main
+    - Commit and push spec updates to the base branch
 15. **Mark completed and archive:**
     - Update frontmatter: `status: completed`
     - Append: `- [YYYY-MM-DD HH:MM] Completed — PR #<number> merged, specs updated`
