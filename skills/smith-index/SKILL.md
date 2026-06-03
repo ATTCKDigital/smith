@@ -60,7 +60,14 @@ parses `$ARGUMENTS`, decides the mode, and shells out.
    every 25 files; delete on clean exit.
 7. Append one JSONL log line per stage per file to
    `~/.smith/logs/smith-index-<ISO8601>.jsonl` per Rule 4.
-8. Print a summary line:
+8. **Write the schema-version marker** at `.smith/index/.schema-version`
+   containing the current schema version (read from
+   `~/.claude/skills/smith/scripts/parsers/meta_schema_version.txt`,
+   falls back to the in-repo equivalent if not installed). This file lets
+   `/smith-update` detect projects whose manifest was generated against an
+   older `.meta` schema and offer to regenerate. The marker is overwritten
+   on every full rebuild — never deleted by `/smith-index` itself.
+9. Print a summary line:
    `/smith-index: N files indexed (N succeeded, N failed, N skipped) in T.Ts`.
 
 **Performance budget:** <60s p95 for a 100-file project (acceptance

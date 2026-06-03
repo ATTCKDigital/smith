@@ -212,6 +212,10 @@ info "Merging hook entries into $CLAUDE_SETTINGS"
 FRAGMENT="$REPO_ROOT/settings/smith-settings-fragment.json"
 TMP_SETTINGS="$(mktemp)"
 jq -s '
+  # True-idempotent hook merge (added per /smith-update Q1-D):
+  # - Concatenate existing + fragment entries per event type
+  # - Deduplicate by (matcher + hooks-array equality) — re-running the installer
+  #   no longer adds duplicate hook entries.
   .[0] as $existing | .[1] as $fragment |
   $existing * $fragment |
   .hooks = (
@@ -219,11 +223,14 @@ jq -s '
     ($fragment.hooks // {}) as $fh |
     ($eh | to_entries) as $ehe |
     ($fh | to_entries) as $fhe |
-    (($ehe + $fhe) | group_by(.key) | map({key: .[0].key, value: (map(.value) | add)}) | from_entries)
+    (($ehe + $fhe)
+      | group_by(.key)
+      | map({key: .[0].key, value: (map(.value) | add | unique_by(.matcher + "|" + (.hooks | tostring)))})
+      | from_entries)
   )
 ' "$CLAUDE_SETTINGS" "$FRAGMENT" > "$TMP_SETTINGS"
 mv "$TMP_SETTINGS" "$CLAUDE_SETTINGS"
-ok "Settings merged"
+ok "Settings merged (idempotent: existing duplicates collapsed)"
 
 # ---------- install manifest-system hooks (auto-register per Q4) ----------
 if [ "$NO_HOOKS" != "1" ]; then
@@ -254,6 +261,14 @@ if [ "$IS_MACOS" = "1" ] && [ "${SMITH_SKIP_SCHEDULER:-0}" != "1" ]; then
         echo "    $REPO_ROOT/scripts/install.sh -y"
     fi
 fi
+
+# ---------- record installed version ----------
+# Written for /smith-update to read on next invocation. Single-line SHA;
+# falls back to "unknown" if we can't resolve a commit (e.g., running from
+# a tarball download, not a git clone).
+INSTALLED_SHA=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")
+echo "$INSTALLED_SHA" > "$SMITH_HOME/.installed-version"
+ok "Recorded installed version: ${INSTALLED_SHA:0:7}"
 
 # ---------- done ----------
 echo
