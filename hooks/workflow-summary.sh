@@ -18,6 +18,11 @@
 #   Skills invoke this to include totals inline in their final chat message
 #   BEFORE Stop fires (Stop-hook stdout doesn't reach the preceding chat bubble).
 #
+#   Optional flag: --session <path> — read totals from <path> instead of the
+#   resolved default. Takes precedence over every other source. Skills capture
+#   their workflow's session-log path at start and pass it here so totals are
+#   computed against the correct file even after a mid-workflow log rollover.
+#
 # Computations are implemented in hooks/workflow_summary_lib.py. This script is
 # a thin wrapper that enforces gates, sets env vars, and hands off to Python.
 #
@@ -36,9 +41,33 @@
 set -euo pipefail
 
 TOTALS_ONLY=0
-if [ "${1:-}" = "--totals-only" ]; then
-    TOTALS_ONLY=1
-else
+EXPLICIT_SESSION=""
+# Argument parsing. Supported forms:
+#   workflow-summary.sh                      (Stop-hook mode)
+#   workflow-summary.sh --totals-only        (chat-block mode)
+#   workflow-summary.sh --totals-only --session <path>
+#   workflow-summary.sh --session <path> --totals-only
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --totals-only)
+            TOTALS_ONLY=1
+            shift
+            ;;
+        --session)
+            EXPLICIT_SESSION="${2:-}"
+            shift 2 2>/dev/null || shift
+            ;;
+        --session=*)
+            EXPLICIT_SESSION="${1#--session=}"
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+if [ "$TOTALS_ONLY" = "0" ]; then
     # Stop-hook path: consume stdin (Claude Code pipes JSON). In --totals-only
     # mode we skip this so manual callers don't have to redirect /dev/null.
     INPUT=$(cat)
@@ -46,14 +75,85 @@ fi
 
 VAULT_DIR="${CLAUDE_PROJECT_DIR:-.}/.smith/vault"
 CURRENT_SESSION_PTR="$VAULT_DIR/.current-session"
-
-# Silent exit if vault not initialized
-[ -f "$CURRENT_SESSION_PTR" ] || exit 0
-
-SESSION_FILE=$(cat "$CURRENT_SESSION_PTR")
-[ -f "$SESSION_FILE" ] || exit 0
-
 PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
+# ---------------------------------------------------------------------------
+# resolve_session_file — choose which session log to read for totals.
+#
+# Precedence (highest first), so that totals survive a mid-workflow session
+# rollover that repoints .current-session at a fresh, markerless file:
+#   (a) --session <path>  — explicit CLI override; always wins if it exists.
+#   (b) the `session_log:` field of an active-workflow marker:
+#         .smith/vault/active-workflows/*.yaml
+#       When exactly one marker carries a session_log, use it. When several do,
+#       prefer the one whose `branch:` matches the current git branch; if none
+#       match, fall through to (c).
+#   (c) .smith/vault/.current-session — the historical default (fully
+#       backwards-compatible fallback).
+# Prints the resolved path to stdout, or nothing if none resolve.
+# ---------------------------------------------------------------------------
+resolve_session_file() {
+    # (a) explicit override
+    if [ -n "$EXPLICIT_SESSION" ]; then
+        if [ -f "$EXPLICIT_SESSION" ]; then
+            printf '%s' "$EXPLICIT_SESSION"
+            return 0
+        fi
+        # An explicit path that doesn't exist still wins (caller intent); the
+        # Python layer will report it as not-found rather than silently using
+        # the wrong file.
+        printf '%s' "$EXPLICIT_SESSION"
+        return 0
+    fi
+
+    # (b) active-workflow marker(s) carrying session_log:
+    local wf_dir="$VAULT_DIR/active-workflows"
+    if [ -d "$wf_dir" ]; then
+        local cur_branch
+        cur_branch=$(cd "$PROJECT_ROOT" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        local only_log="" only_count=0 branch_log=""
+        local marker log mbranch
+        for marker in "$wf_dir"/*.yaml; do
+            [ -f "$marker" ] || continue
+            log=$(awk -F': *' '/^[[:space:]]*session_log:/ {sub(/^[^:]*:[[:space:]]*/, ""); gsub(/^"|"$/, ""); print; exit}' "$marker")
+            [ -n "$log" ] || continue
+            only_count=$((only_count + 1))
+            only_log="$log"
+            mbranch=$(awk -F': *' '/^[[:space:]]*branch:/ {sub(/^[^:]*:[[:space:]]*/, ""); gsub(/^"|"$/, ""); print; exit}' "$marker")
+            if [ -n "$cur_branch" ] && [ "$mbranch" = "$cur_branch" ]; then
+                branch_log="$log"
+            fi
+        done
+        if [ "$only_count" -eq 1 ] && [ -n "$only_log" ]; then
+            printf '%s' "$only_log"
+            return 0
+        fi
+        if [ "$only_count" -gt 1 ] && [ -n "$branch_log" ]; then
+            printf '%s' "$branch_log"
+            return 0
+        fi
+        # multiple markers but none match current branch → fall through to (c)
+    fi
+
+    # (c) backwards-compatible fallback
+    if [ -f "$CURRENT_SESSION_PTR" ]; then
+        cat "$CURRENT_SESSION_PTR"
+        return 0
+    fi
+    return 1
+}
+
+SESSION_FILE=$(resolve_session_file)
+
+# Silent exit if nothing resolved (vault not initialized and no override).
+[ -n "$SESSION_FILE" ] || exit 0
+
+# In Stop-hook mode the file must exist (we read gates from it and append to
+# it). In --totals-only mode we let a missing file fall through to Python so it
+# can emit the loud not-found diagnostic rather than silently exiting.
+if [ "$TOTALS_ONLY" = "0" ] && [ ! -f "$SESSION_FILE" ]; then
+    exit 0
+fi
 
 if [ "$TOTALS_ONLY" = "0" ]; then
     # Guard: already emitted?
