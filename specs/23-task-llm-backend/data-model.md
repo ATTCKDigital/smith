@@ -2,6 +2,7 @@
 feature: 23-task-llm-backend
 artifact: data-model.md
 created: 2026-06-03
+revised: 2026-06-03 (Q6 simplification — single backend, no headless)
 ---
 
 # Data Model — Task-based LLM Backend
@@ -11,6 +12,11 @@ v3 components. The on-disk `.meta` description layer format is
 **unchanged from PR #21** (see
 `scripts/parsers/contracts/meta-description-layer.schema.json` for
 that contract).
+
+**v3 has a single backend — Task spawning. No `api` / `headless`
+backend exists in v3.** All references to a `backend` discriminator
+below have exactly two valid values: `task` (live runs) and `stub`
+(test runs).
 
 ## §1 — discover → orchestrator (one file walk)
 
@@ -52,7 +58,10 @@ that contract).
   output INCLUDES the full parser output so the writer can reuse it
   for splice rendering without re-parsing.
 - `qualifying_method_ids` — the subset of method ids passing the
-  threshold check (`_qualifying_methods` at `meta_describe.py:220`).
+  threshold check (`qualifying_methods`, formerly
+  `_qualifying_methods` at `meta_describe.py:220`). The orchestrator
+  uses `len(qualifying_method_ids)` to decide per-file vs per-method
+  Task split (Q3 — default split threshold 15).
 - `existing_description` — populated when a `.meta` description layer
   already exists for this file. Used by the orchestrator for two
   purposes: (a) cache_hit calculation, (b) module-description
@@ -131,6 +140,16 @@ Soft caps: module ≤120 chars, method ≤200 chars. Concise,
 informational, no marketing voice.
 ```
 
+### Per-method-split prompt variant
+
+When the orchestrator splits a file into per-method Tasks (qualifying
+method count > 15), each Task receives a prompt with `method_ids`
+filtered to ONE id. The module-description ask is dropped from
+per-method Tasks; the module description for that file is generated
+by a single additional Task (file-level, methods omitted) at the end
+of the per-file group OR carried forward from `existing_description`
+if `purpose_shifted=false`.
+
 ### Expected Task output
 
 The Task returns a single text payload that, when stripped of code
@@ -169,11 +188,14 @@ unparseable source), it returns:
 ```
 
 The orchestrator records this as a `failed` JSONL entry; the `.meta`
-is not touched.
+is not touched. The orchestrator then retries with exponential
+backoff (Q1) up to 3 attempts; after 3, the failure is final for that
+run (a future `--describe` invocation will retry without `--resume`
+because the file is not in the completed set).
 
 ## §3 — Orchestrator → `describe_write.py`
 
-### Bulk mode
+### Bulk mode (apply)
 
 Stdin (or `--input <path>`):
 
@@ -193,7 +215,7 @@ or just the description fields) for robustness.
 
 CLI:
 ```
-python3 describe_write.py
+python3 describe_write.py apply
   --rel-path <p>
   --root <project-root>
   --hash <source-hash>
@@ -215,7 +237,7 @@ Stdin:
 
 CLI:
 ```
-python3 describe_write.py update-touched
+python3 describe_write.py apply --update-touched
   --rel-path <p>
   --root <project-root>
   --purpose-shifted true|false
@@ -236,19 +258,45 @@ Semantics:
 - Recompute `Described-Against-Hash` to the current source hash and
   `Described-At` to now (ISO 8601 UTC).
 
+### Prompt-assembly mode (build-prompt)
+
+CLI:
+```
+python3 describe_write.py build-prompt
+  --rel-path <p>
+  --root <project-root>
+  [--method-ids <id1,id2,...>]
+  [--module]
+  [--purpose-shifted true|false]
+```
+
+Behavior: assembles the prompt-template body (§2) by calling the
+public `summarize_for_module_prompt` + `build_method_prompt` from
+`meta_describe`. Writes the assembled prompt to stdout. The
+orchestrator embeds the result in a Task call.
+
 ### From-stub mode (test only)
 
 CLI:
 ```
-python3 describe_write.py --from-stub <fixture-path>
+python3 describe_write.py apply --from-stub <fixture-path>
   --rel-path <p>
   --root <project-root>
   --hash <source-hash>
 ```
 
 Behavior: read the entry for `rel_path` from the fixture, then run
-the same write path as bulk mode. Exit 4 if the fixture has no entry
-for `rel_path`.
+the same write path as bulk mode. **Fail-loud** semantics:
+
+- Missing `rel_path` key in fixture → exit 4 with message
+  `"stub fixture missing entry for rel_path: <p>"`.
+- Missing required `method_id` in the fixture's `method_descriptions`
+  (where "required" = the orchestrator's `qualifying_method_ids` set
+  for this file) → exit 4 with message
+  `"stub fixture missing method_id <hex> for rel_path: <p>. Update tests/fixtures/task-stub-responses.json or regenerate the fixture."`
+
+(Q5 answer A: brittleness is the feature — surfaces parser/fixture
+drift.)
 
 ## §4 — JSONL log line format
 
@@ -265,7 +313,8 @@ One line per processed file, written via
   "method_count": 7,
   "module_chars": 118,
   "batch_index": 12,
-  "backend": "task" | "api" | "stub"
+  "retry_count": 0,
+  "backend": "task" | "stub"
 }
 ```
 
@@ -279,15 +328,20 @@ One line per processed file, written via
   (v2 wrote both fields).
 - `error` — error reason for `failed`/`skipped` entries; null for
   `ok`. Examples: `"resume"`, `"operator-reject"`,
-  `"task-tool-timeout"`, `"json-parse-error"`, `"cache-hit"`.
+  `"task-tool-timeout"`, `"json-parse-error"`, `"cache-hit"`,
+  `"task-tool-rate-limit"`.
 - `method_count` — number of method descriptions written (0 for
   skipped/failed).
 - `module_chars` — length of module description written (0 for
   skipped/failed).
 - `batch_index` — 1-based batch counter. Useful for retry
   granularity.
+- `retry_count` — **v3 addition.** Number of exponential-backoff
+  retries attempted for this file. 0 for first-try success. Helps
+  operators identify flaky files for follow-up.
 - `backend` — **v3 addition.** Identifies which path produced this
-  record. v2 readers ignore unknown keys (forward-compatible).
+  record. Valid values: `task` (live), `stub` (test). v2 readers
+  ignore unknown keys (forward-compatible).
 
 ## §5 — Checkpoint state file
 
@@ -295,7 +349,7 @@ Path: `.smith/index/.smith-index-describe-checkpoint.json`
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "started_at": "2026-06-03T14:00:00Z",
   "last_batch_index": 12,
   "backend": "task",
@@ -309,14 +363,15 @@ Path: `.smith/index/.smith-index-describe-checkpoint.json`
 
 ### Field semantics
 
-- `version` — `2` for v3 (v2 used `1`). v3 reader accepts both.
+- `version` — `3` for v3 (v2 used `1`, original v3 draft used `2`).
+  v3 reader accepts `1`, `2`, and `3` for backward compat.
 - `started_at` — ISO 8601 UTC of the run start. Used for log file
   correlation.
 - `last_batch_index` — last batch that completed any work. Used to
   resume mid-batch (the orchestrator re-emits the batch starting
   from the first un-processed file in it).
-- `backend` — v3 addition. Helps the operator confirm the right
-  backend was used on a resume.
+- `backend` — v3 addition. Valid values: `task`, `stub`. Helps the
+  operator confirm the right backend was used on a resume.
 - `processed_files` — append-only list of completed rel_paths.
   `--resume` unions this with the JSONL log's `ok` records.
 
@@ -357,49 +412,83 @@ Path: `tests/fixtures/task-stub-responses.json`
 
 ### Semantics
 
-- Keyed by `rel_path` (POSIX, no leading `./`).
+- Top-level keyed by `rel_path` (POSIX, no leading `./`).
 - Each value is a MetaDescription payload (no envelope) matching the
   Bulk-mode writer input shape (§3).
-- Missing key → `describe_write.py --from-stub` exits 4 with a
-  message naming the missing `rel_path`.
+- Inside each value, `method_descriptions[*].method_id` provides the
+  per-method lookup keys.
+- **Fail-loud at two levels (Q5):**
+  - Missing `rel_path` key → exit 4 with descriptive error.
+  - Missing required `method_id` in the keyed entry's
+    `method_descriptions` array → exit 4 with descriptive error
+    naming both the rel_path AND the missing method_id.
+- Test maintainers regenerate the fixture by running `/smith-index
+  --describe` on the fixture project with the live backend and
+  capturing the output.
 
-## §7 — Headless detection convention
+## §7 — Pre-flight estimate output
 
-### Env var
-
-`CLAUDE_HEADLESS=1` signals "no Claude Code session available; use
-direct HTTPS". Any other value (or absence) means interactive.
-
-### CLI flag
-
-`--llm-backend api` is an explicit override that forces the headless
-path even in an interactive session. Useful for:
-
-- Testing the headless path locally.
-- Debugging differences between the two backends.
-- Users who explicitly want API-key billing for a particular run.
-
-Implicit default (no env var, no flag): `--llm-backend cli`.
-
-### Precedence
-
-1. `--llm-backend api` (explicit override) → api
-2. `CLAUDE_HEADLESS=1` in env → api
-3. Otherwise → cli
-
-The skill prose checks (1) first, then (2). The string returned by
-the precedence resolver is logged at the start of the run for
-operator clarity:
+Before the bulk loop starts, the skill prose prints (Q4):
 
 ```
-/smith-index --describe: backend=cli (default)
-```
-or
-```
-/smith-index --describe: backend=api (CLAUDE_HEADLESS=1)
+/smith-index --describe pre-flight summary
+─────────────────────────────────────────────
+  Files needing description: N
+  Qualifying methods total: M
+  Per-method-split threshold: 15 (configurable via --per-method-threshold)
+  Per-method-split files: K (qualifying > 15)
+  Estimated Tasks to spawn: T
+  Estimated wall time: ~W minutes (5s/Task sequential)
+
+Proceed? (y/N):
 ```
 
-## §8 — Field-by-field comparison vs PR #21
+`--yes` bypasses the gate. The scheduler invocation MUST pass `--yes`.
+
+This is a text payload printed to stderr (so the summary doesn't
+pollute any stdout-captured output). Not a parseable structure;
+intended for human consumption.
+
+## §8 — Model probe payload (Q7)
+
+Before the bulk loop, one Task is spawned with:
+
+```yaml
+subagent_type: general
+model: claude-haiku-4-5
+prompt: "Respond with exactly: MODEL_OK"
+```
+
+### Expected response shape
+
+A Haiku model honoring the override will respond:
+
+```
+MODEL_OK
+```
+
+(Possibly with trailing whitespace or a period — the orchestrator
+accepts any response whose trimmed text equals `MODEL_OK`.)
+
+### Failure heuristic
+
+If the response is:
+- empty
+- contains substantive content beyond `MODEL_OK` (e.g. a multi-line
+  explanation, a refusal, a re-formatted answer)
+- formatted differently (e.g. wrapped in JSON, Markdown)
+
+the orchestrator interprets this as "the model override was NOT
+honored — the response shape doesn't match what a Haiku would emit
+for this prompt" and aborts the run.
+
+### Override
+
+`--skip-model-probe` bypasses the probe. Documented in the SKILL.md
+prose as "use at your own risk; this is a guard against silent
+~30× quota burn."
+
+## §9 — Field-by-field comparison vs PR #21
 
 | Field | PR #21 (v2) | PR #23 (v3) | Change |
 |---|---|---|---|
@@ -414,15 +503,18 @@ or
 | JSONL `method_count` | int | int | unchanged |
 | JSONL `module_chars` | int | int | unchanged |
 | JSONL `batch_index` | int | int | unchanged |
-| JSONL `backend` | (absent) | task/api/stub | **NEW** |
-| Checkpoint `version` | 1 | 2 | bumped; v3 reads both |
-| Checkpoint `backend` | (absent) | task/api/stub | **NEW** |
+| JSONL `retry_count` | (absent) | int (0+) | **NEW** |
+| JSONL `backend` | (absent) | task/stub | **NEW** (2 values, not 3 — no `api`) |
+| Checkpoint `version` | 1 | 3 | bumped; v3 reads 1/2/3 |
+| Checkpoint `backend` | (absent) | task/stub | **NEW** |
 | Checkpoint `processed_files` | list[str] | list[str] | unchanged |
 
 All v2 readers (PR #21's logs and checkpoint state) are
 forward-readable by v3 — v3 readers accept missing optional fields.
+v2 producers wrote no `backend` field; v3 default-fills with `task`
+when reading old data.
 
-## §9 — References
+## §10 — References
 
 - `scripts/parsers/contracts/meta-description-layer.schema.json` (PR
   #21) — unchanged contract for the on-disk description layer.
@@ -430,3 +522,5 @@ forward-readable by v3 — v3 readers accept missing optional fields.
   #19) — parser output shape consumed by discover.
 - `contracts/task-llm-output.schema.json` (this feature) — Task
   sub-agent return envelope.
+- `questions.md` (this feature) — answered design questions Q1-Q8;
+  Q6 in particular drives the no-headless-backend simplification.

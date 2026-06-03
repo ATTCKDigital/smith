@@ -2,6 +2,7 @@
 feature: 23-task-llm-backend
 branch: 23-task-llm-backend
 created: 2026-06-03
+revised: 2026-06-03 (Q6 simplification — single Task-spawning backend, no headless fallback)
 status: planning
 builds_on: 19-manifest-system (PR #19) + 20-manifest-fixes (PR #21) + install-path-fallback (PR #22)
 ---
@@ -12,35 +13,36 @@ builds_on: 19-manifest-system (PR #19) + 20-manifest-fixes (PR #21) + install-pa
 
 - **Language / runtime.** Python 3 stdlib only for all new helpers. Node
   (vendored `acorn`) is invoked transitively by `parse-js.js` but no new
-  Node dependencies are introduced. No `anthropic` SDK — the headless
-  fallback continues to use `urllib.request` (parity with v2 at
-  `scripts/parsers/meta_describe.py:36-37`).
-- **LLM call mechanism.**
-  - **cli backend (default).** The orchestrating LLM in the user's Claude
-    Code session spawns one Task tool sub-agent per file
-    (`subagent_type: "general"`, model `claude-haiku-4-5`). Task calls
-    inherit session auth → subscription billing.
-  - **api backend (headless fallback).** Direct HTTPS POST to
-    `https://api.anthropic.com/v1/messages` via `urllib.request`, using
-    `ANTHROPIC_API_KEY` from env. This is a wholesale port of the v2
-    code at `scripts/parsers/meta_describe.py:290-345`
-    (`_default_haiku_call`).
+  Node dependencies are introduced. No `anthropic` SDK. v3 strips out
+  every direct-HTTPS LLM call — there is no `urllib.request` import in
+  the v3 LLM-call path because v3 has no direct-HTTPS LLM-call path.
+- **LLM call mechanism.** The orchestrating LLM in the user's Claude
+  Code session spawns one Task tool sub-agent per file
+  (`subagent_type: "general"`, model `claude-haiku-4-5`). Task calls
+  inherit session auth → subscription billing. **There is no fallback
+  backend** — the 2am scheduler uses `claude --print` which IS a Claude
+  Code session with Task tool access, so the same code path serves both
+  interactive and scheduled runs.
 - **Model.** `claude-haiku-4-5` (matches PR #21
   `meta_describe.py:48` constant `DEFAULT_MODEL`). Configurable via the
   existing `--model` CLI flag.
-- **Concurrency.** Trust the Task tool runtime's built-in cap
-  (`min(16, cpu - 2)`); the skill prose spawns parallel Tasks per batch
-  inside a single tool-use block. No second throttle layer per Decision 5
-  in spec.md.
-- **Batch size.** Default 10 (per spec §A2.4). v2 currently defaults to
-  20 for the operator-approval batch and 10 for the LLM sub-batch
-  (`run.py:1212-1213`). v3 collapses these into a single batch knob of
-  10 — see Plan Decision 1 below.
+- **Concurrency strategy.** Sequential within each batch (Q2 answer B).
+  The skill prose spawns Tasks one-at-a-time within a batch — not as a
+  parallel tool-use block. Simpler per-Task error handling, visible
+  progress logging. Across batches, the runtime cap is irrelevant
+  because batches themselves run sequentially.
+- **Batch size.** Default 10 (Plan Decision 1). v2's two-tier batching
+  (`--batch-size 20` operator-approval + `--llm-batch-size 10` LLM
+  sub-batch) collapses to a single `--batch-size 10`.
+- **Per-method split.** Default per-file granularity. If a file has > 15
+  qualifying methods (Q3 answer B), split into per-method Tasks.
+  Configurable via `--per-method-threshold` (default 15).
 - **Test harness.** Skill prose detects `SMITH_TASK_STUB=1`. In stub
   mode, instead of spawning a Task, the prose invokes
-  `python3 scripts/parsers/describe_write.py --from-stub <fixture-path>
-  --rel-path <p>` which reads a canned MetaDescription JSON keyed by
-  `rel_path` and writes the `.meta` the same way as the live path.
+  `python3 scripts/parsers/describe_write.py apply --from-stub
+  <fixture-path> --rel-path <p>` which reads a canned MetaDescription
+  JSON keyed by `method_id` and writes the `.meta` the same way as the
+  live path. Missing-id behavior is **fail loud** (Q5 answer A).
 - **Threshold.** Unchanged from v2 (`DEFAULT_THRESHOLD_LINES = 5` at
   `meta_describe.py:47`).
 - **Soft caps.** Unchanged from v2 (`MODULE_DESC_SOFT_CAP = 120`,
@@ -52,11 +54,10 @@ builds_on: 19-manifest-system (PR #19) + 20-manifest-fixes (PR #21) + install-pa
   implementation plan, not a user question.
 - **Rule 2 (SpecKit triggers + skill compliance).** N/A at plan stage;
   but plan respects the sub-step order under `/smith-plan`.
-- **Rule 3 (Question file before complex changes).** The architectural
-  inversion is materially documented in spec.md §Design Decisions (six
-  decisions) and §Open Questions (seven). No further pre-implementation
-  question file is required — the spec already encodes the decisions
-  and surfaces the residual ambiguity.
+- **Rule 3 (Question file before complex changes).** Eight questions
+  were generated and answered in `questions.md`. Q6 in particular
+  triggered a major simplification (drop the headless backend
+  entirely) which this revision reflects.
 - **Rule 4 (Checkpoint/Resume).** Preserved.
   `scripts/parsers/describe_checkpoint.py` (NEW) writes:
   - JSONL log at `~/.smith/logs/smith-index-describe-<ISO>.jsonl` (one
@@ -64,8 +65,7 @@ builds_on: 19-manifest-system (PR #19) + 20-manifest-fixes (PR #21) + install-pa
     `run.py:1291-1300`).
   - Checkpoint state at
     `.smith/index/.smith-index-describe-checkpoint.json` after every
-    batch (shape matches v2 `processed_files` list at
-    `run.py:1268-1271`).
+    batch.
   - Summary line on exit:
     `/smith-index --describe: N files described (succeeded=S failed=F
     skipped=K) in T.Ts` (matches v2 at `run.py:1433`).
@@ -97,34 +97,36 @@ v2 (current, PR #21):
             ├─ Rule-4 JSONL log + checkpoint
             └─ summary line
 
-v3 (target, cli backend = default):
+v3 (single backend — Task spawning):
   User → /smith-index --describe → SKILL.md prose [LLM orchestrator IN session]
-            ├─ Detect backend:
-            │     CLAUDE_HEADLESS=1 OR --llm-backend api → shell out to
-            │     describe_headless.py (and return its exit code)
+            ├─ Step 0: runtime model probe (1 Task call, verify Haiku honored)
             ├─ python3 describe_discover.py → JSON[]:
-            │     [{rel_path, source_hash, parsed, existing_desc, cache_hit}, …]
-            ├─ Apply --resume skip set via describe_checkpoint.py load
+            │     [{rel_path, source_hash, parsed, existing_desc,
+            │       qualifying_method_ids, cache_hit, system}, …]
+            ├─ Filter cache_hit=true entries
+            ├─ Apply --resume skip set via describe_checkpoint.py load-completed
+            ├─ Pre-flight estimate + confirmation gate (skip with --yes)
             ├─ Loop batches (default 10 files / batch):
-            │     ├─ Spawn N parallel Task tool calls in ONE tool-use block
-            │     │     subagent_type: "general"
-            │     │     model: "claude-haiku-4-5"
-            │     │     prompt: per-file (see Task prompt template below)
-            │     ├─ Collect each Task's JSON output (MetaDescription)
-            │     ├─ For each result: python3 describe_write.py --rel-path <p>
-            │     │     splices into .meta atomically
-            │     ├─ python3 describe_checkpoint.py append  (JSONL + state)
-            │     └─ continue / retry / abort per failure policy
-            └─ Summary line (same shape as v2)
+            │     For each file in batch (sequential):
+            │       ├─ If qualifying_method_ids count > 15: split to
+            │       │  per-method Tasks; else one Task per file.
+            │       ├─ Build prompt body via describe_write.py build-prompt
+            │       ├─ Spawn Task (subagent_type: general,
+            │       │  model: claude-haiku-4-5).
+            │       │  On failure: exponential backoff retry 5s→10s→20s,
+            │       │  max 3 attempts. After 3: log failed, continue.
+            │       ├─ Pipe Task JSON output into describe_write.py apply
+            │       │  → splices into .meta atomically
+            │       ├─ describe_checkpoint.py append (JSONL)
+            │     describe_checkpoint.py save (state) at batch end
+            └─ describe_checkpoint.py summary
 
-v3 headless fallback (api backend):
-  cron / scheduler → claude -p "/smith-index --describe"
-        with CLAUDE_HEADLESS=1 in env
-            → SKILL.md prose detects headless
-            → python3 describe_headless.py [--root … --resume]
-                  ├─ Same discover → batch → write → log loop as v2
-                  ├─ Direct HTTPS via _default_haiku_call() (ported verbatim)
-                  └─ Same .meta output bytes as v2
+Scheduled run (2am scheduler):
+  launchd → claude --print -p "/smith-queue process <task>"
+            (this IS a Claude Code session; Task tool available)
+            → /smith-queue process …
+            → eventually invokes /smith-index --describe --yes
+            → SAME code path as interactive (no env-var branching).
 ```
 
 ## File Structure
@@ -135,28 +137,27 @@ All paths absolute under `/Users/dennisplucinik/Projects/smith-repo`.
 
 | Path | Approx LOC | Purpose |
 |---|---|---|
-| `scripts/parsers/describe_discover.py` | ~180 | File discovery, hash, existing-meta scan, cache-hit determination. Stdout JSON. Importable. |
-| `scripts/parsers/describe_write.py` | ~220 | Splice MetaDescription into `.meta` atomically. Supports `--update-touched` mode and `--from-stub` (test) mode. |
-| `scripts/parsers/describe_checkpoint.py` | ~120 | JSONL log writer + checkpoint state reader/writer + `--resume` loader. |
-| `scripts/parsers/describe_headless.py` | ~280 | Wholesale port of v2's mode_describe + `_describe_one_file` + `_default_haiku_call`. Self-contained CLI. Includes `update-touched` subcommand. |
-| `tests/parsers/test_task_backend_stub.py` | ~210 | Task-stub fixture + bulk/incremental/purpose_shifted coverage. |
-| `tests/parsers/test_describe_headless.py` | ~170 | Headless regression vs v2 golden output. |
+| `scripts/parsers/index_common.py` | ~120 | Shared helpers extracted from run.py: `walk_source_files`, `sha256_first_4kb`, `iso_now_for_filename`, `iso_now_ms`, `load_checkpoint`, `save_checkpoint`, `meta_path_for`, `atomic_write_text`. Importable only. |
+| `scripts/parsers/describe_discover.py` | ~200 | File discovery, hash, existing-meta scan, cache-hit determination, qualifying-method-id enumeration. Stdout JSON. Importable. |
+| `scripts/parsers/describe_write.py` | ~260 | TWO subcommands: `build-prompt` (assembles a complete prompt body) and `apply` (splices MetaDescription JSON into `.meta` atomically). Supports `--update-touched` and `--from-stub` modes. |
+| `scripts/parsers/describe_checkpoint.py` | ~140 | JSONL log writer + checkpoint state reader/writer + `--resume` loader + summary printer. |
+| `tests/parsers/test_task_backend_stub.py` | ~220 | Task-stub fixture + bulk/incremental/purpose_shifted/per-method-split coverage. Fail-loud on missing id (Q5). |
 | `tests/parsers/test_hash_cache_skip.py` | ~110 | Re-run-on-unchanged-source → zero `.meta` writes. |
-| `tests/fixtures/task-stub-responses.json` | ~80 | Canned MetaDescription JSON keyed by `rel_path`. |
-| `tests/fixtures/headless-fixture-project/` | n/a (data) | Small parsable Python file + expected `.meta` golden. |
-| `specs/23-task-llm-backend/contracts/task-llm-output.schema.json` | ~70 | JSON Schema for the Task sub-agent's return envelope. |
+| `tests/parsers/test_workflow_incremental_task.sh` | ~80 | End-to-end integration of the workflow incremental path via stub. |
+| `tests/fixtures/task-stub-responses.json` | ~80 | Canned MetaDescription JSON keyed by `method_id`. |
+| `specs/23-task-llm-backend/contracts/task-llm-output.schema.json` | ~70 | JSON Schema for the Task sub-agent's return envelope. (Already committed.) |
 
 ### MODIFY
 
 | Path | Net LOC Delta | Change |
 |---|---|---|
-| `scripts/parsers/meta_describe.py` | −340 / +0 (~426 → ~280 net after strip + drop CLI; structural keepers below) | STRIP `_default_haiku_call` (`:290-345`), `HaikuUnavailable` (`:286-287`), `describe_file` (`:452-479`), `update_touched` (`:482-521`), `_describe` private (`:524-622`), `_safe_json_object` (`:625-656`), `_cli_update_touched` (`:666-731`), `_build_argparser` + `main` + `__main__` block (`:734-766`). KEEP `MethodDescription`, `MetaDescription`, soft-cap constants, `_iso_now`, `_sha256`, `parse_meta_descriptions`, `render_description_block`, `_qualifying_methods`, `_summarize_for_module_prompt`, `_build_method_prompt`, `_truncate`, `_MODULE_SYSTEM`, `_METHOD_SYSTEM`. Make `_summarize_for_module_prompt`, `_build_method_prompt`, `_truncate`, and the system-prompt constants part of the public API (drop the leading underscore where a new helper imports them) — these are the prompt-template builders the new helpers need. |
-| `scripts/smith-index/run.py` | −370 / +0 | DELETE `_read_meta_text` (`:1106-1110`), `_extract_hash_from_meta` (`:1113-1121`), `_describe_one_file` (`:1124-1206`), `mode_describe` (`:1209-1450`+) and all argparse pieces for `--describe`, `--batch-size`, `--llm-batch-size`, `--threshold`, `--model`, `--no-interactive` (`:1755-1788`) and dispatcher (`:1804-1814`). KEEP the `_meta_describe` import block (`:126-153`) and the `:861` callsite that uses `parse_meta_descriptions` / `render_description_block` for non-describe modes. |
-| `skills/smith-index/SKILL.md` | +180 / −0 | ADD a new `### /smith-index --describe` section (no such section exists today — flag is currently only parsed in run.py). Section contains the full v3 orchestration prose (see Component Design §3 below). |
-| `skills/smith-new/SKILL.md` | +35 / −7 | REPLACE the `python3 ~/.smith/scripts/meta_describe.py update-touched …` shell-out at line 447 with inline Task spawning prose + a fallback to `describe_headless.py update-touched`. |
-| `skills/smith-bugfix/SKILL.md` | +35 / −12 | Same replacement at line 208. |
-| `skills/smith-debug/SKILL.md` | +35 / −6 | Same replacement at line 290. |
-| `docs/manifest-system.md` | +60 / −5 | Add a "Backend selection: cli vs api" subsection near the existing v2 `.meta` description-layer section. |
+| `scripts/parsers/meta_describe.py` | −340 / +0 (~426 → ~280 net after strip + drop CLI) | STRIP `_default_haiku_call` (`:290-345`), `HaikuUnavailable` (`:286-287`), `describe_file` (`:452-479`), `update_touched` (`:482-521`), `_describe` private (`:524-622`), `_safe_json_object` (`:625-656`), `_cli_update_touched` (`:666-731`), `_build_argparser` + `main` + `__main__` block (`:734-766`), all `urllib.request` imports, all `ANTHROPIC_API_KEY` / `SMITH_ANTHROPIC_API_URL` / `anthropic-version` references. KEEP `MethodDescription`, `MetaDescription`, soft-cap constants, `_iso_now`, `_sha256`, `parse_meta_descriptions`, `render_description_block`, `_qualifying_methods`, `_summarize_for_module_prompt`, `_build_method_prompt`, `_truncate`, `_MODULE_SYSTEM`, `_METHOD_SYSTEM`. Rename to drop leading underscore where now public: `qualifying_methods`, `summarize_for_module_prompt`, `build_method_prompt`, `truncate`, `MODULE_SYSTEM`, `METHOD_SYSTEM`. Module becomes purely structural — zero LLM call code, zero env-var reads. |
+| `scripts/smith-index/run.py` | −370 / +0 | DELETE `_read_meta_text` (`:1106-1110`), `_extract_hash_from_meta` (`:1113-1121`), `_describe_one_file` (`:1124-1206`), `mode_describe` (`:1209-1450`+) and all argparse pieces for `--describe`, `--batch-size`, `--llm-batch-size`, `--threshold`, `--model`, `--no-interactive` (`:1755-1788`) and dispatcher (`:1804-1814`). KEEP the `_meta_describe` import block (`:126-153`) and the `:861` callsite that uses `parse_meta_descriptions` / `render_description_block` for non-describe modes. ALSO MODIFY: replace the local definitions of `walk_source_files`, `sha256_first_4kb`, `iso_now_*`, `load_checkpoint`, `save_checkpoint` with imports from the new `index_common.py`. |
+| `skills/smith-index/SKILL.md` | +220 / −0 | ADD a new `### /smith-index --describe` section (no such section exists today — flag is currently only parsed in run.py). Section contains the full v3 orchestration prose (see Component Design §5 below). |
+| `skills/smith-new/SKILL.md` | +40 / −8 | REPLACE the `python3 ~/.smith/scripts/meta_describe.py update-touched …` shell-out at line 447 with inline Task spawning prose. No headless fallback path. |
+| `skills/smith-bugfix/SKILL.md` | +40 / −12 | Same replacement at line 208. |
+| `skills/smith-debug/SKILL.md` | +40 / −6 | Same replacement at line 290. |
+| `docs/manifest-system.md` | +60 / −20 | Replace any v2 "ANTHROPIC_API_KEY required" prose with a "Task-based LLM backend" subsection explaining the inversion. Remove direct-HTTPS references. |
 | `CHANGELOG.md` | +25 | New v3.0.0 entry. |
 
 ### KEEP (no change)
@@ -172,10 +173,35 @@ All paths absolute under `/Users/dennisplucinik/Projects/smith-repo`.
   did not encode `--describe` separately; it forwards `$@` to Python.
 - `hooks/manifest-updater-lib.py` (READ-ONLY consumer of
   `parse_meta_descriptions`).
+- `scheduler/smith-scheduler.sh` — Q6 investigation confirmed this
+  script already invokes `claude --print` which is a Claude Code
+  session. No edits needed for v3.
 
 ## Component Design
 
-### 1. `describe_discover.py`
+### 1. `index_common.py` (NEW — shared utilities)
+
+**Purpose.** Avoid the circular `describe_discover.py → run.py` import
+that would otherwise be required. Surface-level only; no behavior
+change.
+
+**Exports.**
+
+```python
+def walk_source_files(root: Path, *, system_filter: Optional[str] = None) -> Iterator[Path]: ...
+def sha256_first_4kb(path: Path) -> str: ...
+def iso_now_for_filename() -> str: ...
+def iso_now_ms() -> str: ...
+def load_checkpoint(path: Path) -> Optional[dict]: ...
+def save_checkpoint(path: Path, state: dict) -> None: ...
+def meta_path_for(root: Path, rel_path: str) -> Path: ...
+def atomic_write_text(path: Path, content: str) -> None: ...
+```
+
+Imported by `run.py` (replacing local definitions), `describe_discover.py`,
+`describe_write.py`, `describe_checkpoint.py`.
+
+### 2. `describe_discover.py`
 
 **Purpose.** Replace the discovery + cache-hit + existing-layer-parse
 half of `_describe_one_file` (`run.py:1138-1183`).
@@ -216,11 +242,13 @@ single-file mode):
 ]
 ```
 
-**Internals.** Imports `walk_source_files`, `resolve_parser`,
-`run_parser`, `passive_parse`, `sha256_first_4kb` from
-`scripts.smith_index.run` (or moves these to a small shared module —
-see Plan Decision 3). Imports `parse_meta_descriptions`,
-`_qualifying_methods` (made public) from `meta_describe`.
+**Internals.** Imports `walk_source_files`, `sha256_first_4kb` from
+`index_common`. Imports `parse_meta_descriptions`, `qualifying_methods`
+(now public) from `meta_describe`. Imports the parser-lib invocation
+helpers (`resolve_parser`, `run_parser`, `passive_parse`) — these
+either move to `index_common.py` too OR stay in `run.py` and get
+imported with `sys.path` munging. **Plan: move them to `index_common.py`**
+to keep the parser-lib invocation single-source.
 
 **Error handling.** On parser failure for one file, emit the entry with
 `parser_output: null, cache_hit: false` and a `discovery_error` string
@@ -230,31 +258,46 @@ whole walk.
 **Performance budget.** < 30s for a 1,200-file repo (matches v2
 discovery cost — parser invocations dominate).
 
-### 2. `describe_write.py`
+### 3. `describe_write.py`
 
-**Purpose.** Replace the splice/render/write tail of `_describe_one_file`
-(`run.py:1198-1206`) AND `_cli_update_touched`
-(`meta_describe.py:666-731`).
+**Purpose.** Two responsibilities: (1) assemble prompt bodies from
+existing parser output + soft-cap rules (`build-prompt` subcommand);
+(2) splice MetaDescription JSON into `.meta` atomically (`apply`
+subcommand).
 
-**CLI modes.**
+Owning prompt assembly here (Plan Decision 2) means the skill prose
+NEVER duplicates the template — one source of truth for both v3 paths
+(bulk `/smith-index --describe` and the three workflow incremental
+SKILL.md files).
+
+**CLI subcommands.**
 
 ```
-# Bulk mode (one file, MetaDescription on stdin):
-python3 describe_write.py
+# Prompt assembly — returns the prompt body (no instructions about
+# Task spawning; the caller embeds this in their Task call):
+python3 describe_write.py build-prompt
+  --rel-path <p>
+  --root <project-root>
+  [--method-ids <id1,id2,...>]     # incremental — only describe these
+  [--module]                        # include module-description ask
+  [--purpose-shifted true|false]   # for incremental
+
+# Apply mode (one file, MetaDescription on stdin):
+python3 describe_write.py apply
   --rel-path <p>
   --root <project-root>
   --hash <sha256-first-4kb>
   [--input <json-file>]            # else read stdin
 
-# Incremental mode (workflow incremental path):
-python3 describe_write.py update-touched
+# Apply incremental (workflow incremental path):
+python3 describe_write.py apply --update-touched
   --rel-path <p>
   --root <project-root>
   --purpose-shifted true|false
   [--input <json-file>]
 
-# Test stub mode:
-python3 describe_write.py --from-stub <fixture-path>
+# Test stub mode (skip the LLM entirely, replay from fixture):
+python3 describe_write.py apply --from-stub <fixture-path>
   --rel-path <p>
   --root <project-root>
   --hash <sha256-first-4kb>
@@ -262,31 +305,35 @@ python3 describe_write.py --from-stub <fixture-path>
 
 **Behavior.**
 
-- Reads the existing `.meta` via `parse_meta_descriptions`.
-- Merges incoming MetaDescription:
+- `build-prompt` invokes `summarize_for_module_prompt` +
+  `build_method_prompt` from `meta_describe` and prints the assembled
+  prompt body to stdout.
+- `apply` reads the existing `.meta` via `parse_meta_descriptions`.
+  Merges incoming MetaDescription:
   - Bulk: overwrite module + all method descriptions for the file.
   - update-touched: replace only the supplied method ids; regenerate
     module iff `purpose_shifted=true`; drop stale ids absent from the
     current parser output (mirrors `_describe` at
     `meta_describe.py:584-588`).
-- Applies `_truncate` for soft/hard caps (same numbers as v2).
+- Applies `truncate` for soft/hard caps (same numbers as v2).
 - Renders via `render_description_block` → splices into the full
-  `.meta` via the same `render_meta` callable used by the index
-  (imported from `scripts.smith_index.run`).
+  `.meta` via the `render_meta` callable (moved alongside the other
+  splice helpers).
 - Atomic write: tempfile in the same dir + `os.rename`.
 - Stub mode: reads the canned response from the fixture, runs the
-  same write path. The stub fixture maps `rel_path` → MetaDescription
-  JSON (data-model.md §6).
+  same write path. The stub fixture maps `method_id` → description
+  string (data-model.md §6). **Fail loud on missing id** — exit code
+  4 with clear error message.
 
 **Error handling.** Exit codes:
 - 0 success
 - 2 input validation error (bad JSON, missing rel-path, etc.)
 - 3 disk write error (write to a `.meta.tmp` failed)
-- 4 stub fixture missing key (test-only)
+- 4 stub fixture missing required method id (test-only, fail-loud)
 
-### 3. `describe_checkpoint.py`
+### 4. `describe_checkpoint.py`
 
-**Purpose.** Centralise Rule-4 plumbing for both backends (cli and api).
+**Purpose.** Centralise Rule-4 plumbing.
 
 **CLI.**
 
@@ -312,18 +359,19 @@ python3 describe_checkpoint.py summary
   "method_count": 7,
   "module_chars": 118,
   "batch_index": 12,
-  "backend": "task" | "api" | "stub"
+  "retry_count": 0,
+  "backend": "task" | "stub"
 }
 ```
 
-The `backend` field is a v3 addition (data-model.md §4). v2 records did
-not have it; readers ignore unknown keys.
+The `backend` field has two valid values in v3 (`"task"` for live
+runs, `"stub"` for tests). The v2 `"api"` value is no longer produced.
 
 **Checkpoint state file.**
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "processed_files": ["a.py", "b.js", ...],
   "started_at": "2026-06-03T14:00:00Z",
   "last_batch_index": 12,
@@ -333,53 +381,6 @@ not have it; readers ignore unknown keys.
 
 **Performance.** Append-only writes; flush after every record (matches
 v2 line-buffered `open(..., buffering=1)` at `run.py:1278`).
-
-### 4. `describe_headless.py`
-
-**Purpose.** A self-contained CLI that runs the v2 path. The skill
-prose shells out to this script in the two cases:
-(a) `CLAUDE_HEADLESS=1` in env, OR
-(b) `--llm-backend api` flag was passed.
-
-**CLI.** Mirrors what v2's `mode_describe` accepted:
-
-```
-python3 describe_headless.py
-  [--root <p>]
-  [--batch-size <n>]              # default 10 — see Plan Decision 1
-  [--threshold <n>]
-  [--model <id>]
-  [--system <name>]
-  [--resume]
-  [--no-interactive]
-
-python3 describe_headless.py update-touched
-  --rel-path <p>
-  [--root <p>]
-  --touched-ids <comma-hex>
-  --purpose-shifted true|false
-  [--threshold <n>] [--model <id>]
-```
-
-**Internals.**
-
-- Imports the structural keepers from `meta_describe`
-  (MetaDescription, render_description_block, _qualifying_methods,
-  prompt builders, soft-cap constants).
-- Carries its own `_default_haiku_call` (copied verbatim from v2
-  `meta_describe.py:290-345`) so the headless path remains
-  byte-equivalent to v2.
-- Uses `describe_discover.py` (as a module import) for the file walk.
-- Uses `describe_write.py` (as a module import) for splicing.
-- Uses `describe_checkpoint.py` (as a module import) for JSONL +
-  checkpoint.
-- Reads `ANTHROPIC_API_KEY` from env; raises a clear error when missing.
-- Respects `SMITH_ANTHROPIC_API_URL` env override for test fixtures
-  (parity with v2 at `meta_describe.py:309`).
-
-**Performance budget.** Same as v2: 5–10s per Haiku call; full repo
-runtime dominated by network and Haiku latency. The v3 helper layout
-adds zero measurable overhead over the v2 in-Python-process path.
 
 ### 5. `skills/smith-index/SKILL.md` — `/smith-index --describe` section
 
@@ -397,26 +398,33 @@ Generate per-file LLM descriptions in the `.meta` description layer
 the loop, spawning a Task tool sub-agent per file. Each Task inherits
 the user's Claude Code session auth → subscription billing.
 
-**Default backend: `cli` (Task tool). Fallback: `api` (direct HTTPS).**
+Single backend — no `--llm-backend` flag, no `CLAUDE_HEADLESS` env
+var. The 2am scheduler uses `claude --print` (a Claude Code session)
+so this same code path serves scheduled runs unchanged.
 
-#### Pre-flight backend detection
+#### Step 0 — Runtime model probe
 
-Before any work:
+Before any bulk work, spawn ONE small Task to verify the Haiku model
+override is honored:
 
-1. If the environment variable `CLAUDE_HEADLESS=1` is set, OR if
-   `--llm-backend api` was passed in `$ARGUMENTS`, shell out to the
-   headless fallback and return its exit code:
-   ```bash
-   python3 ~/.smith/scripts/describe_headless.py "$@"
-   ```
-   (Use repo-relative path `scripts/parsers/describe_headless.py`
-   if `~/.smith/scripts/` does not resolve — same fallback the
-   parser-lib uses.)
-2. Otherwise proceed with the cli (Task-spawning) path below.
+```yaml
+subagent_type: general
+model: claude-haiku-4-5
+prompt: "Respond with exactly: MODEL_OK"
+```
+
+If the response doesn't arrive cleanly OR the response is suspiciously
+long/verbose for a "MODEL_OK" answer (heuristic — Haiku would respond
+crisply), abort with:
+
+> ERROR: Could not verify Haiku model override. Running the bulk
+> loop on the session's primary model would inflate subscription
+> cost ~30×. Verify your Task tool subagent type supports the model
+> parameter. Pass `--skip-model-probe` to override at your own risk.
+
+Pass `--skip-model-probe` skips this check.
 
 #### Step 1 — Discovery
-
-Invoke the discovery helper to enumerate files needing description:
 
 ```bash
 python3 scripts/parsers/describe_discover.py \
@@ -425,16 +433,12 @@ python3 scripts/parsers/describe_discover.py \
   --threshold "${THRESHOLD:-5}"
 ```
 
-Parse the JSON output. The result is a list of file entries; each
-carries `rel_path`, `source_hash`, `parser_output`,
-`qualifying_method_ids`, `existing_description`, `cache_hit`.
-
-Drop entries with `cache_hit=true`. These are no-ops — their `.meta`
-description layer already matches the current source hash.
+Parse the JSON output. Drop entries with `cache_hit=true` — these
+are no-ops (their `.meta` already matches the current source hash).
 
 #### Step 2 — Resume filter
 
-If `--resume` was passed, load the completed-file set:
+If `--resume` was passed:
 
 ```bash
 python3 scripts/parsers/describe_checkpoint.py load-completed \
@@ -442,125 +446,110 @@ python3 scripts/parsers/describe_checkpoint.py load-completed \
   --state .smith/index/.smith-index-describe-checkpoint.json
 ```
 
-Filter the remaining files to exclude `rel_path` values already in the
-completed set.
+Filter the remaining files to exclude completed `rel_path` values.
 
-#### Step 3 — Operator approval gate (interactive only)
+#### Step 3 — Pre-flight estimate + confirmation gate
 
-If `stdin` is a tty AND no `--no-interactive`, group the filtered files
-into approval batches of 20 (matches v2 operator-approval cadence at
-`run.py:1212`). For each batch, prompt:
+After filtering, count files needing description and sum their
+`qualifying_method_ids` counts. Print:
 
 ```
-Batch <n>: <count> files (of <total> total)
-  Approve batch? [Y/n/q/list]:
+Will spawn N Tasks covering M qualifying methods total.
+Estimated wall time: ~T minutes at 5s/Task sequential.
+Proceed? (y/N):
 ```
 
-`q` aborts; `list` prints all paths then re-prompts; `n` logs each
-file as `skipped` with `error="operator-reject"` and continues.
+Calculate T as `N * 5s / 60` (one Task per file unless per-method
+split applies; over-split files add to N).
 
-#### Step 4 — Task spawning loop
+If `--yes` was passed (or stdin is not a tty), bypass the confirm
+gate. The scheduler MUST pass `--yes`.
 
-For each approved batch, sub-divide into LLM batches of 10 (default,
-override via `--batch-size`). For each LLM batch:
+#### Step 4 — Sequential Task spawning loop
 
-1. **Spawn N parallel Task tool calls in a single tool-use block.**
-   One Task per file, all in the same tool-use entry — this triggers
-   the runtime's parallel sub-agent fan-out (`min(16, cpu-2)` cap).
-   Each Task uses:
+Batch the remaining files in groups of 10 (default; override with
+`--batch-size`). For each batch, process files **sequentially**:
+
+For each file in the batch:
+
+1. **Per-method-split decision.** If
+   `len(qualifying_method_ids) > 15` (default; override with
+   `--per-method-threshold`), spawn one Task PER METHOD instead of
+   one Task per file. The loop body below is the same; the prompt
+   asks for only one method's description per Task.
+
+2. **Build the prompt.** Invoke the prompt-assembly helper:
+   ```bash
+   PROMPT=$(python3 scripts/parsers/describe_write.py build-prompt \
+     --rel-path "$REL" --root "$ROOT" \
+     --method-ids "<ids>" --module)
+   ```
+
+3. **Spawn the Task.** ONE Task call:
    ```yaml
    subagent_type: general
    model: claude-haiku-4-5
    prompt: |
-     You are generating descriptions for the .meta description layer.
-     Return ONLY a JSON object matching this schema (no preamble, no
-     fences):
+     <PROMPT body from step 2>
+
+     Return ONLY a JSON object matching the schema below (no
+     preamble, no fences):
 
      {
        "status": "ok" | "error",
-       "module_description": "<≤200 chars, single line>",
+       "module_description": "<≤200 chars, single line>" | null,
        "method_descriptions": [
          {"method_id": "<16hex>", "description": "<≤400 chars>"},
          ...
        ],
        "errors": []
      }
-
-     File: <rel_path>
-     Language: <parser_output.language>
-     Lines: <parser_output.lines>
-
-     <PARSER SUMMARY: imports / top-level functions / classes per
-      _summarize_for_module_prompt output>
-
-     Methods to describe (only ids listed here):
-     <per-method block per _build_method_prompt output, scoped to
-      qualifying_method_ids>
-
-     Full source (for context):
-     ```
-     <file source>
-     ```
-
-     Soft caps: module ≤120 chars, method ≤200 chars. Concise,
-     informational, no marketing voice.
    ```
 
-   Build the prompt body via `python3 scripts/parsers/describe_write.py
-   build-prompt --rel-path <p> --root "$ROOT"` (the helper exposes the
-   `_summarize_for_module_prompt` + `_build_method_prompt` outputs via
-   a small subcommand so the prose doesn't have to duplicate the
-   prompt assembly).
+4. **Retry on failure (exponential backoff).** If the Task call
+   fails or returns malformed JSON or `status="error"`, retry with
+   backoff 5s → 10s → 20s. Max 3 attempts. After 3, log a `failed`
+   JSONL record and move to the next file. Do NOT abort the run.
 
-2. **STUB MODE:** if `SMITH_TASK_STUB=1` is set, instead of spawning
-   Task calls, invoke:
+5. **STUB MODE.** If `SMITH_TASK_STUB=1` is set, skip the Task spawn
+   entirely. Pipe the canned fixture entry into the writer:
    ```bash
-   for rel in <batch rel_paths>; do
-     python3 scripts/parsers/describe_write.py --from-stub \
-       tests/fixtures/task-stub-responses.json \
-       --rel-path "$rel" --root "$ROOT" --hash "<source_hash>"
-   done
+   python3 scripts/parsers/describe_write.py apply --from-stub \
+     tests/fixtures/task-stub-responses.json \
+     --rel-path "$REL" --root "$ROOT" --hash "$HASH"
    ```
-   The stub bypasses Task and writes from the canned fixture. Tests
-   set this env var; users never do.
+   The stub fails loud (exit 4) if any qualifying method id is not
+   in the fixture. Tests set `SMITH_TASK_STUB=1`; users never do.
 
-3. **Collect each Task's JSON output.** Each Task returns a single
-   message whose text payload is the JSON object above. Parse it.
-   On parse failure or `status="error"`, record a `failed` JSONL
-   entry and continue with the rest of the batch.
-
-4. **Write each result.** For each Task that returned `status="ok"`,
-   pipe its JSON into the writer:
+6. **Apply the result.** Pipe the Task's JSON output into the writer:
    ```bash
-   echo '<task-output-json>' | \
-     python3 scripts/parsers/describe_write.py \
-       --rel-path "<rel_path>" --root "$ROOT" \
-       --hash "<source_hash>"
+   echo "$TASK_OUTPUT" | \
+     python3 scripts/parsers/describe_write.py apply \
+       --rel-path "$REL" --root "$ROOT" --hash "$HASH"
    ```
-   The writer translates the Task envelope (`task-llm-output.schema.json`)
-   into the on-disk form, applies soft-cap truncation, and atomically
-   replaces the `.meta`.
 
-5. **Append checkpoint records.** For each file in the batch:
+7. **Append checkpoint records.** One JSONL line per file:
    ```bash
    python3 scripts/parsers/describe_checkpoint.py append \
      --log "$LOG_PATH" \
      --record '{"item_id":"<rel>","status":"ok",
                 "stage":"describe","backend":"task",
                 "method_count":<n>,"module_chars":<m>,
-                "batch_index":<i>,"timestamp":"<iso>"}'
+                "batch_index":<i>,"retry_count":<r>,
+                "timestamp":"<iso>"}'
    ```
-   After all writes in the batch succeed, persist checkpoint state:
-   ```bash
-   python3 scripts/parsers/describe_checkpoint.py save \
-     --path .smith/index/.smith-index-describe-checkpoint.json \
-     --processed "<rel_path>"
-   ```
-   (One save call per processed file.)
+
+After all files in the batch complete, persist checkpoint state:
+```bash
+python3 scripts/parsers/describe_checkpoint.py save \
+  --path .smith/index/.smith-index-describe-checkpoint.json \
+  --processed "<rel_path>"
+```
+(One save call per processed file.)
 
 #### Step 5 — Summary
 
-After all batches complete (or on abort), emit the Rule-4 summary:
+After all batches complete (or on abort):
 
 ```bash
 python3 scripts/parsers/describe_checkpoint.py summary \
@@ -573,21 +562,17 @@ Format: `/smith-index --describe: N files described
 On clean completion, remove the checkpoint state file. On Ctrl-C or
 fatal error, leave it in place so `--resume` works.
 
-#### Failure handling
+#### Failure handling summary
 
-- **Per-file Task failure.** Log a `failed` record with the Task's
-  error text. Continue the batch. The file is eligible for a re-run
-  on the next `--describe` invocation (no cache hit because the
-  `.meta` was not updated).
-- **Per-batch Task tool-block failure.** If the entire tool-use block
-  errors (e.g. runtime rate-limit), record all files in that batch as
-  `failed` with the shared error. Continue with the next batch.
-- **Helper script failure (non-zero exit).** Surface the stderr,
-  record a `failed` entry, continue.
-- **No-key headless case.** If the headless fallback path is taken
-  but `ANTHROPIC_API_KEY` is unset, `describe_headless.py` exits 78
-  (`EX_CONFIG`) with a clear message — the user must either set the
-  key or run interactively.
+- **Per-Task failure.** Exponential backoff retry (5s → 10s → 20s,
+  max 3). After 3, log `failed`, continue. No run-level abort.
+- **Per-batch checkpoint failure.** Log a critical warning but keep
+  going — Rule 4 says checkpoint is best-effort.
+- **Model probe failure.** Hard abort before any bulk work, with
+  clear message. `--skip-model-probe` to override.
+- **No-LLM-call surprise.** If `meta_describe.py` somehow imports
+  `urllib`, a CI check fails the build. `grep -r ANTHROPIC_API_KEY
+  scripts/parsers/` must return zero matches.
 ```
 
 ### 6. Workflow skills update (smith-new, smith-bugfix, smith-debug)
@@ -604,55 +589,50 @@ python3 ~/.smith/scripts/meta_describe.py update-touched \
 **v3 replacement prose (paste-in form):**
 
 ```markdown
-3. **Update the `.meta` description layer.**
+3. **Update the `.meta` description layer.** Inline-spawn ONE Task
+   tool call for this file.
 
-   **Headless fast path.** If `CLAUDE_HEADLESS=1` is set in the
-   environment, shell out to the headless wrapper and skip the inline
-   Task path:
+   First, gather inputs:
    ```bash
-   python3 ~/.smith/scripts/describe_headless.py update-touched \
-     --rel-path <project-relative-path> \
-     --touched-ids <comma-separated-16hex-ids> \
-     --purpose-shifted <true|false>
-   ```
-
-   **Default (interactive) path.** Inline-spawn ONE Task tool call
-   for this file. Build inputs via:
-   ```bash
-   python3 ~/.smith/scripts/describe_discover.py \
+   DISCOVERY=$(python3 ~/.smith/scripts/describe_discover.py \
      --rel-path <project-relative-path> \
      --touched-only \
-     --touched-ids <comma-separated-16hex-ids>
+     --touched-ids <comma-separated-16hex-ids>)
    ```
-   This emits a single-element JSON array; extract the entry. Then
-   spawn one Task:
+
+   This emits a single-element JSON array; extract the entry.
+
+   Then build the prompt body:
+   ```bash
+   PROMPT=$(python3 ~/.smith/scripts/describe_write.py build-prompt \
+     --rel-path <project-relative-path> \
+     --method-ids <comma-separated-16hex-ids> \
+     --purpose-shifted <true|false> \
+     $( [ "<purpose_shifted>" = "true" ] && echo --module ))
+   ```
+
+   Spawn the Task:
    ```yaml
    subagent_type: general
    model: claude-haiku-4-5
    prompt: |
-     Return ONLY a JSON object matching task-llm-output.schema.json.
-     File: <rel_path>
-     Touched method ids (only describe these):
-     <list of touched ids>
-     Purpose shifted: <true|false>
-     Existing module description (preserve if purpose-shifted=false):
-     <existing module description or "(none)">
-     <… per-method block built from the discover output's parser_output …>
-     Full source (for context):
-     ```
-     <file source>
-     ```
+     <PROMPT body>
+
+     Return ONLY a JSON object matching task-llm-output.schema.json
+     with `method_descriptions` for ONLY the touched ids, and a
+     `module_description` iff purpose-shifted=true.
    ```
+
    When the Task returns, pipe its JSON output into the writer:
    ```bash
-   echo '<task-output-json>' | \
-     python3 ~/.smith/scripts/describe_write.py update-touched \
+   echo "$TASK_OUTPUT" | \
+     python3 ~/.smith/scripts/describe_write.py apply --update-touched \
        --rel-path <project-relative-path> \
        --purpose-shifted <true|false>
    ```
 
    **Test stub.** If `SMITH_TASK_STUB=1` is set, skip the Task spawn
-   and pipe the canned fixture entry into the writer instead.
+   and use `apply --from-stub` instead.
 
    **Failure handling.** If any step fails (helper not installed,
    Task tool error, write error), log one line to the session log
@@ -667,18 +647,19 @@ block to avoid cross-file references the LLM has to chase.)
 
 ## Phase-by-phase Build Order
 
-1. **Foundation helpers.** Build `describe_discover.py`,
-   `describe_write.py`, `describe_checkpoint.py` in that order. Each
-   is unit-tested in isolation (helper tests, not the full Task-stub
-   integration yet).
+1. **Extract `index_common.py`.** Mechanical refactor: move
+   `walk_source_files`, `sha256_first_4kb`, `iso_now_*`,
+   `load_checkpoint`, `save_checkpoint`, parser-lib invocation
+   helpers from `run.py` into `index_common.py`. Update `run.py` to
+   import. Run PR #21's existing `run.py` tests — must still pass.
 2. **Strip `meta_describe.py`.** Remove the LLM-call bits; tighten the
    structural keepers' public API (rename `_summarize_for_module_prompt`
    → `summarize_for_module_prompt` etc.). Re-run PR #21's existing
    tests for `parse_meta_descriptions` / `render_description_block` /
-   `_qualifying_methods` — these must still pass byte-for-byte.
-3. **Build `describe_headless.py`.** Copy the v2 path; verify against
-   the existing golden `.meta` output of a small fixture project.
-   Tests: `test_describe_headless.py`.
+   `qualifying_methods` — these must still pass byte-for-byte.
+3. **Build the new helpers.** `describe_discover.py`,
+   `describe_write.py`, `describe_checkpoint.py` in that order. Each
+   is unit-tested in isolation.
 4. **Delete v2 orchestrator code from `run.py`.** Remove
    `mode_describe`, `_describe_one_file`, helpers, and CLI flags
    (`--describe`, `--batch-size`, `--llm-batch-size`, `--threshold`,
@@ -688,12 +669,12 @@ block to avoid cross-file references the LLM has to chase.)
    This is the v3 entrypoint for the flag now that `run.py` no longer
    handles it. Update the modes table.
 6. **Update workflow skills.** smith-new, smith-bugfix, smith-debug —
-   replace shell-outs with the inline Task prose + headless fast-path.
+   replace shell-outs with the inline Task prose.
 7. **Tests.** Wire up `test_task_backend_stub.py` (bulk + incremental
-   + purpose_shifted cases), `test_hash_cache_skip.py`, and the
-   workflow-incremental integration shell test.
+   + purpose_shifted + per-method-split cases), `test_hash_cache_skip.py`,
+   and the workflow-incremental integration shell test.
 8. **Docs.** `CHANGELOG.md` v3.0.0 entry + `docs/manifest-system.md`
-   "Backend selection: cli vs api" section.
+   "Task-based LLM backend" section (replacing v2 HTTPS prose).
 9. **Acceptance run.** Run `/smith-index --describe` on the
    smith-repo itself with `SMITH_TASK_STUB=1` end-to-end. Verify all
    acceptance criteria from spec.md §Acceptance Criteria.
@@ -703,8 +684,8 @@ block to avoid cross-file references the LLM has to chase.)
 ### Test 1 — Task-backend stub (`tests/parsers/test_task_backend_stub.py`)
 
 - Setup: `SMITH_TASK_STUB=1`, fixture file at
-  `tests/fixtures/task-stub-responses.json` mapping rel_path →
-  MetaDescription JSON.
+  `tests/fixtures/task-stub-responses.json` mapping `method_id` →
+  description.
 - Cases:
   1. Bulk path, single Python file with 3 qualifying methods +
      module description.
@@ -714,23 +695,18 @@ block to avoid cross-file references the LLM has to chase.)
      (module regenerated).
   4. Stale-id cleanup: existing `.meta` has a method id absent from
      the current parser output; v3 drops it.
+  5. Per-method-split: file with 20 qualifying methods; assert the
+     stub is invoked once per method (or once with all in single
+     entry, depending on writer mode).
+  6. **Missing-id fail-loud:** fixture omits a required method id;
+     assert `describe_write.py apply --from-stub` exits 4 with the
+     expected error message.
 - Assertions:
   - Resulting `.meta` matches a golden fixture byte-for-byte.
-  - JSONL log contains one record per file with
-    `backend: "stub"`.
+  - JSONL log contains one record per file with `backend: "stub"`.
   - Checkpoint state lists the processed `rel_path`.
 
-### Test 2 — Headless regression (`tests/parsers/test_describe_headless.py`)
-
-- Setup: `SMITH_ANTHROPIC_API_URL` points to a local stub HTTP server
-  that returns canned Anthropic Messages API responses (parity with
-  v2 mechanism at `meta_describe.py:309`).
-- Run `python3 describe_headless.py --root <fixture-project>
-  --no-interactive --resume false`.
-- Assert: resulting `.meta` matches a golden produced by v2 on the
-  same fixture project (committed as the golden).
-
-### Test 3 — Hash-cache skip (`tests/parsers/test_hash_cache_skip.py`)
+### Test 2 — Hash-cache skip (`tests/parsers/test_hash_cache_skip.py`)
 
 - Setup: pre-seed a `.meta` with a complete description layer whose
   `described_against_hash` matches the current source.
@@ -738,47 +714,52 @@ block to avoid cross-file references the LLM has to chase.)
 - Run the full orchestrator (stub mode); assert zero new `.meta`
   bytes written (mtime + content unchanged).
 
-### Test 4 — Workflow incremental integration (`tests/parsers/test_workflow_incremental_task.sh`)
+### Test 3 — Workflow incremental integration (`tests/parsers/test_workflow_incremental_task.sh`)
 
 - Setup: `SMITH_TASK_STUB=1` + fixture with one touched method.
-- Drive the smith-bugfix Phase 3.5 path manually: discover, splice
-  stub output via `describe_write.py update-touched`.
+- Drive the smith-bugfix Phase 3.5 path manually: discover, build
+  prompt, splice stub output via `describe_write.py apply
+  --update-touched`.
 - Assert: existing untouched method descriptions are preserved
   verbatim; only the touched id was overwritten.
 
-### Test 5 — PR #21 regression suite
+### Test 4 — PR #21 regression suite
 
 - Re-run all PR #21 tests for `parse_meta_descriptions`,
-  `render_description_block`, `_qualifying_methods`,
-  `_summarize_for_module_prompt`, `_build_method_prompt`,
-  `_truncate`. These tests live in PR #21's
-  `tests/parsers/test_meta_describe.py` and must pass unchanged.
+  `render_description_block`, `qualifying_methods`,
+  `summarize_for_module_prompt`, `build_method_prompt`,
+  `truncate`. These tests live in PR #21's
+  `tests/parsers/test_meta_describe.py`. Tests for the deleted CLI
+  (`update-touched`) must be removed alongside the CLI itself.
+
+### Test 5 — No-direct-HTTPS sanity check
+
+- A shell test: `grep -rn 'ANTHROPIC_API_KEY\|api.anthropic.com\|urllib.request' scripts/parsers/`
+  must return ZERO matches in the v3 tree.
 
 ## Risks & Mitigations
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| R1 | The Task tool `subagent_type: general` does not accept a `model` override at v3 ship time → Tasks run on the session's primary model (Sonnet/Opus), inflating subscription token cost per call. | Medium | Medium | Document in spec §Assumptions; add a runtime probe at `describe_headless.py`-equivalent path in the skill prose that, if the model override is rejected, falls through to api backend with a clear warning instead of silently running expensive Sonnet Tasks. |
-| R2 | Parallel Task spawning inside a single tool-use block hits an undocumented platform limit (e.g. > 8 sub-agents in one block fails). | Low | Medium | Default `--batch-size 10`; if a batch fails wholesale with a tool-block error, prose retries the same batch sub-divided into 5+5. |
-| R3 | Stub fixture drift — golden `.meta` files diverge from what the live Task path would produce as the prompt template evolves. | Medium | Low | Keep the stub fixture keyed by `rel_path` (not by prompt hash), so prompt changes don't invalidate the fixture. Document the fixture-refresh procedure in the test file's docstring. |
-| R4 | `CLAUDE_HEADLESS` naming collides with a future Claude Code feature. | Low | Low | Open Question 2 already surfaces this; defer rename decision but document the convention prominently in `docs/manifest-system.md`. |
-| R5 | Removing `meta_describe.py update-touched` CLI breaks third-party callers (none known, but the docs/shipped scheduler could regress). | Low | Medium | Keep the `update-touched` surface on `describe_headless.py` (a subcommand) so legacy callers can swap binary names with a sed. CHANGELOG documents the rename. |
-| R6 | The discovery helper imports private internals from `run.py` (parser-lib, `walk_source_files`, `sha256_first_4kb`) — these were not designed as a public API. | Medium | Low | Plan Decision 3: extract these into a thin `scripts/parsers/index_common.py` module imported by both `run.py` and the new helpers. Mechanical refactor; no behavior change. |
+| R1 | The Task tool `subagent_type: general` does not accept a `model` override at v3 ship time → Tasks run on the session's primary model (Sonnet/Opus), inflating subscription token cost per call. | Medium | High | **Runtime model probe (Q7).** Skill prose Step 0 spawns one trivial Task to verify Haiku honors the override. On failure, hard abort with clear error. `--skip-model-probe` for users who accept the risk. |
+| R2 | Sequential Task spawning within a batch is slower than parallel — a 1,214-file repo at 5s/Task is ~100 minutes vs ~10 minutes parallel. | High | Low | **Accepted trade-off (Q2).** Sequential keeps per-Task error handling simple and progress visible. Re-evaluate after real runs; can switch to parallel-with-fallback if pain materializes. |
+| R3 | Stub fixture drift — golden `.meta` files diverge from what the live Task path would produce as the prompt template evolves. | Medium | Low | Keep the stub fixture keyed by `method_id` (not by prompt hash), so prompt changes don't invalidate the fixture. **Fail-loud on missing id (Q5)** surfaces drift immediately. |
+| R4 | Pre-flight estimate is inaccurate (the 5s/Task assumption is too optimistic on dense methods). | Low | Low | Display the estimate as `~T minutes (estimate based on 5s/Task)`. Users can override the gate with `--yes`. Estimate accuracy is a quality-of-life issue, not a correctness one. |
+| R5 | Removing `meta_describe.py update-touched` CLI breaks third-party callers (none known, but the docs/shipped scheduler could regress). | Low | Medium | The CLI was internal-only. All in-repo callers (3 SKILL.md files) are updated in this PR. CHANGELOG calls out the removal. |
+| R6 | Helper scripts import private internals from `run.py` (parser-lib, `walk_source_files`, `sha256_first_4kb`) — these were not designed as a public API. | Medium | Low | **Plan Decision 3:** extract these into `scripts/parsers/index_common.py`. Mechanical refactor; no behavior change. |
 | R7 | Resume race: two `/smith-index --describe` invocations on the same project mid-run corrupt the checkpoint file. | Low | Medium | Reuse the existing `.smith/vault/active-workflows/` check (global rule, MEMORY.md note re: concurrent sessions). The describe prose checks this before starting and refuses to run if another describe is in flight. |
+| R8 | The 2am scheduler's `claude --print` invocation has different Task-tool semantics than interactive sessions (e.g. concurrency cap differs). | Low | Medium | Documented as an assumption. Sequential batching means concurrency cap is irrelevant. First scheduled run is the live verification. |
 
-## Plan Decisions (beyond the six in spec.md)
+## Plan Decisions (beyond the seven in spec.md)
 
-### Plan Decision 1 — Collapse the two-tier batch knob into one
+### Plan Decision 1 — Single `--batch-size` (default 10)
 
 - **Decision.** v3 has a single `--batch-size` (default 10). v2's
   separate `--batch-size 20` (operator approval) and
   `--llm-batch-size 10` (LLM sub-batch) collapse — one batch is one
-  operator-approval unit and one Task fan-out.
-- **Rationale.** The two-tier model in v2 was a workaround for the
-  Python loop being unable to parallelise within a batch. With Task
-  fan-out, all 10 files in a batch run concurrently anyway. A second
-  tier adds operator-prompt churn without throughput benefit. The
-  spec says "default 10" (§A2.4) — this aligns.
+  unit of checkpoint persistence and one progress group.
+- **Rationale.** With sequential within-batch (Q2 B), there's no
+  reason for two batch tiers. One source of truth for batch size.
 - **Migration.** `--llm-batch-size` is removed. `--batch-size` default
   drops from 20 to 10. Document in CHANGELOG.
 
@@ -786,13 +767,12 @@ block to avoid cross-file references the LLM has to chase.)
 
 - **Decision.** The skill prose does NOT inline the prompt template;
   it delegates assembly to `describe_write.py build-prompt`
-  (a new subcommand) which calls the public `summarize_for_module_prompt`
+  (a subcommand) which calls the public `summarize_for_module_prompt`
   + `build_method_prompt` from `meta_describe`. The skill receives the
   fully-assembled prompt string and embeds it in the Task call.
-- **Rationale.** Keeping the prompt template in Python keeps it
-  unit-testable and prevents prompt drift between the cli backend
-  (skill prose) and api backend (describe_headless.py). One source
-  of truth.
+- **Rationale.** One source of truth for prompt construction across
+  the bulk path (SKILL.md) and the three workflow incremental paths
+  (smith-new/smith-bugfix/smith-debug SKILL.md). Unit-testable.
 - **Alternative considered.** Skill prose templates the prompt in
   markdown. Rejected — markdown templating is harder to keep in sync
   with Python format changes and impossible to unit-test.
@@ -800,10 +780,11 @@ block to avoid cross-file references the LLM has to chase.)
 ### Plan Decision 3 — Extract `scripts/parsers/index_common.py`
 
 - **Decision.** Move `walk_source_files`, `sha256_first_4kb`,
-  `iso_now_for_filename`, `iso_now_ms`, `load_checkpoint`, and
-  `save_checkpoint` from `scripts/smith-index/run.py` into a new
-  thin module `scripts/parsers/index_common.py`. Both `run.py` and
-  the new `describe_*.py` helpers import from there.
+  `iso_now_for_filename`, `iso_now_ms`, `load_checkpoint`,
+  `save_checkpoint`, and the parser-lib invocation helpers from
+  `scripts/smith-index/run.py` into a new thin module
+  `scripts/parsers/index_common.py`. Both `run.py` and the new
+  `describe_*.py` helpers import from there.
 - **Rationale.** Avoids the circular `describe_discover.py → run.py`
   import that would otherwise be required; gives the helpers a clean
   public interface; surface-level only — no behavior change.
@@ -818,25 +799,27 @@ block to avoid cross-file references the LLM has to chase.)
   via the same `parse_meta_descriptions` function. First v3
   `--describe` run on a v2 repo is a series of cache-hits (no LLM
   calls) unless source changed since the v2 run.
-- **Existing scripts / cron using `ANTHROPIC_API_KEY`** — keep working
-  via `describe_headless.py` (set `CLAUDE_HEADLESS=1` or pass
-  `--llm-backend api`).
+- **Existing scripts / cron using `ANTHROPIC_API_KEY`** — break in v3.
+  The env var is no longer read anywhere in the v3 code paths.
+  Existing callers must either: (a) migrate to invoking
+  `/smith-index --describe --yes` via `claude --print`, or
+  (b) pin to v2 and stop upgrading. CHANGELOG documents this loud and
+  clear under "Breaking changes."
 - **No data migration script required.**
-- **User `.env` files** — no changes required. `ANTHROPIC_API_KEY` is
-  no longer required for the default (cli) path, but is still
-  honored if set (the headless path reads it).
-- **Scheduler** — `scheduler/smith-scheduler.sh` does NOT currently
-  set `CLAUDE_HEADLESS=1`. Spec Open Question 2 surfaces who owns
-  this. Plan recommendation: scheduler sets it inside the per-task
-  subshell at line 215 of `smith-scheduler.sh`. This recommendation
-  is documented but the actual scheduler edit is deferred to a
-  follow-up PR — out of scope for this feature per spec §Non-Goals.
+- **Scheduler** — `scheduler/smith-scheduler.sh` already invokes
+  `claude --print -p "/smith-queue process …"` (verified in Q6
+  investigation). The scheduler does NOT need any v3 edits because:
+  (a) it doesn't currently call `--describe` directly,
+  (b) when `/smith-queue` eventually adds a `--describe` task, it
+      will route through the SAME `/smith-index --describe` skill
+      code path, getting Task spawning for free.
 
 ## References
 
-- `scripts/parsers/meta_describe.py` (PR #21) — the v2 LLM module.
+- `scripts/parsers/meta_describe.py` (PR #21) — the v2 LLM module
+  that v3 strips down.
 - `scripts/smith-index/run.py:1100-1450` (PR #21) — the v2
-  orchestrator.
+  orchestrator removed in v3.
 - `scripts/parsers/contracts/meta-description-layer.schema.json`
   (PR #21) — unchanged.
 - `specs/20-manifest-fixes/contracts/meta-description-layer.schema.json`
@@ -848,4 +831,5 @@ block to avoid cross-file references the LLM has to chase.)
   sites being replaced.
 - `skills/smith-index/SKILL.md` — gains the new
   `### /smith-index --describe` section.
-- `scheduler/smith-scheduler.sh` — the headless invoker.
+- `scheduler/smith-scheduler.sh` — Q6 confirmed this is a Claude
+  Code session via `claude --print`; no scheduler edits in v3.
