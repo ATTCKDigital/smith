@@ -53,7 +53,7 @@ Once installed, open any new or existing project in your terminal and run `/smit
 
 ## What's Inside
 
-### Skills (28)
+### Skills (29)
 
 | Category | Commands | Description |
 |---|---|---|
@@ -62,7 +62,7 @@ Once installed, open any new or existing project in your terminal and run `/smit
 | Knowledge and vault | `/smith-vault`, `/smith-bank`, `/smith-queue`, `/smith-todo`, `/smith-ledger`, `/smith-reflect` | Persistent session logs, idea storage, task queuing, and accumulated learning |
 | Reporting | `/smith-report`, `/smith-taskstoissues` | Client-facing reports and GitHub issue generation |
 | Manifest | `/smith-index`, `/smith-navigate`, `/smith-migrate-system-paths` | Precomputed project index, Haiku navigator, and one-shot path-frontmatter migration for structured context retrieval (see [docs/manifest-system.md](docs/manifest-system.md)) |
-| Meta | `/smith`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, governance, and reference |
+| Meta | `/smith`, `/smith-update`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, version sync, governance, and reference |
 
 ### Hooks (12)
 
@@ -199,9 +199,21 @@ After installing, run `/smith` once inside each project to complete **per-projec
 
 ### Updating
 
+The recommended path is via the `/smith-update` skill inside Claude Code:
+
+```
+/smith-update
+```
+
+`/smith-update` compares your installed Smith version against the latest upstream main, prompts to update, runs the installer if accepted, and (when invoked inside a Smith-initialized project) also refreshes per-project artifacts: `.specify/scripts/`, `.claude/commands/smith.*`, the `CLAUDE.md` / `constitution.md` templates (non-destructively via `/smith-index --migrate-templates`), and offers to bootstrap the manifest sidecar if the project predates the manifest system (PR #19). It snapshots the global install to `~/.smith/.backups/<timestamp>/` before destructive work so a failed install can be rolled back. The first invocation against a pre-versioning install (no `~/.smith/.installed-version` file) silently establishes a baseline — no false "X commits behind" prompts.
+
+You can still update Smith manually if preferred:
+
 ```bash
 cd /path/to/smith && git pull && ./scripts/install.sh -y
 ```
+
+The manual path runs the same idempotent `install.sh` (existing duplicate hook entries in `~/.claude/settings.json` are now collapsed on every install).
 
 ### Uninstalling
 
