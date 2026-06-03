@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Task-based LLM backend (23-task-llm-backend / PR #23)** — inverts
+  the orchestration of `/smith-index --describe` and the three workflow
+  incremental paths (`/smith-new`, `/smith-bugfix`, `/smith-debug`) so
+  LLM calls inherit the user's Claude Code session auth →
+  **subscription billing**. The v2 direct-HTTPS path (urllib.request →
+  api.anthropic.com using `ANTHROPIC_API_KEY`) is removed entirely;
+  v3 ships a single Task-spawning backend.
+  - Skill prose in `skills/smith-index/SKILL.md` now drives the
+    description loop directly, spawning one Task per file
+    (`subagent_type: general`, `model: claude-haiku-4-5`). The 2am
+    scheduler (`scheduler/smith-scheduler.sh`) already invokes
+    `claude --print` which IS a Claude Code session — same code path
+    serves scheduled and interactive runs (no env-var branching).
+  - Three workflow SKILL.md files replace `python3 meta_describe.py
+    update-touched ...` shell-outs with inline Task spawning.
+  - New helper split: `scripts/parsers/describe_discover.py` (file
+    walk + cache_hit), `scripts/parsers/describe_write.py`
+    (build-prompt + apply subcommands), `scripts/parsers/
+    describe_checkpoint.py` (JSONL log + state),
+    `scripts/parsers/index_common.py` (shared utilities extracted
+    from run.py per plan.md Decision 3).
+  - `scripts/parsers/meta_describe.py` becomes structural-only:
+    every LLM-call code path removed (`_default_haiku_call`,
+    `HaikuClient`, `HaikuUnavailable`, `describe_file`,
+    `update_touched`, `_describe`, `_safe_json_object`, the
+    `update-touched` CLI entrypoint, argparser, `main()`, and the
+    `__main__` block). Public helpers (`qualifying_methods`,
+    `summarize_for_module_prompt`, `build_method_prompt`, `truncate`,
+    `MODULE_SYSTEM`, `METHOD_SYSTEM`) are renamed to drop their
+    leading underscore; backward-compat aliases preserve PR #21
+    test imports.
+  - `scripts/smith-index/run.py` deletes `mode_describe`,
+    `_describe_one_file`, `_read_meta_text`, `_extract_hash_from_meta`,
+    and the CLI flags `--describe`, `--batch-size`,
+    `--llm-batch-size`, `--threshold`, `--model`, `--no-interactive`.
+    `--describe` is now a flag of the skill, not the script.
+  - Runtime model probe (Q7) verifies the Haiku override is honored
+    before the bulk loop starts; aborts with a clear error otherwise
+    to prevent silent ~30× quota burn on the session's primary model.
+    `--skip-model-probe` bypasses.
+  - Pre-flight estimate + confirmation gate (Q4): prints
+    `Will spawn N Tasks (~M methods); ~T minutes`, asks
+    `Proceed? (y/N)`. `--yes` bypasses (required for the scheduler).
+  - Sequential within-batch (Q2): one Task at a time per batch for
+    simpler per-Task error handling and visible progress.
+  - Per-method-split (Q3): files with >15 qualifying methods spawn
+    one Task per method instead of one Task per file.
+    `--per-method-threshold` configures the cutoff.
+  - Exponential backoff retry on Task failure (Q1): 5s → 10s → 20s,
+    max 3 attempts per Task. After 3, log `failed` and continue —
+    no run-level abort.
+  - Test stub (`SMITH_TASK_STUB=1`) bypasses Task spawn and reads
+    from `tests/fixtures/task-stub-responses.json`. Q5 fail-loud
+    semantics: missing `method_id` in fixture → exit 4 with an error
+    naming the absent id.
+
+### Fixed
+
+- **Hash-cache bug from PR #21** — v2 wrote
+  `Described-Against-Hash:` as `sha256(full_source)` but compared it
+  against `sha256_first_4kb(file)` at the cache-check site. Cache
+  never hit for files larger than 4KB. v3 standardizes on
+  `sha256_first_4kb` for both, matching the `.meta` `Hash:` field.
+  Re-running `/smith-index --describe` on an unchanged repo now
+  actually short-circuits as designed.
+
+### Removed
+
+- `meta_describe.py update-touched` CLI (internal-only; all in-repo
+  callers updated to the v3 helpers).
+- `ANTHROPIC_API_KEY` is no longer read by any code path. Existing
+  cron jobs or scripts that relied on the env var must migrate to
+  invoking `/smith-index --describe --yes` via `claude --print`.
+
 ### Added
 
 - **Configurable base branch per project (24-configurable-base-branch)** — Smith no longer hardcodes `main`/`origin/main` as the integration branch. The base branch is now a per-project value read from a new `base_branch:` field in the constitution frontmatter (`.specify/memory/constitution.md`), defaulting to `main`.

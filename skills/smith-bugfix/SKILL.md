@@ -201,24 +201,56 @@ Run once per modified source file (extensions: `.py`, `.js`, `.jsx`,
    - the file's primary responsibility shifted (judgment call).
 
    Otherwise `false`.
-3. **Invoke the shared helper.** The helper updates
-   `.smith/index/files/<file>.meta` in place, regenerating descriptions
-   ONLY for the touched ids; untouched method descriptions are
-   preserved verbatim:
-   ```bash
-   python3 ~/.smith/scripts/meta_describe.py update-touched \
-     --rel-path <project-relative-path> \
-     --touched-ids <comma-separated-16hex-ids> \
-     --purpose-shifted <true|false>
-   ```
-   (In repo-dev layouts the helper lives at
-   `scripts/parsers/meta_describe.py` — use whichever path resolves
-   first.)
-4. **Failure handling.** If the helper is unavailable
-   (e.g. `meta_describe.py` not installed yet, `ANTHROPIC_API_KEY`
-   unset, or the LLM call times out), log a single line to the
-   session log and CONTINUE — the missing descriptions are flagged
-   as a non-blocking PR-body warning by `/smith-build` (see Phase 8 /
+3. **Inline-spawn ONE Task** for this file. Subscription billing,
+   not API tokens (v3 / PR #23). The spawn replaces the v2 shell-out
+   to `meta_describe.py update-touched`.
+
+   a. Gather inputs via the discovery helper:
+      ```bash
+      DISCOVERY=$(python3 ~/.smith/scripts/describe_discover.py \
+        --rel-path <project-relative-path> \
+        --touched-only \
+        --touched-ids <comma-separated-16hex-ids>)
+      ```
+      (Falls back to `scripts/parsers/describe_discover.py` in repo-dev
+      layouts.)
+
+   b. Build the prompt body via the prompt-assembly helper:
+      ```bash
+      PROMPT=$(python3 ~/.smith/scripts/describe_write.py build-prompt \
+        --rel-path <project-relative-path> \
+        --method-ids <comma-separated-16hex-ids> \
+        --purpose-shifted <true|false> \
+        $( [ "<purpose_shifted>" = "true" ] && echo --module ))
+      ```
+
+   c. Spawn the Task (subscription billing — inherits session auth):
+      ```yaml
+      subagent_type: general
+      model: claude-haiku-4-5
+      prompt: |
+        <PROMPT body from step b>
+
+        Return ONLY a JSON object with `method_descriptions` for the
+        touched ids, and a `module_description` iff
+        purpose-shifted=true. Match task-llm-output.schema.json.
+      ```
+
+   d. When the Task returns, pipe its JSON output into the writer:
+      ```bash
+      echo "$TASK_OUTPUT" | \
+        python3 ~/.smith/scripts/describe_write.py apply --update-touched \
+          --rel-path <project-relative-path> \
+          --purpose-shifted <true|false>
+      ```
+
+   e. **Test stub.** If `SMITH_TASK_STUB=1` is set, skip the Task
+      spawn and use `apply --from-stub <fixture>` instead.
+
+4. **Failure handling.** If any step fails (helper not installed,
+   Task tool error, write error), log a single line to the session
+   log and CONTINUE — the missing descriptions are flagged as a
+   non-blocking PR-body warning by `/smith-build` (see Phase 8 /
    data-model.md §9). This step never blocks the fix.
 
 This step is skipped entirely for files where the diff only touches

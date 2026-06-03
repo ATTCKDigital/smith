@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ATTCKDigital/smith/specs/23-task-llm-backend/contracts/task-llm-output.schema.json",
+  "title": "Smith v3 Task Sub-agent Description Output",
+  "description": "Strict JSON contract returned by a Task tool sub-agent (subagent_type=general, model=claude-haiku-4-5) invoked by `/smith-index --describe` or by the smith workflow incremental path. The sub-agent receives a description-generation prompt built by `describe_write.py build-prompt` and MUST return exactly one JSON object matching this schema (no preamble, no code fences, no commentary). The orchestrating LLM (skill prose) parses this payload, then pipes it into `describe_write.py` which translates the envelope into the on-disk `.meta` description layer (contract: meta-description-layer.schema.json — unchanged from PR #21).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "module_description",
+    "method_descriptions",
+    "errors"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "error"],
+      "description": "Top-level status. `ok` means the sub-agent produced a usable description payload (which may still be partial — some method ids omitted). `error` means the sub-agent could not produce ANY usable output; the orchestrator records a `failed` JSONL entry and does NOT touch the `.meta`."
+    },
+    "module_description": {
+      "type": ["string", "null"],
+      "maxLength": 400,
+      "description": "Module-level description, ≤120-char soft cap (400 hard cap to allow rare overflow; the writer truncates to soft cap). Single line, no newlines, no markdown formatting. Null when the sub-agent declined to produce a module description (e.g. file is data-only / no exported behavior) OR when status=error."
+    },
+    "method_descriptions": {
+      "type": "array",
+      "description": "Per-method descriptions. The array may be a subset of the prompt's `Methods to describe` list — methods absent from this array have no description for this Task. The writer drops stale ids automatically (mirrors v2 `_describe` stale-id cleanup) but does NOT invent descriptions for missing ids.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["method_id", "description"],
+        "properties": {
+          "method_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "Stable 16-char hex method id from the parser output. MUST match an id present in the prompt's `Methods to describe` list — ids not in the prompt are silently discarded by the writer."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400,
+            "description": "Per-method description, ≤200-char soft cap (400 hard cap). One-to-two sentences. No newlines, no markdown formatting. The writer applies `_truncate` (preserves natural sentence/word breaks) to enforce the soft cap."
+          }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Optional list of error entries. Always present (may be empty). Used by status=ok responses to flag partial failures (e.g. one method id was too large for the sub-agent's budget) and by status=error responses to explain why no output was produced.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "detail"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "TOO_LARGE",
+              "PARSE_ERROR",
+              "UNSUPPORTED_LANG",
+              "RATE_LIMIT",
+              "TIMEOUT",
+              "INTERNAL"
+            ],
+            "description": "Machine-readable error tag. The orchestrator can use this to decide whether to retry, skip, or surface to the user."
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Human-readable explanation of the error. Logged to the JSONL record's `error` field on `failed` status."
+          },
+          "method_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "Optional — when present, indicates this error applies only to the named method id (the rest of the response may still be usable)."
+          }
+        }
+      }
+    }
+  }
+}
