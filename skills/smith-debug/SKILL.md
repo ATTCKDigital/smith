@@ -92,11 +92,15 @@ Before any file is written (debug reports, vault logs, etc.), create an active-w
 ```bash
 SLUG=$(echo "${1:-debug}" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-40)
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+# Capture the workflow's session log NOW, at the start, so end-of-workflow
+# totals read the correct file even if the session log rolls over later.
+SESSION=$(cat .smith/vault/.current-session 2>/dev/null || echo "")
 mkdir -p .smith/vault/active-workflows
 cat > .smith/vault/active-workflows/debug-${SLUG}.yaml << EOF
 workflow: smith-debug
 feature: ${SLUG}
 branch: ${BRANCH}
+session_log: $SESSION
 started: $(date -u +"%Y-%m-%dT%H:%M:%S")
 EOF
 ```
@@ -360,7 +364,13 @@ Would you like me to:
 ### If user selects [3] (Close):
 - Update the debug report status to `closed` or `documented`
 - Log the diagnosis summary (root cause and confidence level) as a regular event entry in the session log
-- Run `bash hooks/workflow-summary.sh --totals-only` and include the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim at the bottom of the closing chat message
+- Run the totals command and include the lines it prints verbatim at the bottom of the closing chat message. Pass the workflow's own session log via `--session` so totals survive a mid-workflow session-log rollover:
+  ```bash
+  # $SESSION was captured at workflow start. Fall back to .current-session.
+  SESSION="${SESSION:-$(cat .smith/vault/.current-session 2>/dev/null)}"
+  bash hooks/workflow-summary.sh --totals-only --session "$SESSION"
+  ```
+  If it prints `n/a (no workflow invocation found)` and exits non-zero, do NOT present those as real numbers — note totals were unavailable and which session file was checked.
 - The full `=== Workflow Summary ===` block is appended to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up — that's for audit only, do not duplicate it in chat
 - Log completion to vault
 

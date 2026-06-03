@@ -98,12 +98,16 @@ The worktree is created after exploration passes (or is skipped). This ensures t
    ```bash
    # After determining branch name in step 4:
    SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   # Capture the workflow's session log NOW, at the start, so end-of-workflow
+   # totals read the correct file even if the session log rolls over later.
+   SESSION=$(cat .smith/vault/.current-session 2>/dev/null || echo "")
    mkdir -p .smith/vault/active-workflows
    cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
    workflow: smith-new
    feature: <feature-name>
    branch: $BRANCH
    worktree: $WORKTREE_PATH
+   session_log: $SESSION
    started: $(date -u +"%Y-%m-%dT%H:%M:%S")
    EOF
    ```
@@ -452,7 +456,14 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    Phase 3.5 for the full identification heuristic and prompt
    assembly. Skip silently if no source code was edited at this stage.
 
-5. **Display final summary** to the user. Emit a chat message that starts with "Feature `<name>` complete. Here's the summary:" and includes the feature name and branch, files created/modified, PR link, release notes summary, and link to `specs/<feature>/release.md`. At the bottom, run `bash hooks/workflow-summary.sh --totals-only` and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim — do this BEFORE step 9 (clearing the active-workflow file) so the numbers are fresh. The bash invocation is a required action, not an optional extra — the two totals lines must appear in the chat message.
+5. **Display final summary** to the user. Emit a chat message that starts with "Feature `<name>` complete. Here's the summary:" and includes the feature name and branch, files created/modified, PR link, release notes summary, and link to `specs/<feature>/release.md`. At the bottom, run the totals command and paste the lines it prints verbatim — do this BEFORE step 9 (clearing the active-workflow file) so the numbers are fresh. Pass the workflow's own session log via `--session` so totals are computed against the correct file even if the session log rolled over mid-workflow:
+   ```bash
+   # $SESSION was captured at workflow start (step 0). Fall back to the marker's
+   # session_log field, then to .current-session, if it's not in scope here.
+   SESSION="${SESSION:-$(cat .smith/vault/.current-session 2>/dev/null)}"
+   bash hooks/workflow-summary.sh --totals-only --session "$SESSION"
+   ```
+   The bash invocation is a required action, not an optional extra — the totals lines must appear in the chat message. If it prints `n/a (no workflow invocation found)` and exits non-zero, do NOT present those as real numbers — note that totals were unavailable and which session file was checked.
 
 6. **Merge PR** from the **main repo directory** (not the worktree — avoids "main already checked out" errors):
    **IMPORTANT**: Always run `gh pr merge` from the **primary repo directory**.

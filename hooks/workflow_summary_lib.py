@@ -508,6 +508,23 @@ def render_chat_block(totals: Dict[str, Any]) -> str:
     )
 
 
+def render_no_marker_block() -> str:
+    """Three-line block for the no-invocation-marker case (S1 / FIX 2).
+
+    Keeps the same 3-line shape callers expect, but every value is an explicit
+    'n/a (no workflow invocation found)' so nothing reads as a genuine $0.00 /
+    0s result. Pairs with a non-zero exit code and a stderr diagnostic so a
+    caller can detect the condition programmatically. This is distinct from a
+    real zero-usage workflow, which DOES have an invocation marker and renders
+    via render_chat_block with literal zeros.
+    """
+    return (
+        "Token Usage: n/a (no workflow invocation found)\n"
+        "Est. cost: n/a\n"
+        "Active duration: n/a\n"
+    )
+
+
 def render_audit_block(
     totals: Dict[str, Any],
     files_changed: List[str],
@@ -828,6 +845,17 @@ def main() -> int:
     totals_only = os.environ.get("TOTALS_ONLY") == "1"
 
     if not session_file or not os.path.isfile(session_file):
+        # Missing session file. In Stop-hook mode this is a silent no-op (the
+        # wrapper already guards it). In --totals-only mode, be loud rather than
+        # print misleading zeros (FIX 2): tell the caller exactly which path we
+        # tried to read, and exit non-zero.
+        if totals_only:
+            sys.stderr.write(
+                "workflow-summary: session file not found: "
+                f"{session_file or '(none resolved)'}\n"
+            )
+            sys.stdout.write(render_no_marker_block())
+            return 3
         return 0
 
     content = _read(session_file)
@@ -836,34 +864,19 @@ def main() -> int:
     start_utc, end_utc = resolve_workflow_window(session_file, content)
     invoke = find_invocation(content)
     if invoke is None:
-        # Without an invocation we can't produce a meaningful summary.
+        # Without an invocation marker we can't produce a meaningful summary.
+        # FIX 2 (S1): make this LOUD instead of emitting plausible-looking zeros.
+        # Emit a stderr diagnostic naming the file actually read, print explicit
+        # n/a lines (same 3-line shape), and exit non-zero so callers detect it.
+        # A genuine zero-usage workflow still has a marker and does NOT hit this
+        # branch — only the no-marker case prints n/a.
         if totals_only:
-            # Still emit the 3-line block in the degenerate form.
-            degenerate = {
-                "combined_normalized": 0,
-                "combined_usd": 0.0,
-                "combined_raw_components": {
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                    "cache_read_input_tokens": 0,
-                },
-                "combined_raw_total": 0,
-                "parent_usage": None,
-                "parent_model": None,
-                "parent_tool_calls": 0,
-                "parent_active_duration_s": 0,
-                "parent_normalized": 0,
-                "parent_usd": None,
-                "subagent_rows": [],
-                "total_elapsed_s": 0,
-                "active_duration_s": 0,
-                "n_total_sessions": 0,
-                "n_priced_sessions": 0,
-                "unknown_model_ids": [],
-                "pricing_missing": False,
-            }
-            sys.stdout.write(render_chat_block(degenerate))
+            sys.stderr.write(
+                "workflow-summary: no /smith-(new|bugfix|debug) invocation "
+                f"marker found in {session_file}\n"
+            )
+            sys.stdout.write(render_no_marker_block())
+            return 2
         return 0
     started_hms, workflow_type = invoke
 

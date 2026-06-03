@@ -91,12 +91,16 @@ Every bugfix always runs in an isolated git worktree branched from the configure
 2. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/` in the **primary repo** (not the worktree, which doesn't exist yet):
    ```bash
    SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+   # Capture the workflow's session log NOW, at the start, so end-of-workflow
+   # totals read the correct file even if the session log rolls over later.
+   SESSION=$(cat .smith/vault/.current-session 2>/dev/null || echo "")
    mkdir -p .smith/vault/active-workflows
    cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
    workflow: smith-bugfix
    feature: $SLUG
    branch: $BRANCH
    worktree: $WORKTREE_PATH
+   session_log: $SESSION
    started: $(date -u +"%Y-%m-%dT%H:%M:%S")
    EOF
    ```
@@ -368,7 +372,14 @@ Skip if no Docker services were touched.
 
 ### 8.2 Summary
 
-Emit a final chat message to the user that starts with "Bugfix complete. Here's the summary:" (or equivalent for the fix). Include any bugfix-specific notes (test results, services rebuilt, worktree path if preserved on failure). At the bottom, run `bash hooks/workflow-summary.sh --totals-only` (from either the primary repo or the worktree — both work) and paste the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim — do this BEFORE the Workflow Cleanup step below.
+Emit a final chat message to the user that starts with "Bugfix complete. Here's the summary:" (or equivalent for the fix). Include any bugfix-specific notes (test results, services rebuilt, worktree path if preserved on failure). At the bottom, run the totals command and paste the lines it prints verbatim — do this BEFORE the Workflow Cleanup step below. Pass the workflow's own session log via `--session` so totals are computed against the correct file even if the session log rolled over mid-workflow:
+```bash
+# $SESSION was captured at workflow start (Phase 1 step 2). Fall back to the
+# marker's session_log field, then to .current-session, if not in scope here.
+SESSION="${SESSION:-$(cat .smith/vault/.current-session 2>/dev/null)}"
+bash hooks/workflow-summary.sh --totals-only --session "$SESSION"
+```
+If it prints `n/a (no workflow invocation found)` and exits non-zero, do NOT present those as real numbers — note that totals were unavailable and which session file was checked.
 
 The full `=== Workflow Summary ===` block is written to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is removed — that's for audit only, not chat. Do not emit the full block to the user.
 

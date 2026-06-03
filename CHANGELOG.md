@@ -67,6 +67,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`workflow-summary --totals-only` reported all zeros after a session-log
+  rollover** (see `specs/debug/debug-2026-06-03-workflow-summary-zeros.md`).
+  When a long/multi-day conversation rolled the session log mid-workflow,
+  `.smith/vault/.current-session` repointed at a fresh, markerless file;
+  `find_invocation()` returned `None` and the lib silently emitted
+  `Token Usage: 0 / $0.00 / 0s` as if real. Three coordinated fixes:
+  - **Session-rollover resilience.** `hooks/workflow-summary.sh` now resolves
+    the session file by precedence: (a) an explicit `--session <path>` CLI
+    flag, (b) the `session_log:` field of an active-workflow marker
+    (`.smith/vault/active-workflows/*.yaml`; when several exist, the one whose
+    `branch:` matches the current git branch), (c) the existing
+    `.current-session` fallback (fully backwards-compatible).
+  - **Loud degenerate path.** When no `/smith-(new|bugfix|debug)` invocation
+    marker is found, `hooks/workflow_summary_lib.py` now prints a stderr
+    diagnostic naming the file actually read, emits explicit
+    `Token Usage: n/a (no workflow invocation found)` / `Est. cost: n/a` /
+    `Active duration: n/a` lines (same 3-line shape), and exits non-zero — so
+    callers never paste misleading zeros. A genuine zero-usage workflow (marker
+    present, truly 0 tokens) still renders real zeros and is distinguishable.
+  - **Marker writers + call sites.** `/smith-new`, `/smith-bugfix`, and
+    `/smith-debug` now capture the workflow's session log at start, write it as
+    `session_log:` into the active-workflow marker, and pass `--session
+    "$SESSION"` to the end-of-workflow `--totals-only` call.
 - **Hash-cache bug from PR #21** — v2 wrote
   `Described-Against-Hash:` as `sha256(full_source)` but compared it
   against `sha256_first_4kb(file)` at the cache-check site. Cache
