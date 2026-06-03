@@ -85,6 +85,28 @@ If `.smith/vault/ledger/` exists and contains non-empty files, load relevant Led
 3. Use loaded entries as additional context during symptom capture, triage, and diagnosis. Especially use `antipatterns.md` to avoid re-investigating already-known failure modes from scratch, and `project-quirks.md` to skip false-positive theories. The Ledger informs judgment, it does not override evidence collected during this run.
 4. **Budget violation tracking**: If any Ledger file was truncated (entries were dropped to fit within the ~2000 token budget per file), increment `context_budget_violations` in `.smith/vault/ledger/.meta.json` by 1. If `.meta.json` does not exist, create it from the default template first. This signal tells the reconciliation system that the Ledger is too large for the configured budget.
 
+## Phase 0: Activate Workflow Tracking
+
+Before any file is written (debug reports, vault logs, etc.), create an active-workflow marker so the workflow-gate hook (PreToolUse) allows subsequent writes. Without this, even the debug-report Write at the end of Phase 5 would be denied.
+
+```bash
+SLUG=$(echo "${1:-debug}" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-40)
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+mkdir -p .smith/vault/active-workflows
+cat > .smith/vault/active-workflows/debug-${SLUG}.yaml << EOF
+workflow: smith-debug
+feature: ${SLUG}
+branch: ${BRANCH}
+started: $(date -u +"%Y-%m-%dT%H:%M:%S")
+EOF
+```
+
+The marker is cleared at the end of Phase 6 (Decision Gate) regardless of which option the user picks. Use the shipped helper so this works under a `Bash(rm:*)` deny rule:
+
+```bash
+.specify/scripts/bash/clear-active-workflow.sh "debug-${SLUG}"
+```
+
 ## Phase 1: Symptom Capture (Interactive if needed)
 
 Extract or ask for these structured fields from the user's description:
@@ -335,6 +357,16 @@ Would you like me to:
 - Run `bash hooks/workflow-summary.sh --totals-only` and include the two lines it prints (`Total tokens used: ~<n>` and `Total duration: <d>`) verbatim at the bottom of the closing chat message
 - The full `=== Workflow Summary ===` block is appended to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up — that's for audit only, do not duplicate it in chat
 - Log completion to vault
+
+### Clear Workflow Tracking (all three paths)
+
+After Phase 6 completes — regardless of which option the user picked — remove the Phase 0 active-workflow marker so the workflow-gate hook returns to denying ad-hoc edits:
+
+```bash
+.specify/scripts/bash/clear-active-workflow.sh "debug-${SLUG}"
+```
+
+If option [1] (Fix it) was chosen, the marker is cleared *before* `/smith-bugfix` is invoked — the bugfix workflow creates its own marker.
 
 ## Post-Workflow Reflection
 

@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+# workflow-gate.sh
+# Event: PreToolUse
+# Matchers: Bash, Write|Edit
+# Scope: Universal — fires in both main session and sub-agents
+#
+# Hard, tool-layer enforcement of Smith's workflow discipline. Denies any
+# file-modifying tool call unless a Smith workflow marker exists at
+# <project>/.smith/vault/active-workflows/*.yaml.
+#
+# Markers are created by the four top-level workflow skills (smith-new,
+# smith-bugfix, smith-debug, smith-build) plus the smith bootstrap and
+# smith-finish utility skills, and removed by clear-active-workflow.sh
+# or the active-workflow-janitor.sh sweep.
+#
+# Exemptions:
+#   - Smith not installed at all (no .smith/ directory) → exit silently.
+#     Bootstrap and non-Smith projects are not our place to gate.
+#   - Vault-internal writes to known-safe subdirectories under
+#     .smith/vault/{sessions,bank,ledger,queue,agents,todo,reports,
+#     index,audits}. active-workflows/ is NOT exempt (prevents forged
+#     markers from bypassing the gate).
+#   - Read-only Bash commands.
+#
+# Layers AFTER security-guard-bash.sh / security-guard-files.sh — security
+# blocks take precedence (the deny message users see is the more important
+# one).
+
+set -uo pipefail
+
+INPUT=$(cat)
+
+# ---------- extract tool name + relevant input fields ----------
+
+TOOL_NAME=$(echo "$INPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('tool_name', ''))
+" 2>/dev/null || echo "")
+
+if [ -z "$TOOL_NAME" ]; then
+    exit 0
+fi
+
+case "$TOOL_NAME" in
+    Bash|Write|Edit|NotebookEdit) ;;
+    *) exit 0 ;;
+esac
+
+# ---------- locate project + check Smith install ----------
+#
+# Subagent contexts (Smith's bread and butter — every workflow spawns them
+# in worktrees) inherit a $PWD pointing at the worktree, and $CLAUDE_PROJECT_DIR
+# is unset. The active-workflow marker lives in the PRIMARY repo's
+# .smith/vault/, not the worktree. Use git's own resolution to walk back:
+# `git rev-parse --git-common-dir` returns the primary repo's `.git` from
+# inside a worktree (and `.git` from the primary repo itself). Its dirname
+# is the primary repo root. Falls back to the literal PWD outside git.
+
+RESOLVED_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+GIT_COMMON_DIR=$(git -C "$RESOLVED_DIR" rev-parse --git-common-dir 2>/dev/null || true)
+if [ -n "$GIT_COMMON_DIR" ]; then
+    case "$GIT_COMMON_DIR" in
+        /*) PROJECT_DIR=$(dirname "$GIT_COMMON_DIR") ;;
+        *)  PROJECT_DIR=$(cd "$RESOLVED_DIR" && cd "$(dirname "$GIT_COMMON_DIR")" 2>/dev/null && pwd) ;;
+    esac
+    : "${PROJECT_DIR:=$RESOLVED_DIR}"
+else
+    PROJECT_DIR="$RESOLVED_DIR"
+fi
+
+# Q1-A path: no .smith/ at all → not a Smith project; exit silently.
+if [ ! -d "$PROJECT_DIR/.smith" ]; then
+    exit 0
+fi
+
+# ---------- marker existence check ----------
+
+ACTIVE_DIR="$PROJECT_DIR/.smith/vault/active-workflows"
+MARKER_PRESENT=0
+if [ -d "$ACTIVE_DIR" ]; then
+    # Use a glob expansion with nullglob semantics via shopt
+    shopt -s nullglob
+    markers=( "$ACTIVE_DIR"/*.yaml )
+    shopt -u nullglob
+    if [ "${#markers[@]}" -gt 0 ]; then
+        MARKER_PRESENT=1
+    fi
+fi
+
+if [ "$MARKER_PRESENT" = "1" ]; then
+    exit 0
+fi
+
+# ---------- no marker; decide whether to deny based on the tool ----------
+
+SAFE_VAULT_DIRS=(sessions bank ledger queue agents todo reports index audits)
+
+# Helper: is a path under one of the safe vault subdirs?
+is_safe_vault_path() {
+    local file_path="$1"
+    # Normalize to absolute path relative to project if relative
+    case "$file_path" in
+        /*) ;;
+        *) file_path="$PROJECT_DIR/$file_path" ;;
+    esac
+    # Must be under .smith/vault/
+    local vault_prefix="$PROJECT_DIR/.smith/vault/"
+    case "$file_path" in
+        "$vault_prefix"*)
+            local rest="${file_path#$vault_prefix}"
+            local first_seg="${rest%%/*}"
+            for safe in "${SAFE_VAULT_DIRS[@]}"; do
+                if [ "$first_seg" = "$safe" ]; then
+                    return 0
+                fi
+            done
+            ;;
+    esac
+    return 1
+}
+
+# Helper: emit Q4-C deny response and exit
+DENY_BODY_HEADER="SMITH WORKFLOW-GATE: No active Smith workflow.
+
+To edit files, start a workflow first:
+  • /smith-new    — new feature
+  • /smith-bugfix — quick fix
+  • /smith-debug  — investigate
+
+Smith enforces workflow-scoped edits to keep changes spec-driven."
+
+deny() {
+    local appendix="$1"
+    local reason="$DENY_BODY_HEADER
+
+($appendix)"
+
+    # Log the block to the hooks log
+    local log_dir="$HOME/.smith/logs"
+    mkdir -p "$log_dir" 2>/dev/null || true
+    local log_file="$log_dir/hooks.log"
+    {
+        printf '[%s] workflow-gate DENY tool=%s project=%s appendix=%s\n' \
+            "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$TOOL_NAME" "$PROJECT_DIR" "$appendix"
+    } >> "$log_file" 2>/dev/null || true
+
+    # Emit Claude Code hook deny response
+    python3 -c "
+import json, sys
+print(json.dumps({
+    'hookSpecificOutput': {
+        'hookEventName': 'PreToolUse',
+        'permissionDecision': 'deny',
+        'permissionDecisionReason': '''$reason'''
+    }
+}))
+" 2>/dev/null || cat << EOF
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "$reason"
+  }
+}
+EOF
+    exit 0
+}
+
+# ---------- per-tool decision ----------
+
+case "$TOOL_NAME" in
+    Write|Edit|NotebookEdit)
+        FILE_PATH=$(echo "$INPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ti = data.get('tool_input', {})
+print(ti.get('file_path', ti.get('notebook_path', '')))
+" 2>/dev/null || echo "")
+
+        # Allow vault-internal writes regardless of marker
+        if [ -n "$FILE_PATH" ] && is_safe_vault_path "$FILE_PATH"; then
+            exit 0
+        fi
+
+        if [ -n "$FILE_PATH" ]; then
+            deny "Blocked write to: $FILE_PATH"
+        else
+            deny "Blocked write (file_path unknown)"
+        fi
+        ;;
+
+    Bash)
+        COMMAND=$(echo "$INPUT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ti = data.get('tool_input', {})
+print(ti.get('command', ''))
+" 2>/dev/null || echo "")
+
+        if [ -z "$COMMAND" ]; then
+            exit 0
+        fi
+
+        # Identify the first file-touching subcommand, if any.
+        # Word-boundary check against known mutators; also detect `sed -i`
+        # and unescaped shell write-redirection that isn't a stderr-only
+        # redirection (2> or 2>>).
+        MATCHED_SUBCMD=""
+
+        # Mutator command words (whole-word match).
+        for cmd in rm rmdir mv cp chmod chown touch truncate tee dd; do
+            if printf '%s' "$COMMAND" | grep -qE "(^|[ 	;|&\(])${cmd}([ 	]|$)"; then
+                MATCHED_SUBCMD="$cmd"
+                break
+            fi
+        done
+
+        # sed -i (in-place edit)
+        if [ -z "$MATCHED_SUBCMD" ]; then
+            if printf '%s' "$COMMAND" | grep -qE '(^|[ 	;|&\(])sed[ 	]+(-[a-zA-Z]*i|--in-place)'; then
+                MATCHED_SUBCMD="sed -i"
+            fi
+        fi
+
+        # Shell redirection: > or >> but NOT 2> or 2>>. Also accept &>.
+        # Avoid matching things like ">" inside quoted strings — best-effort.
+        if [ -z "$MATCHED_SUBCMD" ]; then
+            if printf '%s' "$COMMAND" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
+                # Subtract stderr-only redirections.
+                # Strip 2> 2>> from a copy and re-check.
+                stripped=$(printf '%s' "$COMMAND" | sed -E 's/2>>?//g')
+                if printf '%s' "$stripped" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
+                    MATCHED_SUBCMD="redirection (>, >>)"
+                fi
+            fi
+            # Match combined-stream redirect: &>
+            if [ -z "$MATCHED_SUBCMD" ] && printf '%s' "$COMMAND" | grep -qE '&>'; then
+                MATCHED_SUBCMD="redirection (&>)"
+            fi
+        fi
+
+        if [ -z "$MATCHED_SUBCMD" ]; then
+            # Read-only / non-file-touching Bash → allow.
+            exit 0
+        fi
+
+        # Trim COMMAND for the deny message if very long
+        DISPLAY_CMD="$COMMAND"
+        if [ ${#DISPLAY_CMD} -gt 200 ]; then
+            DISPLAY_CMD="${DISPLAY_CMD:0:200}..."
+        fi
+        deny "Blocked subcommand: $MATCHED_SUBCMD in command \"$DISPLAY_CMD\""
+        ;;
+esac
+
+exit 0

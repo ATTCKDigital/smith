@@ -56,13 +56,15 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash ~/.claude/hooks/security-guard-bash.sh" }
+          { "type": "command", "command": "bash ~/.claude/hooks/security-guard-bash.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/workflow-gate.sh" }
         ]
       },
       {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "bash ~/.claude/hooks/security-guard-files.sh" }
+          { "type": "command", "command": "bash ~/.claude/hooks/security-guard-files.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/workflow-gate.sh" }
         ]
       },
       {

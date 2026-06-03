@@ -4,6 +4,8 @@ description: One-time migration of existing flat spec folders into the system-ba
 argument-hint: "[--dry-run] [--all]"
 ---
 
+> **Workflow requirement (Smith 20+):** This skill must be invoked from inside an active top-level workflow (`/smith-new`, `/smith-bugfix`, `/smith-debug`, `/smith-build`). The workflow-gate hook will block standalone invocation. To use this skill standalone, start a top-level workflow first.
+
 # Smith Spec Migration
 
 Migrate existing feature spec folders from `specs/<NNN-feature>/` into the system-based hierarchy at `.specify/systems/<system>/features/<NNN-feature>/`.

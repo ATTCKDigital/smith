@@ -64,7 +64,7 @@ Once installed, open any new or existing project in your terminal and run `/smit
 | Manifest | `/smith-index`, `/smith-navigate`, `/smith-migrate-system-paths` | Precomputed project index, Haiku navigator, and one-shot path-frontmatter migration for structured context retrieval (see [docs/manifest-system.md](docs/manifest-system.md)) |
 | Meta | `/smith`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, governance, and reference |
 
-### Hooks (11)
+### Hooks (12)
 
 | Hook | Event | Purpose |
 |---|---|---|
@@ -77,6 +77,7 @@ Once installed, open any new or existing project in your terminal and run `/smit
 | `context-loader.sh` | UserPromptSubmit | Detects `/smith-*` invocations and natural-language triggers; injects vault + navigator context as `additionalContext` before reasoning starts. Zero overhead for regular conversation. |
 | `security-guard-bash.sh` | PreToolUse (Bash) | Blocks dangerous commands and secret exposure |
 | `security-guard-files.sh` | PreToolUse (Write/Edit) | Blocks writes to sensitive files without explicit approval |
+| `workflow-gate.sh` | PreToolUse (Bash, Write/Edit) | Denies file-modifying tool calls when no `.smith/vault/active-workflows/*.yaml` marker exists. Runs AFTER security guards so security blocks take precedence. See the [Workflow gate](#workflow-gate) section. |
 | `task-router.sh` | PreToolUse (Task) | Routes sub-agent tasks during active workflows |
 | `subagent-vault-writeback.sh` | SubagentStop | Persists sub-agent findings to the vault |
 
@@ -255,6 +256,43 @@ Some projects add `"Bash(rm:*)"` to the `deny` list of `.claude/settings.json` a
 To let Smith clean up its per-branch active-workflow markers under that rule, `/smith` ships a narrow helper at `.specify/scripts/bash/clear-active-workflow.sh`. The helper only unlinks a single file matching `.smith/vault/active-workflows/<safe-branch>.yaml`, never globs, never recurses, and refuses any path that escapes the active-workflows directory. Every Smith workflow skill calls it instead of inline `rm`, and the default project permissions allow-list it explicitly — so the `Bash(rm:*)` deny stays in place and cleanup still works.
 
 See [docs/security-model.md](docs/security-model.md) for a detailed breakdown of the threat model and mitigations.
+
+### Workflow gate
+
+The `workflow-gate.sh` PreToolUse hook enforces Smith's core discipline at the tool layer: **all file edits must happen inside a Smith workflow.** Without an active workflow marker, every `Write`, `Edit`, and file-touching `Bash` command (`rm`, `mv`, `sed -i`, `tee`, `cp`, `chmod`, `touch`, redirection) is denied with a message pointing at the three top-level workflow commands.
+
+#### What counts as an active workflow
+
+A workflow is "active" if and only if at least one `*.yaml` file exists under `<project>/.smith/vault/active-workflows/`. Markers are created by these workflows:
+
+| Workflow | Marker created |
+|---|---|
+| `/smith` (init) | `bootstrap.yaml` (cleared at end of init) |
+| `/smith-new` | `<branch-name>.yaml` (cleared after merge) |
+| `/smith-bugfix` | `<branch-name>.yaml` (cleared after merge) |
+| `/smith-debug` | `debug-<slug>.yaml` (cleared at decision-gate exit) |
+| `/smith-build` | inherits parent or creates `<branch>.yaml` |
+| `/smith-finish` | `finish-<branch>.yaml` (cleared at end) |
+
+Stale markers (branch already merged, branch gone) are swept on every `Stop` event by `active-workflow-janitor.sh`.
+
+#### Layering with security guards
+
+`workflow-gate.sh` runs *after* `security-guard-bash.sh` and `security-guard-files.sh`. A write blocked for security reasons (writing to `.env`, force-pushing to main, etc.) surfaces the security-guard's deny message — not the workflow gate's. This way the more important invariant wins.
+
+#### Exemptions
+
+- **Projects without Smith** — if no `.smith/` directory exists, the gate exits silently. Smith isn't installed; not its place to gate.
+- **Vault-internal infrastructure writes** — writes under `.smith/vault/{sessions, bank, ledger, queue, agents, todo, reports, index, audits}/` are allowed regardless of marker (hooks and skills write to the vault constantly). The gate does NOT exempt `.smith/vault/active-workflows/` itself — this prevents a malicious Write from forging its own marker to bypass the gate.
+- **Read-only Bash** — `ls`, `git status`, `cat`, `grep`, `git log`, etc. always succeed. Only file-touching subcommands are blocked.
+
+#### Standalone-invocation impact (BREAKING)
+
+Eight design-phase skills can no longer be invoked standalone — they only work inside a top-level workflow:
+
+- `/smith-implement`, `/smith-plan`, `/smith-specify`, `/smith-checklist`, `/smith-clarify`, `/smith-constitution`, `/smith-tasks`, `/smith-migrate-specs`
+
+These skills now carry a "Workflow requirement" callout at the top of their `SKILL.md`. To use them, start `/smith-new`, `/smith-bugfix`, `/smith-debug`, or `/smith-build` first.
 
 ---
 

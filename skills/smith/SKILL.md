@@ -226,6 +226,18 @@ mkdir -p .specify/memory .specify/templates .specify/scripts/bash
 mkdir -p docs/sessions
 mkdir -p specs/questions
 mkdir -p .smith/vault/sessions .smith/vault/agents .smith/vault/queue .smith/vault/bank .smith/vault/ledger
+mkdir -p .smith/vault/active-workflows
+
+# Bootstrap marker so the workflow-gate hook (PreToolUse) allows the
+# rest of /smith init to write the remaining scaffold. Without this,
+# the gate would deny every subsequent Write/Edit because no marker
+# exists yet. Cleared at the end of /smith init (see Phase 4.10).
+cat > .smith/vault/active-workflows/bootstrap.yaml << EOF
+workflow: smith
+feature: project-initialization
+branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+started: $(date -u +"%Y-%m-%dT%H:%M:%S")
+EOF
 ```
 
 The `docs/sessions/` directory holds session chat logs (timestamped Q&A records with YAML frontmatter for searchability). The `specs/questions/` directory holds structured question files generated before complex changes (numbered questions with options, recommendations, and answer fields). Both are required by the global workflow tenets in `~/.claude/CLAUDE.md`.
@@ -568,6 +580,16 @@ You can edit the body of each spec at any time. Run `/smith-migrate-system-paths
 ```
 
 If the operator types `skip` at any per-system prompt, skip that system (do not write a spec for it) and continue the outer "another system?" loop.
+
+#### 4.10 Clear Bootstrap Marker
+
+The bootstrap marker created in Phase 4.1 has done its job — Phase 4 file generation is complete. Remove it via the shipped helper:
+
+```bash
+.specify/scripts/bash/clear-active-workflow.sh "bootstrap"
+```
+
+After this, the workflow-gate hook enforces normal discipline: subsequent file edits require one of the four top-level workflows (`/smith-new`, `/smith-bugfix`, `/smith-debug`, `/smith-build`) or `/smith-finish` to be active.
 
 ### Phase 5: Verification & Report
 
