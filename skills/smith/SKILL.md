@@ -158,9 +158,19 @@ Display findings in a clear table:
 | CI/CD | Yes | High | GitHub Actions |
 | Docker | Yes | High | Docker Compose |
 | Storybook | No | — | Not detected |
+| Default Branch | Yes | High | development (from origin/HEAD) |
 
 Items marked "No" or "Medium" confidence will be asked about in the interview.
 ```
+
+**Default-branch detection step**: Detect the repository's default/integration branch and
+record it for the report row above and the base-branch interview question. Run:
+```bash
+git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'
+```
+If this resolves (e.g. `development`, `develop`, `trunk`), use it as the detected value;
+if it fails (no `origin` remote, detached HEAD), fall back to `main`. This value seeds the
+base-branch interview question (below) and is written to the constitution as `base_branch:`.
 
 ### Phase 3: Generate Init Intake Document
 
@@ -179,8 +189,21 @@ mkdir -p specs
 Create `specs/init-intake.md` with:
 - A frontmatter block with generation date, project name, and status
 - The full **Codebase Detection Report** table from Phase 2
-- All 28 questions organized in 5 groups (Project Identity, Tech Stack, Development Tooling, Quality Standards, Workflow Preferences)
+- All 29 questions organized in 5 groups (Project Identity, Tech Stack, Development Tooling, Quality Standards, Workflow Preferences)
 - For each question: the options, a **Recommended** answer with rationale based on codebase detection, and an **Answer** field pre-filled with the recommendation
+
+**Base-branch question (Workflow Preferences group)**: Include a question — distinct from
+the feature-branch *naming* question (Q25) — that asks which branch is the project's
+integration/base branch. Smith cuts feature branches from it and targets PRs at it. Wording:
+"Which branch is your integration/base branch? (Smith cuts feature branches from it and
+targets PRs at it.)" Auto-detect the recommended value and pre-fill the **Answer** with it:
+```bash
+git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'
+```
+If detection fails (no `origin` remote, detached HEAD), recommend `main`. The user may
+override the recommendation with any branch name (e.g. a `development → main` promotion flow
+where the user targets `development` even though `origin/HEAD` points at `main`). The chosen
+value is written to the constitution frontmatter as `base_branch:` in Phase 4.
 - A **Project-Specific Notes** section capturing any important context detected during the scan that doesn't fit the standard questions (e.g., multi-service architecture, N8N workflows, custom patterns)
 
 The recommended answers should be based on:
@@ -235,6 +258,10 @@ mkdir -p .smith/vault/active-workflows
 cat > .smith/vault/active-workflows/bootstrap.yaml << EOF
 workflow: smith
 feature: project-initialization
+# NOTE: this captures the CURRENT HEAD branch (the branch /smith init runs on),
+# not the project's integration/base branch. The `|| echo main` is the
+# current-branch fallback for a detached HEAD — it is intentionally NOT the
+# configured base branch and must not be replaced with get-base-branch.sh.
 branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
 started: $(date -u +"%Y-%m-%dT%H:%M:%S")
 EOF
@@ -248,6 +275,11 @@ Copy from `~/.claude/skills/smith/`:
 - `templates/*` → `.specify/templates/`
 - `scripts/*` → `.specify/scripts/bash/`
 
+This `scripts/*` glob copies **every** helper in `skills/smith/scripts/`, including
+`get-base-branch.sh` and `clear-active-workflow.sh` — no per-script copy instruction is
+needed, and `get-base-branch.sh` is scaffolded to `.specify/scripts/bash/get-base-branch.sh`
+automatically.
+
 Make scripts executable:
 ```bash
 chmod +x .specify/scripts/bash/*.sh
@@ -258,6 +290,10 @@ chmod +x .specify/scripts/bash/*.sh
 Generate a constitution file using the interview answers. Structure:
 
 ```markdown
+---
+base_branch: [from the base-branch interview answer; default `main` if unanswered]
+---
+
 # [Project Name] Constitution
 
 ## Core Principles
@@ -280,7 +316,10 @@ Generate a constitution file using the interview answers. Structure:
 ## Development Workflow
 
 ### Branch Strategy
-[Generated from Q25]
+[Generated from Q25 (feature-branch naming) and the base-branch question. State the
+configured integration/base branch — the value written to `base_branch:` in the
+frontmatter above — so it is human-readable here as well as machine-readable in the
+frontmatter that `get-base-branch.sh` parses.]
 
 ### SpecKit Workflow
 [Standard — always included]
@@ -506,13 +545,16 @@ If no `.claude/settings.json` exists, create one with sensible defaults:
       "Bash(git diff:*)",
       "Bash(git branch:*)",
       "Bash(./.specify/scripts/*:*)",
-      "Bash(.specify/scripts/bash/clear-active-workflow.sh:*)"
+      "Bash(.specify/scripts/bash/clear-active-workflow.sh:*)",
+      "Bash(.specify/scripts/bash/get-base-branch.sh:*)"
     ]
   }
 }
 ```
 
 The `clear-active-workflow.sh` entry is listed explicitly so Smith workflow cleanup still works on projects that add `Bash(rm:*)` to the `deny` list as a safety rail. The helper is narrow (single file, no globs, path-escape guarded) and lets skills remove the active-workflow marker without weakening the deny rule.
+
+The `get-base-branch.sh` entry is listed explicitly for the same reason: every Smith skill that needs the integration branch resolves it via `.specify/scripts/bash/get-base-branch.sh`, so projects with strict `Bash` allow/deny rails must permit it. The helper is read-only (no writes, no globs, no recursion) and always echoes a branch name (`main` on any non-resolution).
 
 Add framework-specific permissions based on detected stack:
 - npm projects: `"Bash(npm run:*)"`, `"Bash(npm install:*)"`
@@ -527,7 +569,7 @@ Add monorepo-specific permissions based on detected orchestration tool:
 - Lerna: `"Bash(lerna:*)"`, `"Bash(npx lerna:*)"`
 - Rush: `"Bash(rush:*)"`
 
-If `.claude/settings.json` already exists, do NOT overwrite — inform the user they may want to add the `.specify/scripts` permission manually, plus `Bash(.specify/scripts/bash/clear-active-workflow.sh:*)` if their config includes a broad `Bash(rm:*)` deny rule (needed so Smith workflow cleanup can remove active-workflow markers).
+If `.claude/settings.json` already exists, do NOT overwrite — inform the user they may want to add the `.specify/scripts` permission manually, plus `Bash(.specify/scripts/bash/clear-active-workflow.sh:*)` if their config includes a broad `Bash(rm:*)` deny rule (needed so Smith workflow cleanup can remove active-workflow markers), and `Bash(.specify/scripts/bash/get-base-branch.sh:*)` so base-branch resolution works under strict `Bash` rails.
 
 #### 4.7 Create `.gitignore` Entries
 

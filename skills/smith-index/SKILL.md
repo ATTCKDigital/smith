@@ -102,7 +102,27 @@ of `constitution.md` (or `.specify/memory/constitution.md`) and
 3. Append the missing sections (sourced from
    `templates/constitution-additions.md` and
    `templates/claude-md-additions.md`).
-4. Skip silently if all sections are already present (idempotent).
+4. **Backfill the `base_branch:` frontmatter field on the constitution**
+   (idempotent). If `.specify/memory/constitution.md` (or `constitution.md`)
+   lacks a `base_branch:` key in its YAML frontmatter, add `base_branch: main`
+   (the backwards-compatible default — older constitutions implicitly meant
+   `main`). Handle both shapes:
+   - **Frontmatter block present** (file starts with a `---` fence): insert
+     `base_branch: main` as a new line inside the first `---`/`---` block,
+     after the opening fence.
+   - **No frontmatter block** (file starts with `# ... Constitution`): prepend
+     a new block:
+     ```markdown
+     ---
+     base_branch: main
+     ---
+
+     ```
+   If a `base_branch:` key is already present (any value, including a
+   user-customized one), do NOTHING — never overwrite an existing value. This
+   step shares the backup taken in step 2 (take one if not already taken).
+5. Skip silently if all sections AND the `base_branch:` field are already
+   present (idempotent).
 
 Never overwrites existing user content. Never modifies sections that are
 already there, even if the template's wording has changed since the

@@ -24,17 +24,20 @@ Run all steps autonomously. Only stop to ask the user if a decision is genuinely
 Gather all of the following in parallel:
 
 ```bash
+# Resolve the configured base branch (falls back to main when unconfigured)
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+
 # What branch are we on?
 git rev-parse --abbrev-ref HEAD
 
 # Any uncommitted changes?
 git status
 
-# Any unpushed commits? (only if on a branch other than main)
+# Any unpushed commits? (only if on a branch other than the base branch)
 git log origin/$(git rev-parse --abbrev-ref HEAD)..HEAD --oneline 2>/dev/null
 
-# What files changed vs main?
-git diff main --name-only 2>/dev/null
+# What files changed vs the configured base branch?
+git diff "$BASE_BRANCH" --name-only 2>/dev/null
 
 # Any open PRs for this branch?
 gh pr list --head $(git rev-parse --abbrev-ref HEAD) --state open --json number,title,url 2>/dev/null
@@ -124,9 +127,10 @@ git push -u origin <branch-name>
 
 Before creating/merging the PR, update documentation:
 
-1. **Identify changed files** relative to main:
+1. **Identify changed files** relative to the configured base branch:
    ```bash
-   git diff main --name-only
+   BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+   git diff "$BASE_BRANCH" --name-only
    ```
 
 2. **Map files to system specs** using these rules:
@@ -169,7 +173,8 @@ Before creating/merging the PR, update documentation:
 
 **If no open PR exists**, create one:
 ```bash
-gh pr create --title "<type>: <short title>" --body "$(cat <<'EOF'
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+gh pr create --base "$BASE_BRANCH" --title "<type>: <short title>" --body "$(cat <<'EOF'
 ## Summary
 <bullet points of changes>
 
@@ -186,10 +191,11 @@ EOF
 gh pr merge <pr-number> --squash --delete-branch
 ```
 
-**Return to main:**
+**Return to the base branch:**
 ```bash
-git checkout main
-git pull origin main
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+git checkout "$BASE_BRANCH"
+git pull origin "$BASE_BRANCH"
 ```
 
 ---
@@ -199,17 +205,19 @@ git pull origin main
 Run these checks and report results:
 
 ```bash
-# On main?
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+
+# On the base branch?
 git rev-parse --abbrev-ref HEAD
 
 # Clean working tree?
 git status --porcelain
 
 # Any stale local branches?
-git branch --merged main | grep -v main
+git branch --merged "$BASE_BRANCH" | grep -v "$BASE_BRANCH"
 
 # Up to date with remote?
-git log origin/main..HEAD --oneline
+git log "origin/$BASE_BRANCH..HEAD" --oneline
 ```
 
 **If Docker services were affected** (code changes to any service directory):

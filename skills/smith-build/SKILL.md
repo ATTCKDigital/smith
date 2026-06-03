@@ -230,9 +230,10 @@ Launch a testing subagent after all implementation is complete.
 
 Launch a subagent to update related system spec files.
 
-1. **Identify modified files** from git diff:
+1. **Identify modified files** from git diff against the configured base branch:
    ```bash
-   git diff main --name-only
+   BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+   git diff "$BASE_BRANCH" --name-only
    ```
 
 2. **Map modified files to system specs**:
@@ -299,8 +300,9 @@ oversized source files. This is a non-blocking advisory — always proceed
 with the PR.
 
 ```bash
-# Enumerate files changed vs main
-git diff main --name-only > /tmp/smith-build-changed.txt
+# Enumerate files changed vs the configured base branch
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+git diff "$BASE_BRANCH" --name-only > /tmp/smith-build-changed.txt
 
 # For each modified file that exists on disk, count lines
 while IFS= read -r f; do
@@ -485,12 +487,13 @@ If `/tmp/smith-build-coverage-misses.txt` is non-empty, include a
 template). If empty, omit the section entirely.
 
 This is a FLAG, never a blocker. Always proceed with PR creation. If
-`git diff main` returns no files (clean tree, target branch ahead), the
+`git diff "$BASE_BRANCH"` returns no files (clean tree, target branch ahead), the
 section is a no-op. Per data-model.md §9.3.
 
 ### 5.4 Create PR & Merge
 ```bash
-gh pr create --title "<short title>" --body "$(cat <<'EOF'
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+gh pr create --base "$BASE_BRANCH" --title "<short title>" --body "$(cat <<'EOF'
 ## Summary
 <bullet points from release notes>
 
@@ -536,19 +539,20 @@ cd <PRIMARY_REPO> && gh pr merge <pr-number> --squash --delete-branch
 gh pr merge <pr-number> --squash --delete-branch
 ```
 
-### 5.5 Return to main
+### 5.5 Return to the base branch
 
 **Normal mode:**
 ```bash
-git checkout main
-git pull origin main
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+git checkout "$BASE_BRANCH"
+git pull origin "$BASE_BRANCH"
 ```
 
-**Worktree mode:** Do NOT run `git checkout main` — main is already checked out in the primary repo. Instead, proceed directly to Phase 6. The worktree cleanup in Phase 7 handles branch deletion.
+**Worktree mode:** Do NOT run `git checkout "$BASE_BRANCH"` — the base branch is already checked out in the primary repo. Instead, proceed directly to Phase 6. The worktree cleanup in Phase 7 handles branch deletion.
 
 ## Phase 6: Service Rebuild
 
-After merging to main:
+After merging to the base branch:
 
 1. **Identify affected services** from the changed files
 2. **Docker-touching detection** (worktree mode only):
@@ -559,7 +563,7 @@ After merging to main:
 3. **Rebuild each affected service** — always run from the **primary repo directory** (not the worktree), since Docker Compose resolves paths relative to the compose file and Colima cannot mount `/tmp`:
    ```bash
    # If in worktree mode: pull changes to primary repo first
-   cd <PRIMARY_REPO> && git pull origin main
+   cd <PRIMARY_REPO> && git pull origin "$(.specify/scripts/bash/get-base-branch.sh)"
    docker compose up -d --build <service-name>
    ```
    ```bash

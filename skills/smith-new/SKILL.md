@@ -112,9 +112,10 @@ The worktree is created after exploration passes (or is skipped). This ensures t
    .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
    ```
 
-1. **Fetch latest main** (does NOT change the user's current branch):
+1. **Resolve the configured base branch, then fetch it** (does NOT change the user's current branch). Smith reads the project's integration branch from the constitution; it falls back to `main` when unconfigured:
    ```bash
-   git fetch origin main
+   BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+   git fetch origin "$BASE_BRANCH"
    ```
 
 2. **Generate branch short-name** (2-4 words) from `$ARGUMENTS` or conversation context. If no feature description is available yet (empty args, no context), use a placeholder like `new-feature` and rename the branch later after Phase 2.
@@ -126,9 +127,9 @@ The worktree is created after exploration passes (or is skipped). This ensures t
    - GitHub issues: `gh issue list --limit 1 --json number --jq '.[0].number'`
    Take the maximum across all sources and add 1.
 
-4. **Create worktree with feature branch from `origin/main`**:
+4. **Create worktree with feature branch from the configured base branch (`origin/$BASE_BRANCH`)**:
    ```bash
-   git worktree add /tmp/smith-<slug> -b <number>-<short-name> origin/main
+   git worktree add /tmp/smith-<slug> -b <number>-<short-name> "origin/$BASE_BRANCH"
    ```
    Store the worktree path (`/tmp/smith-<slug>`) as `WORKTREE_PATH`. The active-workflow file was already created in step 0 with the branch and worktree info.
 
@@ -456,11 +457,11 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    **IMPORTANT**: Always run `gh pr merge` from the **primary repo directory**.
    ```bash
    cd <main-repo-path> && gh pr merge <PR_NUMBER> --squash --delete-branch
-   cd <main-repo-path> && git pull origin main
+   cd <main-repo-path> && git pull origin "$(.specify/scripts/bash/get-base-branch.sh)"
    ```
    - Squash-merge the PR to keep history clean
    - Delete the remote feature branch
-   - Pull latest main so the local copy is up to date
+   - Pull latest from the configured base branch so the local copy is up to date
 
 7. **Full workflow summary (session log only)** — emitted automatically. The `workflow-summary.sh` Stop hook appends a "=== Workflow Summary ===" block with duration, estimated tokens, tool calls, subagent totals, and files changed to the session log file once the active-workflow file is removed (step 9 below). Do not emit the full block to the user manually — the two-line totals already surfaced in step 5 are the chat-visible version; the full block is for audit only.
 
