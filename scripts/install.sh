@@ -212,6 +212,20 @@ cp "$REPO_ROOT/scheduler/smith-scheduler.sh" "$SMITH_HOME/scheduler/smith-schedu
 chmod +x "$SMITH_HOME/scheduler/smith-scheduler.sh"
 ok "Installed scheduler script"
 
+# ---------- copy shared templates ----------
+# Per-project files seeded on first SessionStart (config.default.json,
+# context-manifest.default.json, etc.) live under $SMITH_HOME/templates/
+# so hooks and run.py can resolve them off a stable path.
+info "Copying shared templates"
+mkdir -p "$SMITH_HOME/templates"
+for tpl in config.default.json context-manifest.default.json; do
+    src="$REPO_ROOT/templates/$tpl"
+    if [ -f "$src" ]; then
+        cp "$src" "$SMITH_HOME/templates/$tpl"
+    fi
+done
+ok "Templates installed"
+
 # ---------- install global CLAUDE.md rubric ----------
 info "Installing global CLAUDE.md rubric"
 CLAUDE_MD_TEMPLATE="$REPO_ROOT/settings/claude-md-template.md"

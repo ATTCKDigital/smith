@@ -1,0 +1,41 @@
+{
+  "_comment": "Smith per-project configuration. Seeded automatically on first SessionStart; safe to edit. Schema documented at .smith/config.json semantics in skills/smith-reflect/SKILL.md and skills/smith-ledger/SKILL.md. Delete any section to fall back to in-skill defaults.",
+  "security": {
+    "allowed_commands": [],
+    "allowed_files": [
+      ".env.example",
+      ".env.test"
+    ],
+    "production_domains": [],
+    "warn_only_mode": false
+  },
+  "ledger": {
+    "enabled": true,
+    "auto_reflect": true,
+    "auto_retry": false,
+    "max_retries": 2,
+    "reflection_model": "haiku",
+    "context_budget_tokens": 2000,
+    "pruning": {
+      "low_max_age_days": 30,
+      "medium_max_age_days": 90
+    },
+    "reconcile": {
+      "enabled": true,
+      "auto_reconcile": true,
+      "reconcile_model": "haiku",
+      "minimum_hours_between_reconciles": 6,
+      "thresholds": {
+        "total_tokens_max": 30000,
+        "single_file_tokens_max": 8000,
+        "patterns_per_category_max": 50,
+        "reinforcements_threshold": 50,
+        "context_violations_threshold": 3
+      },
+      "backup": {
+        "max_count": 5,
+        "max_age_days": 30
+      }
+    }
+  }
+}
