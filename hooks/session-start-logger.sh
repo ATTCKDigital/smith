@@ -71,14 +71,36 @@ elif [ "$TRIGGER" = "compact" ]; then
         fi
     fi
 else
-    # Fresh start: create new session log
-    SESSION_FILE="$SESSIONS_DIR/${NOW_FILE}.md"
+    # Fresh start: create new session log.
+    #
+    # Naming scheme (feature 36-team-shareable-vault): conflict-free and
+    # team-attributable. Filename = <name-slug>_<email-hash>_<datetime>.md
+    #   name-slug  = git user.name, lowercased, non-alnum -> '-', trimmed
+    #   email-hash = first 6 hex of sha256(git user.email)
+    # Fallbacks keep the hash stable per machine-user when git identity is unset.
+    RAW_NAME=$(git -C "$CLAUDE_PROJECT_DIR" config user.name 2>/dev/null || echo "")
+    RAW_EMAIL=$(git -C "$CLAUDE_PROJECT_DIR" config user.email 2>/dev/null || echo "")
+    [ -z "$RAW_NAME" ] && RAW_NAME="${USER:-unknown}"
+
+    NAME_SLUG=$(printf '%s' "$RAW_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+    [ -z "$NAME_SLUG" ] && NAME_SLUG="unknown"
+
+    HASH_INPUT="$RAW_EMAIL"
+    [ -z "$HASH_INPUT" ] && HASH_INPUT="${USER:-unknown}@$(hostname 2>/dev/null || echo localhost)"
+    EMAIL_HASH=$(printf '%s' "$HASH_INPUT" | (shasum -a 256 2>/dev/null || sha256sum) | cut -c1-6)
+
+    SESSION_FILE="$SESSIONS_DIR/${NAME_SLUG}_${EMAIL_HASH}_${NOW_FILE}.md"
+
+    # author: raw git identity (name + email). Escape embedded double quotes.
+    AUTHOR_NAME=$(printf '%s' "$RAW_NAME" | sed 's/"/\\"/g')
+    AUTHOR_EMAIL=$(printf '%s' "$RAW_EMAIL" | sed 's/"/\\"/g')
 
     cat > "$SESSION_FILE" << EOF
 ---
 session_start: "$NOW_ISO"
 project: "$PROJECT_NAME"
 branch: "$BRANCH"
+author: "$AUTHOR_NAME <$AUTHOR_EMAIL>"
 status: active
 ---
 
@@ -89,7 +111,11 @@ status: active
 ---
 EOF
 
-    # Write current session pointer
+    # Write current session pointers (per Q2-A):
+    #   .current-session-<slug>  → canonical per-user pointer (gitignored)
+    #   .current-session         → legacy local alias (gitignored); ~29
+    #                              existing consumers keep reading this.
+    echo "$SESSION_FILE" > "$VAULT_DIR/.current-session-${NAME_SLUG}"
     echo "$SESSION_FILE" > "$CURRENT_SESSION_FILE"
 fi
 

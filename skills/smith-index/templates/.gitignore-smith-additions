@@ -1,16 +1,21 @@
-# Smith manifest system — selective gitignore additions.
-# Merged into the project's root .gitignore by /smith init.
+# >>> smith-gitignore-policy >>>
+# Smith team-shareable vault & index policy. Managed by /smith init and
+# /smith-update — edit via those skills, not by hand. Lines outside the
+# sentinel markers are never touched by Smith.
 #
-# Per Q5 (spec.md Requirement 1): the per-file .meta sidecars and the
-# per-system manifests churn on every commit and are not version-controlled.
-# The top-level manifest.md and the config/ directory ARE version-controlled
-# (team-shared overview + per-skill config).
-
-.smith/index/files/
-.smith/index/systems/
+# COMMITTED (shared with the team):
+#   .smith/index/manifest.md, .smith/index/config/
+#   .smith/index/files/ + .smith/index/systems/  (the --describe .meta layer)
+#   .smith/vault/ledger/, .smith/vault/bank/, .smith/vault/agents/
+#   .smith/vault/sessions/*.md
+#
+# IGNORED (local / volatile / per-user) — listed below:
 .smith/index/.smith-index-checkpoint.json
-
-# NOT gitignored (commit these):
-#   .smith/index/manifest.md
-#   .smith/index/config/context-manifest.json
-#   .smith/index/config/system-paths.json   (if present)
+.smith/index/.smith-index-describe-checkpoint.json
+.smith/vault/.current-session
+.smith/vault/.current-session-*
+.smith/vault/active-workflows/
+.smith/vault/queue/
+.smith/vault/todo/
+.smith/config/
+# <<< smith-gitignore-policy <<<

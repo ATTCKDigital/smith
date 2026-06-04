@@ -334,6 +334,82 @@ if [ -d "$PROJECT_DIR/.smith" ] && ! [ -d "$PROJECT_DIR/.smith/index" ]; then
 fi
 ```
 
+### 5.5 Refresh `.gitignore` / `.gitattributes` Policy (Feature 36)
+
+Re-merge the canonical team-shareable vault & index policy into the project-root
+`.gitignore` and `.gitattributes`, idempotently, using the same sentinel logic as
+`/smith` init. This is **project-config**, not vault data — merging managed lines in
+the project-root `.gitignore`/`.gitattributes` does NOT violate the
+"NEVER touch `.smith/vault/`" rule (which protects vault *data*: bank, ledger,
+sessions, queue, agents, todo). Confirmed permitted for this step.
+
+Source templates (installed copy first, repo-dev clone fallback):
+- `$TMPCLONE/smith/skills/smith-index/templates/.gitignore-smith-additions`
+  (or installed `~/.claude/skills/smith-index/templates/.gitignore-smith-additions`)
+- `$TMPCLONE/smith/skills/smith-index/templates/.gitattributes-smith-additions`
+
+```bash
+if [ -d "$PROJECT_DIR/.smith" ]; then
+    SMITH_TPL_DIR="$TMPCLONE/smith/skills/smith-index/templates"
+    [ -f "$SMITH_TPL_DIR/.gitignore-smith-additions" ] || SMITH_TPL_DIR="$HOME/.claude/skills/smith-index/templates"
+
+    # Q4-A: WARN (do not remove) on known-conflicting bare ignore lines that sit
+    # OUTSIDE the sentinels and shadow the now-committed shared paths.
+    GI="$PROJECT_DIR/.gitignore"
+    if [ -f "$GI" ]; then
+        # Strip the managed sentinel region first, then scan the remainder.
+        OUTSIDE=$(awk '
+            /# >>> smith-gitignore-policy >>>/ {inblk=1}
+            !inblk {print}
+            /# <<< smith-gitignore-policy <<</ {inblk=0}
+        ' "$GI")
+        for bad in '.smith/' '.smith/index/' '.smith/index/files/' '.smith/index/systems/'; do
+            if printf '%s\n' "$OUTSIDE" | grep -qxF "$bad"; then
+                LINE=$(grep -nxF "$bad" "$GI" | head -1 | cut -d: -f1)
+                echo ""
+                echo "WARNING: $GI line $LINE contains a bare '$bad' ignore OUTSIDE the Smith"
+                echo "         sentinels. This shadows the now-committed shared paths"
+                echo "         (manifest, .meta describe layer, ledger, bank, agents, sessions)."
+                echo "         Smith will NOT remove it automatically. Remove it manually so the"
+                echo "         shared Smith artifacts can be committed."
+            fi
+        done
+    fi
+
+    # Idempotent sentinel replace-or-append (same contract as /smith init §4.7).
+    python3 - "$SMITH_TPL_DIR" "$PROJECT_DIR" <<'PYEOF'
+import sys, pathlib
+tpl_dir = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2])
+def merge(target_path, tpl_path, open_marker, close_marker):
+    tpl = pathlib.Path(tpl_path)
+    if not tpl.exists():
+        print(f"WARNING: template not found: {tpl_path} — skipping"); return
+    block = tpl.read_text().rstrip("\n") + "\n"
+    target = pathlib.Path(target_path)
+    existing = target.read_text() if target.exists() else ""
+    if open_marker in existing and close_marker in existing:
+        pre = existing.split(open_marker, 1)[0]
+        post = existing.split(close_marker, 1)[1]
+        new = pre.rstrip("\n") + ("\n\n" if pre.strip() else "") + block + post.lstrip("\n")
+        action = "refreshed"
+    else:
+        sep = "" if (not existing or existing.endswith("\n\n")) else ("\n" if existing.endswith("\n") else "\n\n")
+        new = existing + sep + block
+        action = "appended"
+    target.write_text(new)
+    print(f"{action}: {open_marker.split()[1]} in {target}")
+merge(root / ".gitignore", tpl_dir / ".gitignore-smith-additions",
+      "# >>> smith-gitignore-policy >>>", "# <<< smith-gitignore-policy <<<")
+merge(root / ".gitattributes", tpl_dir / ".gitattributes-smith-additions",
+      "# >>> smith-gitattributes-policy >>>", "# <<< smith-gitattributes-policy <<<")
+PYEOF
+fi
+```
+
+Per Q4-A the merge only manages the region BETWEEN the sentinels and never deletes
+user-authored lines; the warning above is the safe nudge for the operator to clean up
+a stale blanket ignore by hand.
+
 ## Phase 6: Cleanup
 
 ```bash
@@ -352,6 +428,7 @@ echo "  Skills:       refreshed in ~/.claude/skills/"
 echo "  Hooks:        refreshed in ~/.claude/hooks/"
 echo "  Scheduler:    refreshed in ~/.smith/scheduler/"
 [ -d "$PROJECT_DIR/.smith" ] && echo "  Per-project:  .specify/scripts and .claude/commands/smith.* refreshed"
+[ -d "$PROJECT_DIR/.smith" ] && echo "  Git policy:   .gitignore/.gitattributes Smith policy block refreshed"
 echo "  Snapshot:     $BACKUP_DIR (delete after confirming the update works)"
 ```
 
@@ -368,7 +445,7 @@ When the parent assistant runs `/smith-update`, it should treat the bash blocks 
 
 ## Key Rules
 
-- **NEVER touch `.smith/vault/`** — user data is sacred (vault is the bank, ledger, sessions, queue, agents, todo — all user-owned)
+- **NEVER touch `.smith/vault/`** — user data is sacred (vault is the bank, ledger, sessions, queue, agents, todo — all user-owned). This protects vault *data*; merging the managed Smith policy region in the project-root `.gitignore`/`.gitattributes` (Phase 5.5) is project-config, not vault data, and is permitted.
 - **NEVER touch project source code** — only `.specify/scripts/`, `.claude/commands/smith.*`, `CLAUDE.md` (via migrate-templates), `constitution.md` (via migrate-templates), `.smith/index/` (only on explicit prompt)
 - **Active-workflow marker must be created BEFORE any file write** (workflow-gate compliance)
 - **Snapshot before destructive work** — if `install.sh` fails partway, restore from snapshot

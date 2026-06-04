@@ -216,9 +216,13 @@ Outcomes:
   signals suggest broader impact than the navigator surfaced.
 - Not a source-of-truth. The manifest is regenerated from the codebase; it
   never modifies source files. All Smith metadata lives in `.smith/index/`.
-- Not committed (mostly). `.smith/index/files/` and `.smith/index/systems/`
-  are gitignored. The top-level `manifest.md` and `config/` ARE committed
-  (team-shared overview + config).
+- Team-shared via git (feature 36). As of the team-shareable-vault policy,
+  `.smith/index/files/` and `.smith/index/systems/` (the `--describe` `.meta`
+  layer) ARE committed, alongside `manifest.md` and `config/`. The point is to
+  share the expensive `--describe` output so teammates don't each re-pay it.
+  Only volatile/per-user runtime state (checkpoints, `.current-session*`,
+  `active-workflows/`, `queue/`, `todo/`, `.smith/config/`) is gitignored.
+  See "`.gitignore` policy (selective)" below for the full table.
 - Not Windows-supported (yet). macOS and Linux only for the initial release.
 - Not a filesystem watcher. v1 catches in-session edits via a hook and
   cross-session drift via git hooks (`post-merge`, `post-checkout`). A
@@ -624,20 +628,84 @@ This copies `templates/system-paths.json.example` to
 `.smith/index/config/system-paths.json` with inline comments documenting the
 override syntax.
 
-### `.gitignore` policy (selective)
+### `.gitignore` policy (selective, team-shareable — feature 36)
 
-`templates/.gitignore-smith-additions` (merged into your `.gitignore` by
-`/smith init`) ships:
+`templates/.gitignore-smith-additions` is merged into your project's
+`.gitignore` by `/smith init` (and re-merged/reconciled by `/smith-update`).
+The accompanying `templates/.gitattributes-smith-additions` is merged into
+`.gitattributes`. Both blocks are wrapped in idempotent sentinel markers
+(`# >>> smith-gitignore-policy >>>` … `# <<< smith-gitignore-policy <<<`);
+re-running init/update replaces only the managed region between the sentinels
+and never touches user-authored lines outside it. This is a **negative-list**
+policy: `.smith/` is NOT ignored wholesale — only the specific volatile paths
+below are.
 
-```
-.smith/index/files/
-.smith/index/systems/
-# NOT gitignored (commit these): .smith/index/manifest.md, .smith/index/config/
-```
+**Committed (shared with the team):**
 
-Rationale: the top-level `manifest.md` and `config/` are team-shared assets
-(systems table, custom `system-paths.json`). The per-file `.meta` and
-per-system manifests churn on every commit and are excluded.
+| Path | Why |
+|---|---|
+| `.smith/index/manifest.md` | top-level overview |
+| `.smith/index/config/` | systems table, custom `system-paths.json` |
+| `.smith/index/files/` (`.meta` + `--describe` layer) | share the expensive describe output |
+| `.smith/index/systems/` | per-system manifests + descriptions |
+| `.smith/vault/ledger/` | accumulated patterns/antipatterns |
+| `.smith/vault/bank/` | banked ideas |
+| `.smith/vault/agents/` | sub-agent memory (Q3-A) |
+| `.smith/vault/sessions/*.md` | attributable session logs |
+
+**Ignored (local / volatile / per-user):**
+
+| Path | Why |
+|---|---|
+| `.smith/index/.smith-index-checkpoint.json` | rebuild checkpoint |
+| `.smith/index/.smith-index-describe-checkpoint.json` | describe checkpoint |
+| `.smith/vault/.current-session` | legacy local pointer |
+| `.smith/vault/.current-session-*` | per-user pointer |
+| `.smith/vault/active-workflows/` | per-branch workflow markers |
+| `.smith/vault/queue/` | per-user task queue |
+| `.smith/vault/todo/` | per-user todo |
+| `.smith/config/` | per-branch runtime config |
+
+Rationale (feature 36 reverses the original tradeoff): `/smith-index --describe`
+spawns subscription-billed per-file LLM sub-agents to write the
+`**Description:**` layer into `.smith/index/files/*.meta`. Committing that layer
+means a teammate who clones the repo inherits the descriptions instead of
+re-paying the describe cost. The churn this introduces (see below) is managed,
+not eliminated.
+
+#### Session-log naming scheme (feature 36)
+
+`session-start-logger.sh` names fresh session logs
+`<name-slug>_<email-hash>_<datetime>.md`:
+
+- `name-slug` = `git config user.name`, lowercased, non-alphanumerics collapsed
+  to `-`, trimmed (falls back to `$USER`, then `unknown`).
+- `email-hash` = first 6 hex chars of `sha256(git config user.email)` (falls
+  back to `sha256("$USER@$(hostname)")` so the hash stays stable per
+  machine-user when git identity is unset).
+- `datetime` = `%Y-%m-%d_%H%M%S` UTC, so chronological sort still works.
+
+Each fresh session log carries an `author: "<name> <email>"` YAML frontmatter
+field (raw git identity, consumable by `/smith-timesheet`). The hook writes a
+canonical per-user pointer `.smith/vault/.current-session-<slug>` AND the legacy
+`.smith/vault/.current-session` local alias (both gitignored); the legacy alias
+keeps the ~29 existing pointer consumers working unchanged. This makes
+concurrent sessions by different teammates collision-free (distinct filenames,
+no shared committed pointer).
+
+#### `.meta` churn convention (Q5-B)
+
+`.meta` files carry per-rebuild `Hash:` / `Last Updated:` provenance lines, so
+they re-hash on every `/smith-index` run and produce noisy diffs. To manage this:
+
+- `.gitattributes` marks the `.meta` describe layer and per-system manifests
+  `linguist-generated=true` so they are de-emphasized in diffs and PR reviews.
+- **No merge driver is configured** (deliberately — `merge=union` would
+  duplicate the single-line `Hash:`/`Last Updated:` fields and corrupt the
+  `.meta`).
+- Teammates should **discard hash/timestamp-only `.meta` diffs** (or just
+  re-run `/smith-index` to regenerate them cleanly) rather than committing the
+  noise. Substantive description changes are committed normally.
 
 ### Per-project parser override
 
