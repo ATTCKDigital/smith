@@ -576,7 +576,7 @@ def render_system_manifest(
     out.append("")
     out.append("## Description")
     if description:
-        out.append(description)
+        out.append(description.strip())
     else:
         out.append(f"Files mapped to `{system_name}` by the path resolver.")
     out.append("")
@@ -605,7 +605,10 @@ def render_system_manifest(
 
 
 def render_top_manifest(
-    systems: dict[str, list[dict]], stats: dict, last_full_index: dict | None = None
+    systems: dict[str, list[dict]],
+    stats: dict,
+    last_full_index: dict | None = None,
+    system_descriptions: dict[str, str] | None = None,
 ) -> str:
     out: list[str] = []
     out.append("# Project Manifest")
@@ -623,7 +626,7 @@ def render_top_manifest(
     # Cap to 25 rows to respect 50-line budget.
     for name in sorted_systems[:25]:
         count = len(systems[name])
-        desc = _system_description(name)
+        desc = _system_description(name, system_descriptions)
         out.append(f"| {name} | {count} | {desc} |")
     out.append("")
     out.append("## Stats")
@@ -638,7 +641,19 @@ def render_top_manifest(
     return "\n".join(out)
 
 
-def _system_description(name: str) -> str:
+def _system_description(
+    name: str, system_descriptions: dict[str, str] | None = None
+) -> str:
+    # Prefer the spec.md frontmatter `description:` field when present.
+    if system_descriptions:
+        declared = system_descriptions.get(name)
+        if declared:
+            # Collapse newlines and escape table-breaking pipes; cap at
+            # one line so the 25-row top-manifest stays readable.
+            one_line = declared.strip().replace("\n", " ").replace("|", "\\|")
+            if len(one_line) > 120:
+                one_line = one_line[:117] + "…"
+            return one_line
     if name == "unassigned":
         return "Files not assigned to any system"
     if name == "excluded":
@@ -756,6 +771,9 @@ class IndexRun:
         self.succeeded = 0
         self.failed = 0
         self.skipped = 0
+        # spec.md `description:` frontmatter per system id, loaded once.
+        # Empty dict if .specify/systems/ is missing or has no usable specs.
+        self.system_descriptions: dict[str, str] = self._load_system_descriptions()
 
     def _load_overrides(self) -> dict | None:
         if not self.system_paths_path.exists():
@@ -765,6 +783,56 @@ class IndexRun:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             return None
+
+    def _load_system_descriptions(self) -> dict[str, str]:
+        """Map system id -> spec.md frontmatter `description:` field.
+
+        Reads `<project_root>/.specify/systems/<id>/spec.md`, falling back
+        to `<project_root>/specs/<id>/spec.md` if the canonical location
+        is missing. Returns an empty dict on any failure (missing dir,
+        unreadable file, malformed frontmatter) — the renderers degrade
+        to the legacy title-cased-slug behavior in that case.
+
+        Reuses `path_resolver._parse_yaml_frontmatter` to stay consistent
+        with Tier 1 frontmatter semantics.
+        """
+        out: dict[str, str] = {}
+        if path_resolver is None or not hasattr(
+            path_resolver, "_parse_yaml_frontmatter"
+        ):
+            return out
+        parse_fm = path_resolver._parse_yaml_frontmatter  # type: ignore[attr-defined]
+        for base in (
+            self.project_root / ".specify" / "systems",
+            self.project_root / "specs",
+        ):
+            if not base.is_dir():
+                continue
+            try:
+                entries = sorted(p for p in base.iterdir() if p.is_dir())
+            except OSError:
+                continue
+            for system_dir in entries:
+                spec_path = system_dir / "spec.md"
+                if not spec_path.is_file():
+                    continue
+                try:
+                    fm = parse_fm(str(spec_path))
+                except Exception:
+                    continue
+                if not fm:
+                    continue
+                # `system:` frontmatter overrides the directory name.
+                system_id = fm.get("system") or system_dir.name
+                if not isinstance(system_id, str) or not system_id:
+                    system_id = system_dir.name
+                desc = fm.get("description")
+                if isinstance(desc, str) and desc.strip():
+                    # First spec wins for a given id; .specify/systems/
+                    # is consulted before specs/ so canonical specs are
+                    # preferred over legacy ones.
+                    out.setdefault(system_id, desc.strip())
+        return out
 
     def setup_dirs(self) -> None:
         for d in (self.index_dir, self.files_dir, self.systems_dir, self.config_dir):
@@ -920,7 +988,8 @@ class IndexRun:
 
     def write_system_manifests(self) -> None:
         for system, entries in self.systems.items():
-            text = render_system_manifest(system, entries)
+            description = self.system_descriptions.get(system, "")
+            text = render_system_manifest(system, entries, description=description)
             target = self.systems_dir / f"{system}.md"
             target.write_text(text, encoding="utf-8")
             self.logger.log(system, "system-update", "ok")
@@ -930,7 +999,12 @@ class IndexRun:
 
     def write_top_manifest(self, duration_s: float) -> None:
         last_full = {"duration_s": duration_s, "timestamp": iso_now()}
-        text = render_top_manifest(self.systems, self.stats, last_full_index=last_full)
+        text = render_top_manifest(
+            self.systems,
+            self.stats,
+            last_full_index=last_full,
+            system_descriptions=self.system_descriptions,
+        )
         target = self.index_dir / "manifest.md"
         target.write_text(text, encoding="utf-8")
         self.logger.log("manifest.md", "top-update", "ok")
@@ -1187,6 +1261,47 @@ def mode_incremental(
     print(
         f"/smith-index --incremental: {len(targets)} files re-indexed "
         f"in {duration:.1f}s"
+    )
+    return 0
+
+
+def mode_rebuild_manifests(project_root: Path, log_path: Path) -> int:
+    """Re-render manifest.md + systems/*.md from existing .meta files.
+
+    Use case: after `/smith-index --describe` has updated `.meta` files
+    with newly-generated module descriptions, the manifest tables still
+    reflect the pre-describe state (process_file's per-system entries
+    are populated DURING the source walk, before --describe runs). This
+    mode lets the describe skill propagate those descriptions to the
+    manifests without re-parsing every source file.
+
+    Behavior:
+    - Reads .smith/index/files/*.meta only; never re-runs language parsers.
+    - Rebuilds run.systems + run.stats via _refresh_full_aggregations,
+      which salvages module_description from each .meta's description layer.
+    - Writes systems/<id>.md and manifest.md with the refreshed aggregations.
+    - Does NOT touch .meta files or .schema-version (those are owned by
+      mode_full / mode_incremental).
+    - No-op (exit 0 with a message) if .smith/index/files/ doesn't exist —
+      the project hasn't been indexed at all.
+    """
+    start = time.monotonic()
+    run = IndexRun(project_root, log_path)
+    if not run.files_dir.exists():
+        print(
+            "/smith-index --rebuild-manifests: no .smith/index/files/ found. "
+            "Run /smith-index first."
+        )
+        return 0
+    run.setup_dirs()
+    _refresh_full_aggregations(run)
+    run.write_system_manifests()
+    duration = time.monotonic() - start
+    run.write_top_manifest(duration)
+    run.cleanup()
+    print(
+        f"/smith-index --rebuild-manifests: {run.stats['total']} files "
+        f"aggregated from .meta in {duration:.1f}s"
     )
     return 0
 
@@ -1495,6 +1610,15 @@ def main(argv: list[str]) -> int:
         help="Generate stub system-paths.json from top-level dirs",
     )
     parser.add_argument(
+        "--rebuild-manifests",
+        action="store_true",
+        help=(
+            "Re-render manifest.md and systems/*.md from existing .meta "
+            "files without re-parsing source. Used by /smith-index "
+            "--describe to propagate newly-generated descriptions."
+        ),
+    )
+    parser.add_argument(
         "--resume", action="store_true", help="Resume from existing checkpoint"
     )
     parser.add_argument("--from", dest="from_ref", help="Incremental from-ref")
@@ -1521,6 +1645,8 @@ def main(argv: list[str]) -> int:
         return mode_incremental(project_root, log_path, args.from_ref, args.to_ref)
     if args.init_system_paths:
         return mode_init_system_paths(project_root)
+    if args.rebuild_manifests:
+        return mode_rebuild_manifests(project_root, log_path)
 
     # Default: full rebuild (optionally filtered).
     system_paths = Path(args.system_paths) if args.system_paths else None

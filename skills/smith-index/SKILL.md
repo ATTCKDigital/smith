@@ -260,7 +260,30 @@ For each file in the batch:
      --processed "$REL"
    ```
 
-#### Step 5 — Summary
+#### Step 5 — Propagate descriptions to manifest tables
+
+`/smith-index` (full rebuild) populates per-file rows in
+`systems/<id>.md` and the top-level `manifest.md` during its source
+walk — well before `--describe` writes the description layer into each
+`.meta`. The manifest tables therefore reflect the pre-describe state.
+
+After all batches complete, refresh the manifest tables from the
+just-updated `.meta` files:
+
+```bash
+python3 ~/.smith/scripts/smith-index/run.py --rebuild-manifests \
+  --root "$ROOT"
+```
+
+(Falls back to `scripts/smith-index/run.py` in repo-dev layouts.)
+
+This mode re-reads `.smith/index/files/*.meta`, salvages the module
+descriptions from each file's description layer, and re-renders
+`manifest.md` + every `systems/<id>.md`. It does NOT re-parse source
+or touch `.meta` files. Skipped if `--describe` aborted before any
+descriptions were written.
+
+#### Step 6 — Summary
 
 After all batches complete (or on abort):
 
