@@ -860,10 +860,28 @@ class IndexRun:
                     self.logger.log(rel, "parse", "ok")
 
             hash_hex = sha256_first_4kb(file_path)
-
-            # Write .meta
-            meta_text = render_meta(rel, parsed, hash_hex)
             meta_path = self.files_dir / (rel + ".meta")
+
+            # Read the existing .meta description layer BEFORE overwriting,
+            # so render_meta can splice it back into the new render and
+            # descriptions survive the structural rebuild. Without this,
+            # every full /smith-index call destroys the v2 description
+            # layer — see specs/32-preserve-meta-descriptions.
+            existing_descriptions = None
+            if meta_path.exists():
+                try:
+                    existing_text = meta_path.read_text(encoding="utf-8")
+                    existing_descriptions = parse_existing_descriptions(existing_text)
+                except OSError:
+                    existing_descriptions = None
+
+            # Write .meta with descriptions spliced in (if any existed).
+            meta_text = render_meta(
+                rel,
+                parsed,
+                hash_hex,
+                existing_descriptions=existing_descriptions,
+            )
             meta_path.parent.mkdir(parents=True, exist_ok=True)
             meta_path.write_text(meta_text, encoding="utf-8")
             self.logger.log(rel, "meta", "ok")
@@ -878,17 +896,12 @@ class IndexRun:
             if lines_count > THRESHOLD_500:
                 self.stats["over_500"] += 1
 
-            # Pull module description from the existing .meta description
-            # layer if any (preserved by render_meta when present).
+            # Module description for the per-system manifest's Description
+            # column. Comes from the same existing_descriptions we already
+            # parsed — no need to re-read the file we just wrote.
             module_desc = ""
-            try:
-                existing_text = meta_path.read_text(encoding="utf-8")
-                if _meta_describe is not None:
-                    md = _meta_describe.parse_meta_descriptions(existing_text)
-                    if md and md.module_description:
-                        module_desc = md.module_description
-            except OSError:
-                pass
+            if existing_descriptions:
+                module_desc = existing_descriptions.get("module_description") or ""
 
             entry = {
                 "path": rel,
