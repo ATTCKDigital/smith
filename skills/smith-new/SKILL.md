@@ -94,24 +94,16 @@ If none of the trigger conditions are met, skip directly to Phase 1. Exploration
 
 The worktree is created after exploration passes (or is skipped). This ensures the user's current working directory and branch are never touched — the entire workflow is isolated from the start.
 
-0. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/` in the **main repo**:
+0. **Activate workflow tracking** — invoke the shipped helper to create the per-branch marker. The workflow-gate hook (PR #20) exempts this exact helper by basename so the bootstrap runs even when no marker exists yet (per spec/31-workflow-gate-bootstrap). The helper also stamps the current session log with a `workflow-start` line so `workflow-summary.sh --totals-only` can attribute tokens to this workflow:
    ```bash
-   # After determining branch name in step 4:
-   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-   # Capture the workflow's session log NOW, at the start, so end-of-workflow
-   # totals read the correct file even if the session log rolls over later.
-   SESSION=$(cat .smith/vault/.current-session 2>/dev/null || echo "")
-   mkdir -p .smith/vault/active-workflows
-   cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
-   workflow: smith-new
-   feature: <feature-name>
-   branch: $BRANCH
-   worktree: $WORKTREE_PATH
-   session_log: $SESSION
-   started: $(date -u +"%Y-%m-%dT%H:%M:%S")
-   EOF
+   # After determining branch name in step 4 and feature slug:
+   ~/.smith/scripts/create-active-workflow.sh \
+     --branch "$BRANCH" \
+     --workflow smith-new \
+     --slug "<feature-slug>" \
+     --worktree "$WORKTREE_PATH"
    ```
-   Clear this file at the end of Phase 6 (after merge) or if the workflow is abandoned. Use the shipped helper so this works even on projects that set `Bash(rm:*)` in the deny list:
+   (Falls back to `scripts/create-active-workflow.sh` in repo-dev layouts.) Clear this marker at the end of Phase 6 (after merge) or if the workflow is abandoned. Use the shipped helper so this works even on projects that set `Bash(rm:*)` in the deny list:
    ```bash
    .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
    ```
