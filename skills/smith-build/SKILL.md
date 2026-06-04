@@ -54,19 +54,18 @@ This command can be invoked in two ways:
 
 ## Phase 0: Context Discovery
 
-0. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/`:
+0. **Activate workflow tracking** — invoke the shipped helper to create the per-branch marker. The workflow-gate hook (PR #20) exempts this exact helper by basename so the bootstrap runs even when no marker exists yet (per spec/31-workflow-gate-bootstrap). The helper also stamps the current session log with a `workflow-start` line so `workflow-summary.sh --totals-only` can attribute tokens correctly:
    ```bash
    BRANCH=$(git rev-parse --abbrev-ref HEAD)
-   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-   mkdir -p .smith/vault/active-workflows
-   cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
-   workflow: smith-build
-   feature: <detected from branch or spec>
-   branch: $BRANCH
-   started: $(date -u +"%Y-%m-%dT%H:%M:%S")
-   EOF
+   # Derive a slug from the branch (drop number prefix if numbered):
+   SLUG=$(echo "$BRANCH" | sed 's/^[0-9]*-//')
+   ~/.smith/scripts/create-active-workflow.sh \
+     --branch "$BRANCH" \
+     --workflow smith-build \
+     --slug "$SLUG" \
+     --worktree "$(pwd)"
    ```
-   Clear this file at the end of Phase 7 (after release notes) or on unrecoverable failure. Use the shipped helper so this works even on projects that deny `Bash(rm:*)`:
+   (Falls back to `scripts/create-active-workflow.sh` in repo-dev layouts.) Clear this marker at the end of Phase 7 (after release notes) or on unrecoverable failure. Use the shipped helper so this works even on projects that deny `Bash(rm:*)`:
    ```bash
    .specify/scripts/bash/clear-active-workflow.sh "$BRANCH"
    ```

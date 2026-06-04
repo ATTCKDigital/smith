@@ -87,23 +87,21 @@ If `.smith/vault/ledger/` exists and contains non-empty files, load relevant Led
 
 ## Phase 0: Activate Workflow Tracking
 
-Before any file is written (debug reports, vault logs, etc.), create an active-workflow marker so the workflow-gate hook (PreToolUse) allows subsequent writes. Without this, even the debug-report Write at the end of Phase 5 would be denied.
+Before any file is written (debug reports, vault logs, etc.), create an active-workflow marker so the workflow-gate hook (PreToolUse) allows subsequent writes. Without this, even the debug-report Write at the end of Phase 5 would be denied. The workflow-gate hook exempts the shipped helper by basename (per spec/31-workflow-gate-bootstrap) so the bootstrap runs even when no marker exists yet:
 
 ```bash
 SLUG=$(echo "${1:-debug}" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-40)
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-# Capture the workflow's session log NOW, at the start, so end-of-workflow
-# totals read the correct file even if the session log rolls over later.
-SESSION=$(cat .smith/vault/.current-session 2>/dev/null || echo "")
-mkdir -p .smith/vault/active-workflows
-cat > .smith/vault/active-workflows/debug-${SLUG}.yaml << EOF
-workflow: smith-debug
-feature: ${SLUG}
-branch: ${BRANCH}
-session_log: $SESSION
-started: $(date -u +"%Y-%m-%dT%H:%M:%S")
-EOF
+# Debug is read-only — no worktree, so use the current dir as the
+# "worktree" sentinel. The helper still stamps the session log so
+# workflow-summary attributes tokens correctly.
+~/.smith/scripts/create-active-workflow.sh \
+  --branch "debug-${SLUG}" \
+  --workflow smith-debug \
+  --slug "${SLUG}" \
+  --worktree "$(pwd)"
 ```
+(Falls back to `scripts/create-active-workflow.sh` in repo-dev layouts.)
 
 The marker is cleared at the end of Phase 6 (Decision Gate) regardless of which option the user picks. Use the shipped helper so this works under a `Bash(rm:*)` deny rule:
 

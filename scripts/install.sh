@@ -198,6 +198,11 @@ if [ "$NO_PARSERS" != "1" ]; then
     cp "$REPO_ROOT/scripts/smith-index/run.py" "$SMITH_HOME/scripts/smith-index/run.py" 2>/dev/null || true
     cp "$REPO_ROOT/scripts/smith-index/run.sh" "$SMITH_HOME/scripts/smith-index/run.sh" 2>/dev/null || true
     chmod +x "$SMITH_HOME/scripts/smith-index/"*.sh 2>/dev/null || true
+    # Workflow marker creation helper (per spec/31-workflow-gate-bootstrap).
+    # Exempted by the gate by basename, so all four workflow skills can
+    # self-bootstrap without the Python Path.write_text() workaround.
+    cp "$REPO_ROOT/scripts/create-active-workflow.sh" "$SMITH_HOME/scripts/create-active-workflow.sh" 2>/dev/null || true
+    chmod +x "$SMITH_HOME/scripts/create-active-workflow.sh" 2>/dev/null || true
     ok "Parsers installed"
 fi
 

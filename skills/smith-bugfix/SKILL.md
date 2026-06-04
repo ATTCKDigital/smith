@@ -88,23 +88,15 @@ Every bugfix always runs in an isolated git worktree branched from the configure
    git fetch origin "$BASE_BRANCH"
    ```
 
-2. **Activate workflow tracking** — create a per-branch file in `.smith/vault/active-workflows/` in the **primary repo** (not the worktree, which doesn't exist yet):
+2. **Activate workflow tracking** — invoke the shipped helper to create the per-branch marker. The workflow-gate hook (PR #20) exempts this exact helper by basename so the bootstrap runs even when no marker exists yet (per spec/31-workflow-gate-bootstrap). The helper also stamps the current session log with a `workflow-start` line so `workflow-summary.sh --totals-only` can attribute tokens to this workflow:
    ```bash
-   SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-   # Capture the workflow's session log NOW, at the start, so end-of-workflow
-   # totals read the correct file even if the session log rolls over later.
-   SESSION=$(cat .smith/vault/.current-session 2>/dev/null || echo "")
-   mkdir -p .smith/vault/active-workflows
-   cat > .smith/vault/active-workflows/${SAFE_BRANCH}.yaml << EOF
-   workflow: smith-bugfix
-   feature: $SLUG
-   branch: $BRANCH
-   worktree: $WORKTREE_PATH
-   session_log: $SESSION
-   started: $(date -u +"%Y-%m-%dT%H:%M:%S")
-   EOF
+   ~/.smith/scripts/create-active-workflow.sh \
+     --branch "$BRANCH" \
+     --workflow smith-bugfix \
+     --slug "$SLUG" \
+     --worktree "$WORKTREE_PATH"
    ```
-   If a yaml file with the same `SAFE_BRANCH` already exists, another session is already using that branch — pick a new slug (e.g., append `-2`) and retry. The file is cleared by the Workflow Cleanup step at the end.
+   (Falls back to `scripts/create-active-workflow.sh` in repo-dev layouts.) The helper exits 3 if a marker already exists for this branch under a different workflow type — pick a new slug (e.g., append `-2`) and retry. The marker is cleared by the Workflow Cleanup step at the end via `clear-active-workflow.sh`.
 
 3. **Create the worktree with the fix branch from the configured base branch (`origin/$BASE_BRANCH`)**:
    ```bash

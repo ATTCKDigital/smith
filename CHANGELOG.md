@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Workflow-gate bootstrap exemption (31-workflow-gate-bootstrap / PR #31)** — resolves the chicken-and-egg between the workflow-gate hook (PR #20) and the four workflow skills' Phase 1 marker creation step. The gate's redirection guard was denying `cat > .smith/vault/active-workflows/...yaml << EOF` heredocs — the exact pattern shipped in every workflow SKILL.md — so the documented bootstrap path didn't actually work. Five recent PRs (#25, #27, #28, #29, #30) all worked around this by writing the marker via Python's `Path.write_text()`, an undocumented hack.
+  - **NEW `scripts/create-active-workflow.sh`** — the SOLE auditable entrypoint for marker creation. Bash, atomic write (tempfile + rename), idempotent, collision detection (exit 3), input validation (branch regex, workflow allowlist, absolute worktree path). Per Q5 answer A. Also stamps the current session log with a `workflow-start` line per Q2 answer A — solves the `workflow-summary --totals-only` attribution problem in one shot.
+  - **`hooks/workflow-gate.sh` exemption** — recognizes invocations of `create-active-workflow.sh` by basename (anchored to whitespace/`/` boundary) and allows them through regardless of marker presence. Per Q3 answer A — basename match avoids absolute-path coupling to the install location.
+  - **`hooks/workflow-gate.sh` SAFE_INDEX_DIRS** — `.smith/index/{files,systems,config,logs}/` writes are now allowed without a marker, solving the secondary bug that `/smith-index --describe` was hitting (since `.smith/index/` is top-level under `.smith/`, NOT under `.smith/vault/`, so the existing SAFE_VAULT_DIRS exemption didn't cover it). Per Q4 answer A — keeps "vault = workflow state" and "index = structural metadata" as distinct exemption categories.
+  - **4 SKILL.md migrations** — `smith-new`, `smith-bugfix`, `smith-debug`, `smith-build` rewrite their Phase 1 bootstrap from inline heredoc to helper invocation. Per Q7 answer A — atomic migration; no skill is left mid-broken.
+  - **`scripts/install.sh`** copies the helper to `~/.smith/scripts/create-active-workflow.sh` alongside the other parser-related helpers. Per Q1 answer A — global install.
+  - **Tests** — `tests/hooks/test_create_active_workflow.sh` (20 cases: input validation, marker shape, idempotency, collision, session-log stamping, atomic semantics) + `tests/hooks/test_workflow_gate_exemption.sh` (12 cases: helper allowed regardless of marker, lookalikes still denied, .smith/index/ writes allowed, source-file writes still denied without marker, with-marker still allows everything). 32/32 green.
+  - **Known follow-ups (not in this PR)**: `skills/smith/SKILL.md` and `skills/smith-finish/SKILL.md` also create markers via inline heredoc and would benefit from the same migration. Out of scope per spec §A3 (which scoped to the four workflow skills). Bank as a follow-up. The regex false-positives in the gate's redirection guard (e.g. `echo "->" matches `, `2>&1` corner cases inside `$(...)` capture) are tracked separately (bank entry pending) — out of scope per Q8 answer A.
+
 ### Changed
 
 - **Task-based LLM backend (23-task-llm-backend / PR #23)** — inverts
