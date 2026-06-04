@@ -30,9 +30,12 @@ modify any source file in the project. All generated state is confined to
 `.smith/index/` plus optional `.bak.<timestamp>` files on template
 migration.
 
-The actual work runs in `scripts/smith-index/run.py` (called via
-`scripts/smith-index/run.sh`). The skill markdown is the entry point that
-parses `$ARGUMENTS`, decides the mode, and shells out.
+The actual work runs in `~/.smith/scripts/smith-index/run.py` (called
+via `~/.smith/scripts/smith-index/run.sh`), installed by
+`scripts/install.sh` from this repo. In the smith-repo dev tree these
+same files live at `scripts/smith-index/run.py` / `run.sh` — invoking
+either works. The skill markdown is the entry point that parses
+`$ARGUMENTS`, decides the mode, and shells out.
 
 ## Modes (flags)
 
@@ -62,11 +65,13 @@ parses `$ARGUMENTS`, decides the mode, and shells out.
    `~/.smith/logs/smith-index-<ISO8601>.jsonl` per Rule 4.
 8. **Write the schema-version marker** at `.smith/index/.schema-version`
    containing the current schema version (read from
-   `~/.claude/skills/smith/scripts/parsers/meta_schema_version.txt`,
-   falls back to the in-repo equivalent if not installed). This file lets
-   `/smith-update` detect projects whose manifest was generated against an
-   older `.meta` schema and offer to regenerate. The marker is overwritten
-   on every full rebuild — never deleted by `/smith-index` itself.
+   `~/.smith/scripts/meta_schema_version.txt`, falls back to
+   `scripts/parsers/meta_schema_version.txt` in the smith-repo dev tree
+   if the global install is missing). This file lets `/smith-update`
+   detect projects whose manifest was generated against an older `.meta`
+   schema and offer to regenerate. The marker is overwritten on every
+   full rebuild (and on `--incremental` runs that write a fresh
+   manifest); silently skipped if neither source file is found.
 9. Print a summary line:
    `/smith-index: N files indexed (N succeeded, N failed, N skipped) in T.Ts`.
 

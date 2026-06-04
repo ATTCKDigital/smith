@@ -935,6 +935,57 @@ class IndexRun:
         target.write_text(text, encoding="utf-8")
         self.logger.log("manifest.md", "top-update", "ok")
 
+    def write_schema_version_marker(self) -> None:
+        """Step 8 of skills/smith-index/SKILL.md: write the manifest's
+        schema-version marker so /smith-update can detect projects whose
+        manifest was generated against an older .meta schema.
+
+        Source of truth: meta_schema_version.txt shipped by
+        scripts/install-parsers.sh (per PR #29) into ~/.smith/scripts/.
+        In the smith-repo dev tree the same file lives at
+        scripts/parsers/meta_schema_version.txt.
+
+        Silent skip if the source file isn't installed — keeps /smith-index
+        usable even on partial installs. The marker is overwritten on
+        every full rebuild; never removed by /smith-index itself.
+        """
+        # Resolve source. Prefer global install (PARSER_DIR_GLOBAL =
+        # ~/.smith/scripts/); fall back to repo-dev tree (PARSER_DIR_REPO =
+        # <repo>/scripts/parsers/).
+        candidates = [
+            PARSER_DIR_GLOBAL / "meta_schema_version.txt",
+            PARSER_DIR_REPO / "meta_schema_version.txt",
+        ]
+        source_value: str | None = None
+        for candidate in candidates:
+            if candidate.is_file():
+                try:
+                    source_value = candidate.read_text(encoding="utf-8").strip()
+                    break
+                except OSError:
+                    continue
+        if not source_value:
+            # Partial install — log and skip. Don't fail the run.
+            self.logger.log(
+                ".schema-version",
+                "schema-version",
+                "skipped",
+                error="meta_schema_version.txt not installed",
+            )
+            return
+
+        marker = self.index_dir / ".schema-version"
+        try:
+            marker.write_text(source_value + "\n", encoding="utf-8")
+            self.logger.log(".schema-version", "schema-version", "ok")
+        except OSError as e:
+            self.logger.log(
+                ".schema-version",
+                "schema-version",
+                "failed",
+                error=str(e),
+            )
+
     def cleanup(self) -> None:
         # Remove checkpoint on clean exit.
         try:
@@ -1000,6 +1051,7 @@ def mode_full(
     run.write_system_manifests()
     duration = time.monotonic() - start
     run.write_top_manifest(duration)
+    run.write_schema_version_marker()
     run.cleanup()
 
     summary = (
@@ -1130,6 +1182,7 @@ def mode_incremental(
     run.write_system_manifests()
     duration = time.monotonic() - start
     run.write_top_manifest(duration)
+    run.write_schema_version_marker()
     run.cleanup()
     print(
         f"/smith-index --incremental: {len(targets)} files re-indexed "
