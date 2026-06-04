@@ -40,11 +40,22 @@ from pathlib import Path
 
 # --- Constants --------------------------------------------------------------
 
-ALLOWED_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".css", ".html", ".sh"}
+ALLOWED_EXTENSIONS = {
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".css",
+    ".html",
+    ".sh",
+    ".liquid",
+    ".json",
+}
 PYTHON_EXTS = {".py"}
 JS_EXTS = {".js", ".jsx", ".ts", ".tsx"}
 # Extensions we touch but have no parser for (just count lines + hash).
-PASSIVE_EXTS = {".css", ".html", ".sh"}
+PASSIVE_EXTS = {".css", ".html", ".sh", ".liquid", ".json"}
 
 EXCLUDED_DIR_NAMES = {
     "node_modules",
@@ -315,7 +326,7 @@ def run_parser(
 
 
 def passive_parse(file_path: Path) -> dict:
-    """For .sh/.css/.html — just count lines, no AST."""
+    """For .sh/.css/.html/.liquid/.json — just count lines, no AST."""
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -323,7 +334,13 @@ def passive_parse(file_path: Path) -> dict:
     except OSError:
         lines = 0
     ext = file_path.suffix
-    lang = {"sh": "shell", "css": "css", "html": "html"}.get(ext.lstrip("."), "other")
+    lang = {
+        "sh": "shell",
+        "css": "css",
+        "html": "html",
+        "liquid": "liquid",
+        "json": "json",
+    }.get(ext.lstrip("."), "other")
     return {
         "path": str(file_path),
         "language": lang,
