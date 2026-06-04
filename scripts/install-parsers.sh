@@ -107,6 +107,7 @@ if $UNINSTALL; then
   uninstall_file "${TARGET_DIR}/describe_discover.py"
   uninstall_file "${TARGET_DIR}/describe_write.py"
   uninstall_file "${TARGET_DIR}/describe_checkpoint.py"
+  uninstall_file "${TARGET_DIR}/meta_schema_version.txt"
   uninstall_file "${TARGET_DIR}/parser-lib.sh"
   uninstall_file "${TARGET_DIR}/vendor/acorn.min.js"
   log "uninstall complete"
@@ -132,6 +133,10 @@ install_file "${SOURCE_DIR}/index_common.py"           "${TARGET_DIR}/index_comm
 install_file "${SOURCE_DIR}/describe_discover.py"      "${TARGET_DIR}/describe_discover.py"      755
 install_file "${SOURCE_DIR}/describe_write.py"         "${TARGET_DIR}/describe_write.py"         755
 install_file "${SOURCE_DIR}/describe_checkpoint.py"    "${TARGET_DIR}/describe_checkpoint.py"    755
+# Schema version marker — single source of truth for /smith-update's schema
+# drift detection. Read by /smith-index when writing .smith/index/.schema-version.
+# Mode 644 (data file, not executable).
+install_file "${SOURCE_DIR}/meta_schema_version.txt"   "${TARGET_DIR}/meta_schema_version.txt"   644
 install_file "${SOURCE_DIR}/parser-lib.sh"             "${TARGET_DIR}/parser-lib.sh"             644
 install_file "${SOURCE_DIR}/vendor/acorn.min.js"       "${TARGET_DIR}/vendor/acorn.min.js"       644
 
