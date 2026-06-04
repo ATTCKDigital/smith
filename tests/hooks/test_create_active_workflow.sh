@@ -83,6 +83,51 @@ setup_repo() {
     rm -rf "$repo"
 }
 
+# ---------- 3a: smith-index workflow type accepted (PR for allowlist expansion) ----------
+{
+    repo=$(setup_repo)
+    out=$(cd "$repo" && bash "$HELPER" --branch describe-armory --workflow smith-index --slug describe-armory --worktree /tmp/wt-i 2>&1)
+    rc=$?
+    assert_eq "smith-index workflow accepted exit code" 0 "$rc"
+    rm -rf "$repo"
+}
+
+# ---------- 3b: smith-update workflow type accepted ----------
+{
+    repo=$(setup_repo)
+    out=$(cd "$repo" && bash "$HELPER" --branch sync --workflow smith-update --slug sync --worktree /tmp/wt-u 2>&1)
+    rc=$?
+    assert_eq "smith-update workflow accepted exit code" 0 "$rc"
+    rm -rf "$repo"
+}
+
+# ---------- 3c: smith-queue workflow type accepted ----------
+{
+    repo=$(setup_repo)
+    out=$(cd "$repo" && bash "$HELPER" --branch process-queue --workflow smith-queue --slug process-queue --worktree /tmp/wt-q 2>&1)
+    rc=$?
+    assert_eq "smith-queue workflow accepted exit code" 0 "$rc"
+    rm -rf "$repo"
+}
+
+# ---------- 3d: generic maintenance workflow type accepted ----------
+{
+    repo=$(setup_repo)
+    out=$(cd "$repo" && bash "$HELPER" --branch maint --workflow maintenance --slug maint --worktree /tmp/wt-m 2>&1)
+    rc=$?
+    assert_eq "maintenance workflow accepted exit code" 0 "$rc"
+    rm -rf "$repo"
+}
+
+# ---------- 3e: still-unknown workflow type still rejected ----------
+{
+    repo=$(setup_repo)
+    out=$(cd "$repo" && bash "$HELPER" --branch foo --workflow random-thing --slug f --worktree /tmp/x 2>&1)
+    rc=$?
+    assert_eq "unknown workflow still rejected exit code" 2 "$rc"
+    rm -rf "$repo"
+}
+
 # ---------- 4: invalid branch (shell metachar) ----------
 {
     repo=$(setup_repo)

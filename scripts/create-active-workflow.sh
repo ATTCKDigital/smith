@@ -49,7 +49,12 @@ Creates an active-workflow marker at
 
 Required:
   --branch    Git branch name (e.g. fix/foo or 23-feature). Validated.
-  --workflow  One of: smith-new, smith-bugfix, smith-debug, smith-build.
+  --workflow  One of: smith-new, smith-bugfix, smith-debug, smith-build,
+              smith-index, smith-update, smith-queue, maintenance. The first
+              four are workflow skills; the last four are maintenance commands
+              that legitimately need to register a marker for the duration of
+              their run. Use `maintenance` as a generic catch-all when none
+              of the named types fit.
   --slug      Short feature slug (used in feature: field).
   --worktree  Absolute path to the worktree.
 
@@ -100,11 +105,16 @@ if ! printf '%s' "$BRANCH" | grep -qE '^[A-Za-z0-9._/-]+$'; then
     exit 2
 fi
 
-# Workflow allowlist.
+# Workflow allowlist. The first four are workflow skills; the last
+# four are maintenance commands that need a marker too (e.g.
+# /smith-index --describe writing to .meta files via Bash redirection
+# or Write-tool calls outside the SAFE_INDEX_DIRS exemption). Use
+# `maintenance` as a generic catch-all when none of the named types
+# fit cleanly.
 case "$WORKFLOW" in
-    smith-new|smith-bugfix|smith-debug|smith-build) ;;
+    smith-new|smith-bugfix|smith-debug|smith-build|smith-index|smith-update|smith-queue|maintenance) ;;
     *)
-        err "invalid --workflow: must be one of smith-new, smith-bugfix, smith-debug, smith-build (got: $WORKFLOW)"
+        err "invalid --workflow: must be one of smith-new, smith-bugfix, smith-debug, smith-build, smith-index, smith-update, smith-queue, maintenance (got: $WORKFLOW)"
         exit 2
         ;;
 esac
