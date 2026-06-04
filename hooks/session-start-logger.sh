@@ -16,10 +16,28 @@ VAULT_DIR="$CLAUDE_PROJECT_DIR/.smith/vault"
 SESSIONS_DIR="$VAULT_DIR/sessions"
 CURRENT_SESSION_FILE="$VAULT_DIR/.current-session"
 GLOBAL_INDEX="$HOME/.smith/projects.json"
+PROJECT_CONFIG="$CLAUDE_PROJECT_DIR/.smith/config.json"
 
 # Ensure directories exist
 mkdir -p "$SESSIONS_DIR"
 mkdir -p "$HOME/.smith"
+
+# Seed .smith/config.json from the shipped default if missing. Idempotent:
+# no-op when a config already exists, even if it's an older shape. Users
+# who want to reset can delete the file and let the next SessionStart
+# re-seed it. Silent skip when no template is found — historically this
+# file didn't exist and skills tolerate its absence.
+if [ ! -f "$PROJECT_CONFIG" ]; then
+    for candidate in \
+        "$HOME/.smith/templates/config.default.json" \
+        "$HOME/.claude/skills/smith/templates/config.default.json" \
+        "$CLAUDE_PROJECT_DIR/templates/config.default.json"; do
+        if [ -f "$candidate" ]; then
+            cp "$candidate" "$PROJECT_CONFIG" 2>/dev/null || true
+            break
+        fi
+    done
+fi
 
 # Timestamps
 NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%S")
