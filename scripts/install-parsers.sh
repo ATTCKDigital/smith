@@ -103,6 +103,10 @@ if $UNINSTALL; then
   uninstall_file "${TARGET_DIR}/parse-js.js"
   uninstall_file "${TARGET_DIR}/path-resolver.py"
   uninstall_file "${TARGET_DIR}/meta_describe.py"
+  uninstall_file "${TARGET_DIR}/index_common.py"
+  uninstall_file "${TARGET_DIR}/describe_discover.py"
+  uninstall_file "${TARGET_DIR}/describe_write.py"
+  uninstall_file "${TARGET_DIR}/describe_checkpoint.py"
   uninstall_file "${TARGET_DIR}/parser-lib.sh"
   uninstall_file "${TARGET_DIR}/vendor/acorn.min.js"
   log "uninstall complete"
@@ -115,11 +119,19 @@ log "install starting (source=${SOURCE_DIR}, target=${TARGET_DIR})"
 install_file "${SOURCE_DIR}/parse-python.py"           "${TARGET_DIR}/parse-python.py"           755
 install_file "${SOURCE_DIR}/parse-js.js"               "${TARGET_DIR}/parse-js.js"               755
 install_file "${SOURCE_DIR}/path-resolver.py"          "${TARGET_DIR}/path-resolver.py"          755
-# v2: meta_describe.py is the shared LLM-description helper consumed by
-# /smith-index --describe and the three smith workflows (smith-new,
-# smith-bugfix, smith-debug) via `python3 ~/.smith/scripts/meta_describe.py
-# update-touched ...`. Per data-model.md §4.
+# v2 (PR #21): meta_describe.py started life as the shared LLM helper.
+# v3 (PR #25) stripped it down to a structural module — datatypes,
+# .meta parse/render, threshold filter, prompt-template builders. Still
+# imported by all v3 helpers and the save hook.
 install_file "${SOURCE_DIR}/meta_describe.py"          "${TARGET_DIR}/meta_describe.py"          755
+# v3 (PR #25): four new helpers replace the v2 LLM-call orchestration.
+# The skill prose at ~/.claude/skills/smith-index/SKILL.md references
+# these via absolute paths (python3 ~/.smith/scripts/describe_*.py),
+# so they MUST be present on disk for /smith-index --describe to work.
+install_file "${SOURCE_DIR}/index_common.py"           "${TARGET_DIR}/index_common.py"           755
+install_file "${SOURCE_DIR}/describe_discover.py"      "${TARGET_DIR}/describe_discover.py"      755
+install_file "${SOURCE_DIR}/describe_write.py"         "${TARGET_DIR}/describe_write.py"         755
+install_file "${SOURCE_DIR}/describe_checkpoint.py"    "${TARGET_DIR}/describe_checkpoint.py"    755
 install_file "${SOURCE_DIR}/parser-lib.sh"             "${TARGET_DIR}/parser-lib.sh"             644
 install_file "${SOURCE_DIR}/vendor/acorn.min.js"       "${TARGET_DIR}/vendor/acorn.min.js"       644
 

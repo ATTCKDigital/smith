@@ -152,7 +152,18 @@ SKILL_COUNT=0
 for skill_src in "$REPO_ROOT"/skills/smith "$REPO_ROOT"/skills/smith-*; do
     [ -d "$skill_src" ] || continue
     skill_name="$(basename "$skill_src")"
-    rm -rf "$CLAUDE_SKILLS_DIR/$skill_name"
+    target="$CLAUDE_SKILLS_DIR/$skill_name"
+    # Explicitly unlink symlinks first. Observed in practice: when
+    # `npx skills add ATTCKDigital/smith` was previously run, it symlinks
+    # ~/.claude/skills/<name> -> ../.agents/skills/<name> using a
+    # relative path. Once the npm tree is cleaned up that link is
+    # broken. A subsequent `rm -rf` on the broken-symlink path may
+    # leave the link in place (rm doesn't traverse the dangling
+    # target), after which `cp -R` either fails or copies INTO the
+    # dangling path. Force-remove the link first so cp creates a
+    # fresh directory.
+    [ -L "$target" ] && unlink "$target"
+    rm -rf "$target"
     cp -R "$skill_src" "$CLAUDE_SKILLS_DIR/"
     SKILL_COUNT=$((SKILL_COUNT + 1))
 done
