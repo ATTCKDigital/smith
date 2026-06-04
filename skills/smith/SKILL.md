@@ -583,6 +583,65 @@ If `.gitignore` exists, append SpecKit-related entries if not already present:
 
 If `.gitignore` doesn't exist, create one with standard patterns for the detected stack plus the above entries.
 
+**Then merge the canonical Smith vault & index policy** (the team-shareable selective policy from feature 36). This is a single source of truth shipped as a template asset — do NOT inline-duplicate the list here; read it from the installed path and merge idempotently using sentinel markers.
+
+Source template (prefer the installed copy, fall back to the repo-dev copy):
+- `~/.claude/skills/smith-index/templates/.gitignore-smith-additions`
+- (fallback) `skills/smith-index/templates/.gitignore-smith-additions`
+
+And the matching `.gitattributes` policy (de-emphasizes generated `.meta` in diffs):
+- `~/.claude/skills/smith-index/templates/.gitattributes-smith-additions`
+- (fallback) `skills/smith-index/templates/.gitattributes-smith-additions`
+
+**Idempotent sentinel merge contract:**
+- The template block is wrapped in `# >>> smith-gitignore-policy >>>` … `# <<< smith-gitignore-policy <<<` (and `# >>> smith-gitattributes-policy >>>` … `# <<< smith-gitattributes-policy <<<` for `.gitattributes`).
+- If the project file already contains the opening sentinel, replace everything between the opening and closing sentinel (inclusive) with the fresh template block.
+- Otherwise append the whole block (creating `.gitattributes` if it does not exist).
+- Lines OUTSIDE the sentinels are never touched.
+
+Run this self-contained `python3` block (robust sentinel replace-or-append — no `sed` portability issues):
+
+```bash
+# Resolve the template source (installed path first, repo-dev fallback).
+SMITH_TPL_DIR="$HOME/.claude/skills/smith-index/templates"
+[ -f "$SMITH_TPL_DIR/.gitignore-smith-additions" ] || SMITH_TPL_DIR="skills/smith-index/templates"
+
+python3 - "$SMITH_TPL_DIR" <<'PYEOF'
+import sys, pathlib
+
+tpl_dir = pathlib.Path(sys.argv[1])
+
+def merge(target_path, tpl_path, open_marker, close_marker):
+    tpl = pathlib.Path(tpl_path)
+    if not tpl.exists():
+        print(f"WARNING: template not found: {tpl_path} — skipping")
+        return
+    block = tpl.read_text().rstrip("\n") + "\n"
+    target = pathlib.Path(target_path)
+    existing = target.read_text() if target.exists() else ""
+
+    if open_marker in existing and close_marker in existing:
+        # Replace the managed region (inclusive) with the fresh block.
+        pre = existing.split(open_marker, 1)[0]
+        post = existing.split(close_marker, 1)[1]
+        new = pre.rstrip("\n") + ("\n\n" if pre.strip() else "") + block + post.lstrip("\n")
+        action = "refreshed"
+    else:
+        sep = "" if (not existing or existing.endswith("\n\n")) else ("\n" if existing.endswith("\n") else "\n\n")
+        new = existing + sep + block
+        action = "appended"
+    target.write_text(new)
+    print(f"{action}: {open_marker.split()[1]} in {target_path}")
+
+merge(".gitignore", tpl_dir / ".gitignore-smith-additions",
+      "# >>> smith-gitignore-policy >>>", "# <<< smith-gitignore-policy <<<")
+merge(".gitattributes", tpl_dir / ".gitattributes-smith-additions",
+      "# >>> smith-gitattributes-policy >>>", "# <<< smith-gitattributes-policy <<<")
+PYEOF
+```
+
+The policy is a **negative list**: `.smith/` is NOT ignored wholesale. Only the specific volatile paths in the block are ignored; everything else under `.smith/` (the `manifest.md`, `config/`, `index/files/` + `index/systems/` `.meta` describe layer, `ledger/`, `bank/`, `agents/`, and `sessions/*.md`) is committed and shared with the team. Re-running `/smith` init replaces the managed region in place, so the block never duplicates.
+
 #### 4.8 Optionally Scaffold System Specs
 
 Smith v2 path-resolver tier 1 reads `.specify/systems/<id>/spec.md` YAML frontmatter (`system`, `paths`) to bucket files into systems. Declaring systems upfront lets `/smith-index` route files correctly from day one. This step is **optional** — skip if the project is small, exploratory, or doesn't yet have clear system boundaries. Systems can also be added later manually or via `/smith-migrate-system-paths` on a project that grew `.specify/systems/` organically.
