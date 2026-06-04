@@ -795,9 +795,17 @@ class IndexRun:
         rel = str(file_path.relative_to(self.project_root))
         if path_resolver is not None:
             try:
+                # Pass the real project_root so Tier 1 can find
+                # .specify/systems/<id>/spec.md frontmatter. Empty string
+                # here used to silently break Tier 1 — see PR (this one):
+                # files mapped to "system-<top_dir>" instead of their
+                # declared systems on Shopify themes (snippets/, sections/,
+                # templates/ became system-snippets etc.) and any other
+                # project where the heuristic-fallback bucket didn't match
+                # the declared system name.
                 return path_resolver.resolve(  # type: ignore[union-attr]
                     rel,
-                    project_root="",
+                    project_root=str(self.project_root),
                     overrides_dict=self._overrides_dict,
                 )
             except Exception:
