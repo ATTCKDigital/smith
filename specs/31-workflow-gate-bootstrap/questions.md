@@ -2,7 +2,7 @@
 feature: 31-workflow-gate-bootstrap
 branch: 31-workflow-gate-bootstrap
 generated: 2026-06-04
-status: AWAITING ANSWERS
+status: ANSWERED
 spec: ./spec.md
 plan: ./plan.md
 ---
@@ -26,7 +26,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — global. The teardown helper at `.specify/scripts/bash/clear-active-workflow.sh` is conceptually paired with create- but they don't have to live in the same place; "where the parser-lib helpers live" feels like the cleanest home for create-. Basename exemption in the gate sidesteps the absolute-path coupling problem.
 
-**Answer:** ___
+**Answer:** A — global at ~/.smith/scripts/create-active-workflow.sh.
 
 ---
 
@@ -43,7 +43,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — yes, write it. The bootstrap helper IS where the workflow becomes "real"; the session log is the natural anchor. The totals problem is then trivially solved by reading the workflow-start line, which is more robust than threading `$SESSION` through every skill phase.
 
-**Answer:** ___
+**Answer:** A — helper also writes a workflow-start line to the current session log.
 
 ---
 
@@ -60,7 +60,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — by basename, anchored to whitespace/`/`. The exemption is narrow because the basename is specific. R1 (in plan.md) tracks the mitigation: the regex `(^|[[:space:]/])create-active-workflow\.sh([[:space:]]|$)` matches the helper invocation but NOT `cat > create-active-workflow.sh` (the `>` puts a space before, the basename is followed by EOF/quote not space).
 
-**Answer:** ___
+**Answer:** A — basename match anchored to whitespace/slash boundary.
 
 ---
 
@@ -77,7 +77,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — separate SAFE_INDEX_DIRS list. Keeps the two semantic categories distinct (vault is workflow state, index is structural metadata). Easy to extend if more `.smith/<top-level>/` directories need similar treatment.
 
-**Answer:** ___
+**Answer:** A — new SAFE_INDEX_DIRS list parallel to SAFE_VAULT_DIRS, scoped to files/systems/config/logs.
 
 ---
 
@@ -94,7 +94,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — validate. The cost is small (regex + allowlist check), the value is real (early failure beats mysterious YAML corruption later).
 
-**Answer:** ___
+**Answer:** A — validate inputs (branch regex, workflow allowlist, worktree must be absolute).
 
 ---
 
@@ -111,7 +111,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — leave it. Cross-helper symmetry is nice-to-have; not worth the regression risk of moving clear-. A future PR can dedup if it becomes painful.
 
-**Answer:** ___
+**Answer:** A — leave clear-active-workflow.sh at .specify/scripts/bash/. No move.
 
 ---
 
@@ -128,7 +128,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — all four together. The gate denial is still happening today; partial migration means the unmigrated skills keep hitting the bug. The 4 SKILL.md edits are mechanical enough that the risk is low.
 
-**Answer:** ___
+**Answer:** A — ship all four SKILL.md migrations atomically with the helper and gate edits.
 
 ---
 
@@ -145,7 +145,7 @@ plan: ./plan.md
 
 **Recommended:** **A** — out of scope. The bootstrap fix is the priority; false-positives are diagnosable case-by-case and BANK-005 (this PR can create the entry) tracks them. Keeps this PR focused.
 
-**Answer:** ___
+**Answer:** A — out of scope; bank the regex false-positive cleanup as BANK-005 for follow-up.
 
 ---
 
