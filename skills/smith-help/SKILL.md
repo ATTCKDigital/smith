@@ -90,6 +90,7 @@ PROJECT
 
 SESSION
   /smith-finish           Commit, push, merge, update specs, clean workspace
+  /smith-sync             Sweep & push team-shareable .smith/ artifacts to the default branch
 
 HELP
   /smith-help             This overview
