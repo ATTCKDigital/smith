@@ -409,6 +409,21 @@ After reflection completes (or is skipped):
    - Do NOT wait for the sub-agent to complete
 5. If no threshold exceeded, `.meta.json` is missing, or config is missing, skip silently
 
+### Post-Workflow Sync (run last)
+
+As the VERY LAST action — after the marker clear and the reflection/reconciliation
+launches above — **Run `/smith-sync`** from the primary repo. Debug is read-only
+and merges nothing, but it DOES write debug reports and session history into
+`.smith/`, which we want shared. `/smith-sync` sweeps those committable `.smith/`
+artifacts into a `chore(smith): … [skip ci]` commit and pushes to the default
+branch.
+
+Note: debug never creates a branch, so the repo may not be on the default branch
+when this runs. Per its own guard, `/smith-sync` will then skip with a clear
+report (it never switches the user's checkout) — the artifacts are captured on
+the next sync that runs on the default branch. Do NOT block on the background
+reflection sub-agent.
+
 ## Key Rules
 
 - **Read-only**: This workflow NEVER modifies application code, configs, or Docker services

@@ -506,6 +506,19 @@ After reflection completes (or is skipped):
    - Do NOT wait for the sub-agent to complete
 5. If no threshold exceeded, `.meta.json` is missing, or config is missing, skip silently
 
+### Post-Workflow Sync (run last)
+
+As the VERY LAST action — after the PR merge, worktree removal, marker clear, and
+the reflection/reconciliation launches above — **Run `/smith-sync`** from the
+primary repo on the default branch. This sweeps the team-shareable `.smith/`
+artifacts (manifest, `.meta` describe layer, ledger, bank, agents, sessions)
+accumulated this session into a single `chore(smith): … [skip ci]` commit and
+pushes it to the default branch, so teammates receive the updated context.
+
+Do NOT block on the background reflection sub-agent — this session's ledger
+update (written asynchronously by reflection) will be captured by the NEXT
+`/smith-sync` run. `/smith-sync` no-ops cleanly if there is nothing to sync.
+
 ## Key Rules
 
 - All paths must be absolute
