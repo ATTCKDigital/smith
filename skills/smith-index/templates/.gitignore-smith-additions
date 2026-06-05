@@ -4,7 +4,7 @@
 # sentinel markers are never touched by Smith.
 #
 # COMMITTED (shared with the team):
-#   .smith/index/manifest.md, .smith/index/config/
+#   .smith/index/manifest.md, .smith/index/config/, .smith/index/.schema-version
 #   .smith/index/files/ + .smith/index/systems/  (the --describe .meta layer)
 #   .smith/vault/ledger/, .smith/vault/bank/, .smith/vault/agents/
 #   .smith/vault/sessions/*.md
@@ -20,5 +20,7 @@
 .smith/vault/active-workflows/
 .smith/vault/queue/
 .smith/vault/todo/
+# client-billing timesheets — kept local, never shared by default
+.smith/vault/timesheets/
 .smith/config/
 # <<< smith-gitignore-policy <<<
