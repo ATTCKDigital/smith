@@ -343,16 +343,56 @@ the project-root `.gitignore`/`.gitattributes` does NOT violate the
 "NEVER touch `.smith/vault/`" rule (which protects vault *data*: bank, ledger,
 sessions, queue, agents, todo). Confirmed permitted for this step.
 
-Source templates (installed copy first, repo-dev clone fallback):
+Source templates (upstream clone first, installed copy fallback):
 - `$TMPCLONE/smith/skills/smith-index/templates/.gitignore-smith-additions`
   (or installed `~/.claude/skills/smith-index/templates/.gitignore-smith-additions`)
 - `$TMPCLONE/smith/skills/smith-index/templates/.gitattributes-smith-additions`
 
+**Staleness guard + auto-repair (Feature 38).** The merge logic below trusts
+whatever template `$SMITH_TPL_DIR` resolves to. A pre-Feature-36 installed
+template is the *inverse* policy (it IGNORES `index/files/` + `index/systems/`)
+and has NO sentinel marker. Applying it would silently write the wrong policy.
+So before merging: if the resolved source is the INSTALLED copy and it lacks the
+`# >>> smith-gitignore-policy >>>` sentinel, treat it as stale. In `/smith-update`
+an upstream clone (`$TMPCLONE`) is normally present, so we AUTO-REPAIR — overwrite
+the stale installed template from the clone, then merge from the refreshed copy.
+(`scripts/install.sh` already `cp -R`'d the whole skill dir during Phase 4, so a
+clean update keeps the installed copy current; this guard catches the case where
+§5.5 runs against a stale installed copy anyway.)
+
 ```bash
 if [ -d "$PROJECT_DIR/.smith" ]; then
-    SMITH_TPL_DIR="$TMPCLONE/smith/skills/smith-index/templates"
-    [ -f "$SMITH_TPL_DIR/.gitignore-smith-additions" ] || SMITH_TPL_DIR="$HOME/.claude/skills/smith-index/templates"
+    INSTALLED_TPL_DIR="$HOME/.claude/skills/smith-index/templates"
+    CLONE_TPL_DIR="$TMPCLONE/smith/skills/smith-index/templates"
+    SENTINEL='# >>> smith-gitignore-policy >>>'
 
+    # Prefer the upstream clone (authoritative this run); else the installed copy.
+    if [ -f "$CLONE_TPL_DIR/.gitignore-smith-additions" ]; then
+        SMITH_TPL_DIR="$CLONE_TPL_DIR"
+    else
+        SMITH_TPL_DIR="$INSTALLED_TPL_DIR"
+    fi
+
+    # Staleness guard + auto-repair: if we're about to use the INSTALLED template
+    # and it predates Feature 36 (no sentinel), repair it from the clone if we can.
+    if [ "$SMITH_TPL_DIR" = "$INSTALLED_TPL_DIR" ] \
+       && ! grep -qF "$SENTINEL" "$INSTALLED_TPL_DIR/.gitignore-smith-additions" 2>/dev/null; then
+        if [ -f "$CLONE_TPL_DIR/.gitignore-smith-additions" ]; then
+            echo "NOTE: installed gitignore template is stale (pre-Feature-36) — repairing from upstream clone."
+            mkdir -p "$INSTALLED_TPL_DIR"
+            cp -f "$CLONE_TPL_DIR/.gitignore-smith-additions"   "$INSTALLED_TPL_DIR/.gitignore-smith-additions"
+            cp -f "$CLONE_TPL_DIR/.gitattributes-smith-additions" "$INSTALLED_TPL_DIR/.gitattributes-smith-additions" 2>/dev/null || true
+            SMITH_TPL_DIR="$INSTALLED_TPL_DIR"   # now refreshed; safe to use
+        else
+            echo "WARNING: installed gitignore template is stale (pre-Feature-36) and no upstream"
+            echo "         clone is available to repair it. Skipping the .gitignore/.gitattributes"
+            echo "         policy merge to avoid writing the wrong (inverted) policy. Re-run"
+            echo "         /smith-update with network access to refresh the installed template."
+            SMITH_TPL_DIR=""   # sentinel for "skip merge" — handled below
+        fi
+    fi
+
+  if [ -n "$SMITH_TPL_DIR" ]; then
     # Q4-A: WARN (do not remove) on known-conflicting bare ignore lines that sit
     # OUTSIDE the sentinels and shadow the now-committed shared paths.
     GI="$PROJECT_DIR/.gitignore"
@@ -403,12 +443,16 @@ merge(root / ".gitignore", tpl_dir / ".gitignore-smith-additions",
 merge(root / ".gitattributes", tpl_dir / ".gitattributes-smith-additions",
       "# >>> smith-gitattributes-policy >>>", "# <<< smith-gitattributes-policy <<<")
 PYEOF
+  fi   # end: SMITH_TPL_DIR non-empty (merge not skipped by staleness guard)
 fi
 ```
 
 Per Q4-A the merge only manages the region BETWEEN the sentinels and never deletes
 user-authored lines; the warning above is the safe nudge for the operator to clean up
-a stale blanket ignore by hand.
+a stale blanket ignore by hand. Per Feature 38 the staleness guard ensures the merge
+never applies a pre-Feature-36 (inverted, sentinel-less) installed template: in
+`/smith-update` it auto-repairs from the upstream clone; with no clone reachable it
+skips the merge with a warning rather than writing the wrong policy.
 
 ## Phase 6: Cleanup
 

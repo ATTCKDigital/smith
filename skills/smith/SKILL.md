@@ -599,13 +599,38 @@ And the matching `.gitattributes` policy (de-emphasizes generated `.meta` in dif
 - Otherwise append the whole block (creating `.gitattributes` if it does not exist).
 - Lines OUTSIDE the sentinels are never touched.
 
+**Staleness guard (Feature 38).** A pre-Feature-36 installed template is the
+*inverse* policy (it IGNORES `index/files/` + `index/systems/`) and lacks the
+`# >>> smith-gitignore-policy >>>` sentinel. `/smith` init has no upstream clone to
+auto-repair from (unlike `/smith-update`), so if the resolved installed template is
+stale it must NOT be applied. Prefer the repo-dev copy if it is current; otherwise
+warn the user to run `/smith-update` and SKIP the policy merge rather than writing
+the wrong (inverted) policy.
+
 Run this self-contained `python3` block (robust sentinel replace-or-append — no `sed` portability issues):
 
 ```bash
 # Resolve the template source (installed path first, repo-dev fallback).
+SENTINEL='# >>> smith-gitignore-policy >>>'
 SMITH_TPL_DIR="$HOME/.claude/skills/smith-index/templates"
 [ -f "$SMITH_TPL_DIR/.gitignore-smith-additions" ] || SMITH_TPL_DIR="skills/smith-index/templates"
 
+# Staleness guard: if the resolved template lacks the sentinel, it's a pre-Feature-36
+# (inverted) policy. Try the repo-dev copy; if that's also stale/absent, skip the merge.
+if ! grep -qF "$SENTINEL" "$SMITH_TPL_DIR/.gitignore-smith-additions" 2>/dev/null; then
+    if grep -qF "$SENTINEL" "skills/smith-index/templates/.gitignore-smith-additions" 2>/dev/null; then
+        SMITH_TPL_DIR="skills/smith-index/templates"
+    else
+        echo "WARNING: the installed Smith gitignore template is stale (pre-Feature-36,"
+        echo "         no sentinel marker) and no current repo-dev copy was found. Skipping"
+        echo "         the .gitignore/.gitattributes policy merge to avoid writing the wrong"
+        echo "         (inverted) policy. Run /smith-update to refresh the installed template,"
+        echo "         then re-run /smith init (or just /smith-update, which re-merges the policy)."
+        SMITH_TPL_DIR=""
+    fi
+fi
+
+if [ -n "$SMITH_TPL_DIR" ]; then
 python3 - "$SMITH_TPL_DIR" <<'PYEOF'
 import sys, pathlib
 
@@ -638,6 +663,7 @@ merge(".gitignore", tpl_dir / ".gitignore-smith-additions",
 merge(".gitattributes", tpl_dir / ".gitattributes-smith-additions",
       "# >>> smith-gitattributes-policy >>>", "# <<< smith-gitattributes-policy <<<")
 PYEOF
+fi   # end: SMITH_TPL_DIR non-empty (merge not skipped by staleness guard)
 ```
 
 The policy is a **negative list**: `.smith/` is NOT ignored wholesale. Only the specific volatile paths in the block are ignored; everything else under `.smith/` (the `manifest.md`, `config/`, `index/files/` + `index/systems/` `.meta` describe layer, `ledger/`, `bank/`, `agents/`, and `sessions/*.md`) is committed and shared with the team. Re-running `/smith` init replaces the managed region in place, so the block never duplicates.
