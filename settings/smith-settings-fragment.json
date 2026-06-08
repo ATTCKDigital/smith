@@ -49,7 +49,8 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "bash ~/.claude/hooks/context-loader.sh" }
+          { "type": "command", "command": "bash ~/.claude/hooks/context-loader.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/user-prompt-logger.sh" }
         ]
       }
     ],
