@@ -1,6 +1,6 @@
 # Hooks Reference
 
-Smith installs 9 hooks into `~/.claude/hooks/`. Each hook is a bash script registered in `~/.claude/settings.json` under the `hooks` key. Claude Code fires hooks automatically at specific lifecycle events.
+Smith installs 10 hooks into `~/.claude/hooks/`. Each hook is a bash script registered in `~/.claude/settings.json` under the `hooks` key. Claude Code fires hooks automatically at specific lifecycle events.
 
 To disable any hook, remove its entry from `~/.claude/settings.json`. The script file can remain in `~/.claude/hooks/` without effect.
 
@@ -19,6 +19,7 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 | security-guard-files | PreToolUse | Write, Edit, NotebookEdit | Block writes to sensitive files |
 | task-router | PreToolUse | Task | Route tasks during workflows |
 | subagent-vault-writeback | SubagentStop | * | Persist sub-agent findings |
+| user-prompt-logger | UserPromptSubmit | * | Append each user prompt verbatim to the session log |
 
 ---
 
@@ -113,6 +114,17 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 - **What it does:** Fires when a sub-agent finishes its work. Reads the sub-agent's output and writes a summary to `.smith/vault/agents/<agent-id>.md`. This persists the sub-agent's findings, decisions, and any artifacts it produced so they are available to future sessions and workflows.
 - **Files touched:** Creates or updates `.smith/vault/agents/<agent-id>.md`
 - **To disable:** Remove the `SubagentStop` entry referencing this script from `settings.json`.
+
+---
+
+### user-prompt-logger.sh
+
+- **Event:** UserPromptSubmit
+- **Matcher:** `*` (fires on every user prompt)
+- **What it does:** Appends each user prompt — **verbatim and full text**, with an `HH:MM:SS` timestamp — to the current session log as a `### [HH:MM:SS] User prompt` blockquote block, interleaved chronologically with the tool-call lines written by `metrics-tracker.sh`. This gives team leads a shared, readable record of what teammates asked the agent to do. The prompts previously lived only in Claude Code's per-user global JSONL transcripts (`~/.claude/projects/<slug>/*.jsonl`), which are never team-shared; this hook surfaces them in the `/smith-sync`-shared session log. Resolves the target via `.smith/vault/.current-session` and no-ops silently if the vault is not initialized. Runs after `context-loader.sh` so context injection is never delayed. Only fires for genuine human prompts — Claude Code does not fire `UserPromptSubmit` for sub-agents.
+- **Privacy note (intentional):** Prompts are stored verbatim, including anything a user pastes (which may contain secrets), because the session log is team-shared. This is an accepted trade-off for internal team repos. Do not add redaction/truncation without a spec change.
+- **Files touched:** Appends to the current `.smith/vault/sessions/<session>.md`
+- **To disable:** Remove the `UserPromptSubmit` entry referencing this script from `settings.json` (leave `context-loader.sh` in place).
 
 ---
 
