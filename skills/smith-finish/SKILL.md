@@ -104,8 +104,6 @@ Write a conventional commit message:
 ```bash
 git commit -m "$(cat <<'EOF'
 <type>: <concise description>
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -157,9 +155,7 @@ Before creating/merging the PR, update documentation:
 6. **Commit spec updates** on the same branch:
    ```bash
    git add <spec files> CHANGELOG.md STATUS.md
-   git commit -m "docs: update specs and changelog for <feature/fix description>
-
-   Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+   git commit -m "docs: update specs and changelog for <feature/fix description>"
    git push
    ```
 

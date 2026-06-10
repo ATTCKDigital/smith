@@ -277,9 +277,7 @@ If the build cannot determine what to update in a system spec (ambiguous changes
 ### 5.1 Commit
 ```bash
 git add <all modified files — list explicitly, not git add -A>
-git commit -m "<conventional commit message>
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+git commit -m "<conventional commit message>"
 ```
 
 - Use conventional commits format
@@ -637,9 +635,7 @@ Write `specs/<feature>/release.md`:
 ### 7.2 Commit Release Notes
 ```bash
 git add specs/<feature>/release.md
-git commit -m "docs: add release notes for <feature>
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+git commit -m "docs: add release notes for <feature>"
 git push origin main
 ```
 

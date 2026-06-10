@@ -370,9 +370,7 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    b. **Commit spec artifacts** in the worktree — stage and commit all files in the feature spec folder (spec.md, plan.md, questions.md, research.md, data-model.md, contracts/, checklists/):
       ```bash
       cd $WORKTREE_PATH && git add <feature-spec-folder>/
-      cd $WORKTREE_PATH && git commit -m "docs: spec artifacts for <feature-name> — ready for queued build
-
-      Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+      cd $WORKTREE_PATH && git commit -m "docs: spec artifacts for <feature-name> — ready for queued build"
       ```
    c. **Push the feature branch from the worktree:**
       ```bash
