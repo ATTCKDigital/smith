@@ -51,3 +51,13 @@ jobs:
           SKILL_COUNT=$(ls -d "$HOME/.claude/skills/smith"* 2>/dev/null | wc -l)
           [ "$SKILL_COUNT" -eq 0 ] || { echo "FAIL: Skills not cleaned up"; exit 1; }
           echo "Uninstall clean"
+
+      - name: Run shell tests
+        run: |
+          fail=0
+          for t in tests/*.test.sh; do
+            [ -f "$t" ] || continue
+            echo "=== $t ==="
+            bash "$t" || fail=1
+          done
+          [ "$fail" -eq 0 ] || { echo "FAIL: one or more shell tests failed"; exit 1; }

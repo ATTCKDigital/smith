@@ -253,6 +253,55 @@ print(ti.get('command', ''))
             exit 0
         fi
 
+        # Build a redirect-test copy of COMMAND with the CONTENTS of quoted
+        # spans blanked out, so a '>' that lives inside '...' or "..." (a git
+        # trailer like <a@b.com>, an echo banner, a --format string) is not
+        # mistaken for a shell redirect. Real redirects (foo > bar) keep their
+        # '>' OUTSIDE quotes and still trip the check below.
+        #
+        # FAIL-SAFE: the stripper is conservative. If quoting is unbalanced or
+        # otherwise ambiguous, it returns the command UNCHANGED, so the raw
+        # text is tested and we fall back to the original (blocking) behavior.
+        # Worst case is a false block, never a missed real redirect.
+        REDIR_TEST=$(printf '%s' "$COMMAND" | python3 -c '
+import sys
+s = sys.stdin.read()
+out = []
+i = 0
+n = len(s)
+quote = None  # None, "\x27" (single), or "\x22" (double)
+ok = True
+while i < n:
+    c = s[i]
+    if quote is None:
+        if c == "\x27" or c == "\x22":
+            quote = c
+            out.append(" ")  # blank the opening quote
+        else:
+            out.append(c)
+    else:
+        # Inside a quote. Single quotes are literal in shell (no escapes).
+        # Double quotes allow backslash-escapes; treat \\X as two blanked chars.
+        if c == "\\" and quote == "\x22" and i + 1 < n:
+            out.append("  ")
+            i += 2
+            continue
+        if c == quote:
+            quote = None
+            out.append(" ")  # blank the closing quote
+        else:
+            out.append(" ")  # blank the quoted content
+    i += 1
+if quote is not None:
+    ok = False  # unterminated quote → ambiguous
+# On any ambiguity, hand back the ORIGINAL so the raw text is tested (block).
+sys.stdout.write("".join(out) if ok else s)
+' 2>/dev/null || printf '%s' "$COMMAND")
+        # If python3 was unavailable, REDIR_TEST falls back to the raw command.
+        if [ -z "$REDIR_TEST" ]; then
+            REDIR_TEST="$COMMAND"
+        fi
+
         # Identify the first file-touching subcommand, if any.
         # Word-boundary check against known mutators; also detect `sed -i`
         # and unescaped shell write-redirection that isn't a stderr-only
@@ -275,18 +324,19 @@ print(ti.get('command', ''))
         fi
 
         # Shell redirection: > or >> but NOT 2> or 2>>. Also accept &>.
-        # Avoid matching things like ">" inside quoted strings — best-effort.
+        # Tested against REDIR_TEST (quoted spans blanked) so a '>' inside a
+        # quoted string is not a false positive; a real redirect survives.
         if [ -z "$MATCHED_SUBCMD" ]; then
-            if printf '%s' "$COMMAND" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
+            if printf '%s' "$REDIR_TEST" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
                 # Subtract stderr-only redirections.
                 # Strip 2> 2>> from a copy and re-check.
-                stripped=$(printf '%s' "$COMMAND" | sed -E 's/2>>?//g')
+                stripped=$(printf '%s' "$REDIR_TEST" | sed -E 's/2>>?//g')
                 if printf '%s' "$stripped" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
                     MATCHED_SUBCMD="redirection (>, >>)"
                 fi
             fi
             # Match combined-stream redirect: &>
-            if [ -z "$MATCHED_SUBCMD" ] && printf '%s' "$COMMAND" | grep -qE '&>'; then
+            if [ -z "$MATCHED_SUBCMD" ] && printf '%s' "$REDIR_TEST" | grep -qE '&>'; then
                 MATCHED_SUBCMD="redirection (&>)"
             fi
         fi
