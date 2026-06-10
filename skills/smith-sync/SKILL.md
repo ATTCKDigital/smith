@@ -128,9 +128,7 @@ Sweep team-shareable .smith/ artifacts to the default branch so teammates
 receive accumulated index + vault context. Artifact-only; no source changes.
 
 Files: ${N_TOTAL} total — ${N_SESSIONS} sessions, ${N_META} .meta,
-${N_LEDGER} ledger, ${N_BANK} bank, ${N_AGENTS} agents.
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+${N_LEDGER} ledger, ${N_BANK} bank, ${N_AGENTS} agents."
 ```
 
 ### 8. Push — direct to the default branch, NO PR

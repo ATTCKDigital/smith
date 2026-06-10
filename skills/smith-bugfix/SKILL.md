@@ -307,9 +307,7 @@ If the fix is relevant to project status tracking, update `STATUS.md`.
 ### 7.1 Commit
 ```bash
 git add <all modified files — list explicitly, never git add -A>
-git commit -m "fix: <description>
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+git commit -m "fix: <description>"
 ```
 
 - Use `fix:` conventional commit prefix
