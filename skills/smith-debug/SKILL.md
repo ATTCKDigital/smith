@@ -366,7 +366,7 @@ Would you like me to:
   ```bash
   # $SESSION was captured at workflow start. Fall back to .current-session.
   SESSION="${SESSION:-$(cat .smith/vault/.current-session 2>/dev/null)}"
-  bash hooks/workflow-summary.sh --totals-only --session "$SESSION"
+  bash "$HOME/.claude/hooks/workflow-summary.sh" --totals-only --session "$SESSION"
   ```
   If it prints `n/a (no workflow invocation found)` and exits non-zero, do NOT present those as real numbers — note totals were unavailable and which session file was checked.
 - The full `=== Workflow Summary ===` block is appended to the session log file automatically by the `workflow-summary.sh` Stop hook once the active-workflow file is cleaned up — that's for audit only, do not duplicate it in chat

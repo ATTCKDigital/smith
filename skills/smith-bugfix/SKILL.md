@@ -367,7 +367,7 @@ Emit a final chat message to the user that starts with "Bugfix complete. Here's 
 # $SESSION was captured at workflow start (Phase 1 step 2). Fall back to the
 # marker's session_log field, then to .current-session, if not in scope here.
 SESSION="${SESSION:-$(cat .smith/vault/.current-session 2>/dev/null)}"
-bash hooks/workflow-summary.sh --totals-only --session "$SESSION"
+bash "$HOME/.claude/hooks/workflow-summary.sh" --totals-only --session "$SESSION"
 ```
 If it prints `n/a (no workflow invocation found)` and exits non-zero, do NOT present those as real numbers — note that totals were unavailable and which session file was checked.
 
