@@ -451,7 +451,7 @@ After answers are confirmed. All work continues in `WORKTREE_PATH`. The user's m
    # $SESSION was captured at workflow start (step 0). Fall back to the marker's
    # session_log field, then to .current-session, if it's not in scope here.
    SESSION="${SESSION:-$(cat .smith/vault/.current-session 2>/dev/null)}"
-   bash hooks/workflow-summary.sh --totals-only --session "$SESSION"
+   bash "$HOME/.claude/hooks/workflow-summary.sh" --totals-only --session "$SESSION"
    ```
    The bash invocation is a required action, not an optional extra — the totals lines must appear in the chat message. If it prints `n/a (no workflow invocation found)` and exits non-zero, do NOT present those as real numbers — note that totals were unavailable and which session file was checked.
 
