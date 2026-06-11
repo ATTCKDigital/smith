@@ -1,7 +1,7 @@
 # Global Claude Code Rules
 
 > These rules apply to ALL projects and ALL chat sessions.
-> Last updated: 2026-04-21
+> Last updated: 2026-06-11
 
 ---
 
@@ -180,10 +180,13 @@ No files are being modified and no Smith workflow is active.
 
 ### Binary Criteria
 
-- [ ] The response ends with a datetime stamp formatted as
-      `YYYY-MM-DD HH:MM:SS — <branch-name>` (or just the timestamp if not in
-      a git repo) on its own line.
 - [ ] Python commands use `python3`, not `python`.
+
+> Note: the `YYYY-MM-DD HH:MM:SS — <branch-name>` datetime stamp is no longer
+> graded here. It is now appended deterministically by the `stamp-response.sh`
+> Stop hook (`~/.claude/hooks/stamp-response.sh`), which is fail-closed — it
+> always runs and is not subject to the critic's timeout/parse/retry fail-open
+> path. Do not re-add a stamp sub-criterion to this rule.
 
 ### Rule applies when:
 Always. (The Python-commands criterion auto-passes if the response has no
