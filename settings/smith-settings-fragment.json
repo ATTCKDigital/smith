@@ -41,6 +41,7 @@
         "matcher": "Write|Edit",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/lint-on-save.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/context-budget-guard.sh" },
           { "type": "command", "command": "bash ~/.claude/hooks/manifest-updater.sh" }
         ]
       },
