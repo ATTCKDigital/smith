@@ -445,6 +445,15 @@ See `.specify/memory/constitution.md` for binding project principles.
 - Generate actual commands based on the real package manager and frameworks
 - If existing CLAUDE.md was found and user chose to preserve, merge new sections with existing content
 - Include the SpecKit Workflow section verbatim — this is the standard workflow
+- **Do NOT add a `## Recent Changes` / changelog section, and do NOT `@`-reference
+  a doc that any workflow then appends per-change prose to** (e.g. a `data-model.md`
+  with a growing "Last Updated" header). `@`-referenced files are loaded into context
+  **in full, every session**, and per-change appends turn them into multi-hundred-KB
+  context sinks that also cause merge conflicts on every branch. The durable
+  per-change record already lives in `.smith/vault/sessions/` + the Ledger + git —
+  **those ARE the changelog.** Keep `CLAUDE.md` and any `@`-referenced doc small and
+  stable: structural/durable content only (overview, tech stack, ERD, entity tables,
+  enums), never accumulating history.
 
 **Monorepo-specific CLAUDE.md content** (only if monorepo detected):
 
