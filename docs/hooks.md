@@ -15,6 +15,7 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 | grade-response | Stop | * | Grade response against CLAUDE.md rubric; block stop and retry if score < 100 |
 | file-change-logger | PostToolUse | Write, Edit, NotebookEdit | Log file changes to session |
 | lint-on-save | PostToolUse | Write, Edit | Run linter on saved files |
+| context-budget-guard | PostToolUse | Write, Edit | Warn when an edited file exceeds the size soft cap (default 50 KB); flag `@`-referenced files loudly |
 | security-guard-bash | PreToolUse | Bash | Block dangerous commands |
 | security-guard-files | PreToolUse | Write, Edit, NotebookEdit | Block writes to sensitive files |
 | task-router | PreToolUse | Task | Route tasks during workflows |
@@ -74,6 +75,17 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 - **What it does:** Fires after file writes and edits. Detects the file type and runs the appropriate linter if one is available (e.g., eslint for JavaScript/TypeScript, ruff for Python, shellcheck for bash). Reports lint errors back to Claude Code so they can be addressed immediately. If no linter is found for the file type, the hook exits silently.
 - **Files touched:** Reads the saved file; does not modify any files
 - **To disable:** Remove the `PostToolUse` entry referencing this script from `settings.json`.
+
+---
+
+### context-budget-guard.sh
+
+- **Event:** PostToolUse
+- **Matcher:** `Write`, `Edit`
+- **What it does:** Fires after file writes and edits. Stats the saved file and, if it exceeds the size soft cap, prints an advisory to stderr. Files that are `@`-referenced from the project `CLAUDE.md` are flagged extra-loudly because they are loaded **in full into every session's context** — re-growth there is the expensive case (e.g. a `data-model.md` accumulating per-change changelog prose). The guard never blocks; it always exits 0.
+- **Configuration:** Reads `context_budget.max_file_kb` from `.smith/config.json` (default `50`). Set it to `0` to disable the guard entirely. Seeded by `templates/config.default.json`.
+- **Files touched:** Reads the saved file and `CLAUDE.md`; does not modify any files
+- **To disable:** Set `context_budget.max_file_kb` to `0` in `.smith/config.json`, or remove the `PostToolUse` entry referencing this script from `settings.json`.
 
 ---
 
