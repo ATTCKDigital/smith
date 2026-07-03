@@ -120,9 +120,13 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 # ---------- confirm install ----------
+# Count shipped skills dynamically so this preview never drifts as skills are
+# added (the copy loop below globs every dir under skills/, smith-namespaced
+# or not — e.g. clean-code, to-mermaid).
+SKILL_TOTAL=$(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 echo
 info "Smith will:"
-echo "  • Copy 27 skills → $CLAUDE_SKILLS_DIR/smith*"
+echo "  • Copy $SKILL_TOTAL skills → $CLAUDE_SKILLS_DIR/"
 echo "  • Copy 9 hooks   → $CLAUDE_HOOKS_DIR/"
 echo "  • Copy scheduler → $SMITH_HOME/scheduler/"
 echo "  • Install global CLAUDE.md rubric → $CLAUDE_MD (backup first)"
@@ -149,7 +153,7 @@ fi
 # ---------- copy skills ----------
 info "Copying skills"
 SKILL_COUNT=0
-for skill_src in "$REPO_ROOT"/skills/smith "$REPO_ROOT"/skills/smith-*; do
+for skill_src in "$REPO_ROOT"/skills/*; do
     [ -d "$skill_src" ] || continue
     skill_name="$(basename "$skill_src")"
     target="$CLAUDE_SKILLS_DIR/$skill_name"
