@@ -2,7 +2,7 @@
 feature: 32-smith-research
 branch: smith-research
 created: 2026-07-06
-status: in-progress
+status: implemented
 ---
 
 # smith-research — Fact-Based Website & Company Deep-Research Skill
