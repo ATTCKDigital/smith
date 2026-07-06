@@ -24,6 +24,11 @@ node_modules/
 __pycache__/
 *.pyc
 
+# smith-research skill-owned venv + test cache (Phase 0 rebuilds the venv at the
+# install location; a copied venv has broken absolute paths).
+skills/smith-research/scripts/.venv/
+.pytest_cache/
+
 # Settings backups created by installer
 *.bak-*
 

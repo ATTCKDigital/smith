@@ -1,0 +1,17 @@
+# smith-research skill — pinned Python dependencies (Deviation D1, questions.md Q6)
+#
+# This skill intentionally ships a skill-owned virtualenv rather than following
+# Smith's stdlib-only convention: the research pipeline genuinely requires
+# browser automation, a vector-DB client, an HTTP client, and content extraction.
+# Bootstrapped/verified by SKILL.md Phase 0.
+#
+# Versions floor-pinned to what was verified present on the dev machine
+# (2026-07-06) and the armory reuse baseline.
+
+httpx>=0.28
+playwright>=1.60
+qdrant-client>=1.17
+trafilatura>=2.0
+beautifulsoup4>=4.12
+tenacity>=9.1
+tldextract>=5.1
