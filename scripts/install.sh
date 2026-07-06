@@ -165,6 +165,13 @@ for skill_src in "$REPO_ROOT"/skills/smith "$REPO_ROOT"/skills/smith-*; do
     [ -L "$target" ] && unlink "$target"
     rm -rf "$target"
     cp -R "$skill_src" "$CLAUDE_SKILLS_DIR/"
+    # Some skills (e.g. smith-research) carry a skill-owned Python venv +
+    # caches that must NOT be shipped: a copied venv has broken absolute
+    # paths, and it can be hundreds of MB. The skill rebuilds its venv at
+    # the install location on first run (SKILL.md Phase 0). Strip them here.
+    rm -rf "$target/scripts/.venv" 2>/dev/null || true
+    find "$target" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+    find "$target" -type d -name ".pytest_cache" -prune -exec rm -rf {} + 2>/dev/null || true
     SKILL_COUNT=$((SKILL_COUNT + 1))
 done
 ok "Installed $SKILL_COUNT skills"
