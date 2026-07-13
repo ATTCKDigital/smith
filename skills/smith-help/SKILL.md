@@ -1,7 +1,7 @@
 ---
 name: smith-help
 description: Central reference for all Smith commands — overview, detailed help per command, syntax, flags, and workflow context.
-argument-hint: [<command>]
+argument-hint: "[<command>]"
 ---
 
 # Smith Help System
