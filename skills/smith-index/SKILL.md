@@ -1,7 +1,7 @@
 ---
 name: smith-index
 description: Build and maintain the project manifest under .smith/index/. Full rebuild scans every source file, runs language parsers, and writes per-file .meta, per-system manifests, and a top-level summary. Supports --check (hash-only staleness), --system (partial rebuild), --incremental (git-diff scope), --describe (per-file LLM descriptions via Task sub-agents — subscription billing), --migrate-templates (constitution.md / CLAUDE.md), --init-system-paths, and --resume.
-argument-hint: [--check | --system <name> | --incremental | --describe | --migrate-templates | --init-system-paths | --resume] [--from <ref> --to <ref>] [--batch-size <n>] [--per-method-threshold <n>] [--yes] [--skip-model-probe] [--root <path>] [--system-paths <path>]
+argument-hint: "[--check | --system <name> | --incremental | --describe | --migrate-templates | --init-system-paths | --resume] [--from <ref> --to <ref>] [--batch-size <n>] [--per-method-threshold <n>] [--yes] [--skip-model-probe] [--root <path>] [--system-paths <path>]"
 ---
 
 # Smith Index
