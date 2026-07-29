@@ -103,6 +103,39 @@ def test_is_assertive_heuristics():
     assert not _is_assertive("- ")
 
 
+def test_absence_statements_exempt_from_citation():
+    # Honest "we found no evidence" disclosures must not require a citation —
+    # they assert a GAP, not a fact about the company (the opposite of a
+    # fabrication risk).
+    assert not _is_assertive(
+        "No specific funding rounds were found in the retrieved sources."
+    )
+    assert not _is_assertive(
+        "No founder, CEO, or executive names were found in the retrieved sources."
+    )
+    assert not _is_assertive(
+        "The retrieved evidence contains no dollar figures or investor names."
+    )
+    # but a positive factual assertion still requires citation
+    assert _is_assertive("Acme raised a $12 million Series A led by Sequoia.")
+
+
+def test_gate_passes_report_with_absence_statements(tmp_path):
+    lg = _ledger_with_supported(
+        tmp_path, "Acme is an ecommerce platform", "https://acme.com/"
+    )
+    report = tmp_path / "report.md"
+    report.write_text(
+        "# Company\n\nAcme is an ecommerce platform [https://acme.com/].\n\n"
+        "## Funding History\n\nNo specific funding rounds were found in the "
+        "retrieved sources.\n",
+        encoding="utf-8",
+    )
+    result = verify(report, lg)
+    lg.close()
+    assert result["ok"] is True, result["violations"]
+
+
 def test_citation_extraction_forms():
     assert _citations("text [https://a.com/x].") == ["https://a.com/x"]
     assert _citations("text ([label](https://b.com/y))") == ["https://b.com/y"]

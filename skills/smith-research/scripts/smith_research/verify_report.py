@@ -38,6 +38,28 @@ _HEDGE_MARKERS = (
     "a reddit thread",
 )
 
+# Absence / negative-finding phrasings — the report honestly disclosing that the
+# corpus lacked evidence for something. These are exempt from the hard-citation
+# requirement (they assert a GAP, not a fact about the company). A run that says
+# "no funding data was found" is being correct, not hallucinating.
+_ABSENCE_MARKERS = (
+    "were not found",
+    "was not found",
+    "not found in",
+    "no specific",
+    "contains no",
+    "no additional",
+    "could not be",
+    "were not present",
+    "was not present",
+    "no funding",
+    "no founder",
+    "no leadership",
+    "not present in",
+    "cannot be substantiated",
+    "no further",
+)
+
 
 def _split_sentences(text: str) -> list[str]:
     """Naive but deterministic sentence split on ., !, ? followed by space/EOL."""
@@ -51,6 +73,7 @@ def _is_assertive(sentence: str) -> bool:
     s = sentence.strip()
     if not s:
         return False
+    low = s.lower()
     if s.startswith(_STRUCTURAL_PREFIXES):
         return False
     # bullet scaffolding like "- " alone or a bare label
@@ -59,6 +82,12 @@ def _is_assertive(sentence: str) -> bool:
         return False
     # section-label lines (all-caps or ending with ':')
     if s.endswith(":") and len(s) < 60:
+        return False
+    # Absence / negative-finding statements are the OPPOSITE of a fabrication
+    # risk — the report honestly reporting "we found no evidence of X" must not
+    # require a citation to a fact that by definition isn't in the corpus. These
+    # phrasings are the tool disclosing a gap, which is exactly what we want.
+    if any(marker in low for marker in _ABSENCE_MARKERS):
         return False
     return True
 
