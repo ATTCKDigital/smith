@@ -90,6 +90,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Debug reports were never committed — `/smith-sync` sweep excluded `.specify/`**
+  (see `.specify/debug/debug-2026-07-30-debug-report-sync-gap.md`). `/smith-debug`
+  writes its report to `.specify/systems/<system>/debug/` (or `.specify/debug/`),
+  but the post-workflow `/smith-sync` staged only `.smith/` and its
+  staging-discipline assertion aborted on anything else — so session logs were
+  shared while the reports they described stayed untracked forever (one sat
+  orphaned in this repo for 49 days). The docs shipped in `9dd94c1` (PR #41)
+  claimed the opposite: smith-debug's Post-Workflow Sync section said reports
+  land "into `.smith/`" and smith-bugfix's said the sync pushes "any debug
+  reports". Fixes: `/smith-sync` now stages the debug-report directories
+  (`.specify/debug/`, `.specify/systems/*/debug/` via glob-free, zsh-safe
+  `find`) alongside `.smith/`, its assertion allows exactly those two prefixes
+  (still aborting on any other `.specify/` path), the sync commit summary gains
+  an `N_DEBUG` count, both false doc claims are corrected, and smith-debug now
+  tells the user explicitly whether the report was swept or remains local-only.
+
 - **`workflow-summary --totals-only` reported all zeros after a session-log
   rollover** (see `specs/debug/debug-2026-06-03-workflow-summary-zeros.md`).
   When a long/multi-day conversation rolled the session log mid-workflow,
