@@ -422,10 +422,11 @@ As the VERY LAST action — after the PR merge, Workflow Cleanup (worktree remov
 marker clear), and the reflection/reconciliation launches above — **Run
 `/smith-sync`** from the primary repo on the default branch. This sweeps the
 team-shareable `.smith/` artifacts (manifest, `.meta` describe layer, ledger,
-bank, agents, sessions) accumulated this fix into a single
+bank, agents, sessions) accumulated this fix, plus any debug reports under
+`.specify/systems/*/debug/` or `.specify/debug/`, into a single
 `chore(smith): … [skip ci]` commit and pushes it to the default branch, so
-teammates receive the updated context (including any debug reports and the
-session log this fix produced).
+teammates receive the updated context (including the session log this fix
+produced and any debug report that motivated it).
 
 Do NOT block on the background reflection sub-agent — this session's ledger
 update will be captured by the NEXT `/smith-sync` run. `/smith-sync` no-ops

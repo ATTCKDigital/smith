@@ -413,10 +413,16 @@ After reflection completes (or is skipped):
 
 As the VERY LAST action — after the marker clear and the reflection/reconciliation
 launches above — **Run `/smith-sync`** from the primary repo. Debug is read-only
-and merges nothing, but it DOES write debug reports and session history into
-`.smith/`, which we want shared. `/smith-sync` sweeps those committable `.smith/`
-artifacts into a `chore(smith): … [skip ci]` commit and pushes to the default
+and merges nothing, but it DOES write a debug report into `.specify/` (Phase 2/5
+path: `.specify/systems/<system>/debug/` or `.specify/debug/`) and session
+history into `.smith/vault/sessions/`, both of which we want shared.
+`/smith-sync` sweeps the committable `.smith/` artifacts AND the debug-report
+directories into a `chore(smith): … [skip ci]` commit and pushes to the default
 branch.
+
+After the sync, tell the user explicitly whether the debug report was committed
+and pushed, or remains local-only (and why — e.g. not on the default branch), so
+an unswept report is never silently assumed shared.
 
 Note: debug never creates a branch, so the repo may not be on the default branch
 when this runs. Per its own guard, `/smith-sync` will then skip with a clear
