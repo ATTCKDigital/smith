@@ -43,7 +43,7 @@ prompt_yn() {
 }
 
 info "This will remove:"
-echo "  • All smith/smith-* skills from $CLAUDE_SKILLS_DIR"
+echo "  • All smith/smith-* skills (plus bundled clean-code, to-mermaid) from $CLAUDE_SKILLS_DIR"
 echo "  • Smith hooks from $CLAUDE_HOOKS_DIR"
 echo "  • Scheduler from $SMITH_HOME/scheduler/"
 echo "  • Restore settings.json from the most recent backup (if any)"
@@ -65,9 +65,14 @@ if [ "$(uname -s)" = "Darwin" ]; then
     fi
 fi
 
-# Remove skills
+# Remove skills. Enumerated by name (NOT a blanket skills/* glob) so we only
+# remove what Smith ships and never touch a user's own global skills. The
+# bundled non-smith skills (clean-code, to-mermaid) are listed explicitly;
+# add any future non-smith bundled skill here to keep uninstall symmetric
+# with install.sh's skills/* copy loop.
 REMOVED_SKILLS=0
-for skill in "$CLAUDE_SKILLS_DIR"/smith "$CLAUDE_SKILLS_DIR"/smith-*; do
+for skill in "$CLAUDE_SKILLS_DIR"/smith "$CLAUDE_SKILLS_DIR"/smith-* \
+             "$CLAUDE_SKILLS_DIR"/clean-code "$CLAUDE_SKILLS_DIR"/to-mermaid; do
     [ -d "$skill" ] || continue
     rm -rf "$skill"
     REMOVED_SKILLS=$((REMOVED_SKILLS + 1))

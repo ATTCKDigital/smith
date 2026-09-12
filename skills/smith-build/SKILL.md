@@ -196,6 +196,28 @@ For each phase in tasks.md:
 - Match contracts/ API specifications
 - Use existing project patterns (read surrounding code before writing)
 - Follow constitution.md principles
+- **Clean-code architecture** — apply this checklist directly (it implements
+  the constitution's **Clean Architecture Policy** and mirrors the `/clean-code`
+  skill; do NOT rely on being able to load that skill, as build subagents may
+  not have skill access):
+  - Small, single-responsibility functions and files; one clear reason to change.
+  - Intention-revealing names (avoid `data`, `temp`, `handler`, `util` when a
+    meaningful name exists).
+  - Guard clauses over deep nesting; keep control flow shallow.
+  - Separation of concerns — keep I/O, business rules, and persistence in
+    distinct units.
+  - No dead code, commented-out blocks, or duplicated logic.
+  - Honor the file structure `plan.md` prescribed; do not collapse it back into
+    large monolithic files.
+- **Reuse over duplication**: before writing new code, check for an existing
+  component that already does it — extend or import it rather than recreating
+  it. Use the reuse list in `plan.md` (and `/smith-navigate` / `.smith/index/`
+  when available) to locate existing modules, services, and utilities. Do not
+  copy-paste near-identical logic; factor shared logic into a common helper.
+- **Keep files small**: follow the constitution **File Size Policy** (300-line
+  soft target, 500-line decomposition threshold). When a file you are editing
+  approaches the threshold, split it proactively during the build rather than
+  leaving it for the post-hoc File Size Warnings flag in the PR body (§5.3).
 - **After any code changes to a Docker service**: run `docker compose up -d --build <service>` immediately
 
 ## Phase 3: Testing (Subagent)

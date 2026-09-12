@@ -163,7 +163,11 @@ If the bugfix execution fails, check config for auto-retry:
 ## Phase 3: Implement the Fix
 
 1. **Read the affected files** to understand current behavior
-2. **Implement the fix** — keep changes minimal and focused
+2. **Implement the fix** — keep changes minimal and focused. When the fix adds
+   or changes code, keep that code clean per the constitution's **Clean
+   Architecture Policy** (small single-responsibility units, reuse existing
+   components instead of duplicating). This does NOT license refactoring
+   untouched surrounding code — see the constraints below.
 3. **Do NOT**:
    - Refactor surrounding code
    - Add features beyond the fix

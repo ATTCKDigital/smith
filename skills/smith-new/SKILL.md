@@ -243,6 +243,43 @@ The subagent should:
 
 4. **Return**: Confirm plan artifacts are written to SPECS_DIR.
 
+### Clean-Architecture & Reuse Requirements (plan.md)
+
+Before finalizing the file structure in `plan.md`, the plan subagent MUST bake
+in clean-code / clean-architecture principles so the feature ships as small,
+reusable, single-responsibility modules rather than a few large files:
+
+1. **Reuse before creating.** Find existing components that already do (or
+   nearly do) what the feature needs, and prefer extending/importing them over
+   writing new code:
+   - If `.smith/index/` exists, run `/smith-navigate "<feature description>"`
+     (or read the relevant `.smith/index/systems/*` manifest) to surface
+     reusable modules, services, and utilities. A built, current manifest
+     makes this lookup fast and comprehensive — if the project has none,
+     consider running `/smith-index` once up front so future features get
+     accurate reuse detection cheaply.
+   - If no manifest exists, grep the affected system paths for existing
+     helpers, models, and components covering the same concern.
+   - In `plan.md`, list the existing components the feature will reuse and call
+     out anything that would otherwise be duplicated so the build phase extends
+     rather than recreates it.
+
+2. **Prescribe a decomposed file structure.** The `plan.md` file-structure
+   section MUST split responsibilities (interface / application / domain /
+   infrastructure where applicable) into small, focused files rather than
+   monolithic ones. Follow the constitution's **File Size Policy** (300-line
+   soft target, 500-line decomposition threshold) — do NOT restate a different
+   number. Flag any planned file expected to exceed 300 lines and split it up
+   front.
+
+3. **Apply the Clean Code rubric.** Use the `/clean-code` skill as the canonical
+   rubric — intention-revealing names, small single-purpose functions,
+   separation of concerns, low duplication. Reference it rather than restating
+   it; record only the feature-specific structural decisions in `plan.md`.
+
+These are planning-time advisories that shape `plan.md` — they inform the
+build, they do not block it.
+
 ## Phase 5: Questions Gate (MANDATORY STOP — in Worktree)
 
 After the plan subagent completes, read ALL plan artifacts from `WORKTREE_PATH` and generate a comprehensive questions file. All file reads/writes in this phase use the worktree.

@@ -24,7 +24,7 @@ bash scripts/install.sh
 
 The installer will:
 
-1. Copy all 25 skills to `~/.claude/skills/`
+1. Copy all 33 skills to `~/.claude/skills/`
 2. Copy all 8 hooks to `~/.claude/hooks/`
 3. Merge hook definitions into `~/.claude/settings.json`
 4. Optionally install the scheduler LaunchAgent (macOS only)
