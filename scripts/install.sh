@@ -122,7 +122,7 @@ fi
 # ---------- confirm install ----------
 # Count shipped skills dynamically so this preview never drifts as skills are
 # added (the copy loop below globs every dir under skills/, smith-namespaced
-# or not — e.g. clean-code, to-mermaid).
+# or not — e.g. smith-clean-code, to-mermaid).
 SKILL_TOTAL=$(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 echo
 info "Smith will:"

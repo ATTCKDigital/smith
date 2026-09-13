@@ -1,5 +1,5 @@
 ---
-name: clean-code
+name: smith-clean-code
 description: Universal Clean Code and Clean Architecture refactoring assistant inspired by Uncle Bob principles. Improves readability, naming, structure, maintainability, testability, and architecture boundaries without changing behavior. Use on a file, selection, component, module, service, package, or codebase area.
 ---
 

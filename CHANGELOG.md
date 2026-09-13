@@ -44,6 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`clean-code` skill renamed to `smith-clean-code`** (fix/rename-clean-code).
+  The bundled Clean Code / Clean Architecture refactoring utility now carries
+  the smith namespace like every other shipped skill: `skills/clean-code/` →
+  `skills/smith-clean-code/` (frontmatter `name:` updated), with all living
+  references updated (README intro + Utilities table,
+  `templates/constitution-additions.md` Clean Architecture Policy,
+  `skills/smith-new` Phase 4 rubric reference, `skills/smith-build`
+  implementation-rules note, installer comment, smoke-test assertions).
+  `scripts/uninstall.sh` keeps removing the legacy `clean-code` directory so
+  pre-rename installs uninstall cleanly; `smith-clean-code` itself is covered
+  by the existing `smith-*` glob. Historical CHANGELOG entries and merged
+  feature artifacts keep the old name as a record. Invoke as
+  `/smith-clean-code` after the next `/smith-update`.
+
 - **`/smith-debug` Phase 2 is now project-agnostic** (fix/debug-de-armory). The
   skill's System Detection carried a hardcoded Armory-specific service-to-system
   mapping table (command-center/port 8080, sentiment-engine, n8n, Ollama, …) and

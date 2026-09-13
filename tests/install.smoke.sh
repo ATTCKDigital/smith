@@ -26,11 +26,11 @@ echo "Skills installed: $SKILL_COUNT"
 [ "$SKILL_COUNT" -ge 25 ] || { echo "FAIL: Expected >= 25 skills, got $SKILL_COUNT"; exit 1; }
 
 # Bundled non-smith skills must install too (install.sh globs skills/*).
-for extra in clean-code to-mermaid; do
+for extra in smith-clean-code to-mermaid; do
     [ -f "$FAKE_HOME/.claude/skills/$extra/SKILL.md" ] \
         || { echo "FAIL: bundled skill '$extra' not installed"; exit 1; }
 done
-echo "Bundled non-smith skills installed: clean-code, to-mermaid"
+echo "Bundled non-workflow skills installed: smith-clean-code, to-mermaid"
 
 echo
 echo "=== Verifying hooks ==="
@@ -76,7 +76,7 @@ echo "=== Verifying cleanup ==="
 REMAINING=$(ls -d "$FAKE_HOME/.claude/skills/smith"* 2>/dev/null | wc -l | tr -d ' ' || true)
 REMAINING="${REMAINING:-0}"
 [ "$REMAINING" -eq 0 ] || { echo "FAIL: $REMAINING skills remain after uninstall"; exit 1; }
-for extra in clean-code to-mermaid; do
+for extra in smith-clean-code to-mermaid; do
     [ ! -d "$FAKE_HOME/.claude/skills/$extra" ] \
         || { echo "FAIL: bundled skill '$extra' remains after uninstall"; exit 1; }
 done
