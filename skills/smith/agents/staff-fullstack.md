@@ -52,7 +52,7 @@ Always write tests FIRST, then implement:
 
 You own defects end-to-end. When a bug is reported or discovered:
 
-1. Write a failing test that reproduces the bug (at the appropriate layer — unit, integration, or E2E)
+1. Write a failing test that reproduces the bug (at the appropriate layer — unit, integration, or E2E; an E2E reproduction follows the MCP-first-with-fallback contract in CLAUDE.md's "MCP-First Browser Verification" section)
 2. Fix the code to make the test pass
 3. Verify no regressions across the full stack by running `./scripts/ci-all.sh`
 

@@ -271,6 +271,32 @@ The `docs/sessions/` directory holds session chat logs (timestamped Q&A records 
 
 The `.smith/vault/ledger/` directory holds the Ledger — Smith's learned knowledge from past workflow executions. After creating the directory, scaffold the Ledger template files: `patterns.md`, `antipatterns.md`, `tool-preferences.md`, `edge-cases.md`, `project-quirks.md` (each with a header and empty-state message), and `meta.yaml` (initialized with creation date and zero counters). See the `smith-reflect` skill for the exact file formats.
 
+Seed the `browser_verification.urls` key in `.smith/security-config.json` (the `security-guard-mcp-browser.sh` hook's config; see `docs/security-model.md`) so a freshly-initialized project always has a well-formed schema for that guard to read, even before any environment is named. Non-destructive: if the file doesn't exist yet, create it containing just this key; if it exists, merge in the key only when `browser_verification.urls` isn't already present, preserving any existing `warn_only_mode`/`allowed_commands`/`production_domains`/etc. content untouched. bash+zsh-safe read-modify-write via `python3`:
+
+```bash
+python3 - "$PWD/.smith/security-config.json" << 'PYEOF'
+import json, os, sys
+
+path = sys.argv[1]
+config = {}
+if os.path.isfile(path):
+    try:
+        with open(path) as f:
+            config = json.load(f)
+    except Exception:
+        config = {}
+
+bv = config.get("browser_verification")
+if not isinstance(bv, dict) or "urls" not in bv:
+    bv = bv if isinstance(bv, dict) else {}
+    bv.setdefault("urls", {"staging": [], "production": []})
+    config["browser_verification"] = bv
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+```
+
 Copy from `~/.claude/skills/smith/`:
 - `templates/*` → `.specify/templates/`
 - `scripts/*` → `.specify/scripts/bash/`
@@ -437,7 +463,7 @@ See `.specify/memory/constitution.md` for binding project principles.
 [From Q25]
 
 ## E2E Testing with Playwright MCP
-[Generated only if Playwright MCP selected in Q19]
+[Generated only if Playwright MCP selected in Q19 — reference the "MCP-First Browser Verification" section (`templates/claude-md-additions.md`, appended by `/smith-index --migrate-templates`) by name for the tool-presence/`mcp_mode`/interactive decision chain and fallback idiom; do not restate that chain here]
 ```
 
 **IMPORTANT rules for CLAUDE.md generation:**

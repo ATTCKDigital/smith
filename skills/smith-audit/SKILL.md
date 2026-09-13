@@ -111,11 +111,11 @@ For the selected system(s), launch sub-audits as subagents. Each sub-audit can r
 3. **Performance** (`smith-audit performance`) — API efficiency, query optimization, rendering
 4. **Security** (`smith-audit security`) — OWASP top 10, secrets, auth, dependencies
 5. **Accessibility** (`smith-audit accessibility`) — WCAG, keyboard nav, screen readers
-6. **UX** (`smith-audit ux`) — Playwright-driven UI testing, latency, responsiveness
+6. **UX** (`smith-audit ux`) — Playwright-driven UI testing, latency, responsiveness. Attempts MCP-first authenticated bridge-mode verification when tools are present, `mcp_mode` resolves to `extension`, and the session is interactive (see CLAUDE.md's "MCP-First Browser Verification" section); otherwise falls back silently to the unauthenticated approach below, unchanged
 7. **Dependencies** (`smith-audit dependencies`) — outdated packages, CVEs, unused deps
 8. **Infrastructure** (`smith-audit infrastructure`) — Docker, health, configs, monitoring
 9. **Workflow** (`smith-audit workflow`) — open PRs, unmerged branches, incomplete tasks, stale work
-10. **SEO** (`smith-audit seo`) — Playwright-driven technical SEO audit via sitemap crawling (meta tags, headings, schema, performance, crawlability)
+10. **SEO** (`smith-audit seo`) — Playwright-driven technical SEO audit via sitemap crawling (meta tags, headings, schema, performance, crawlability). Same MCP-first-with-fallback contract as the UX sub-audit above (item 6): attempt authenticated bridge-mode verification under the same three conditions, otherwise fall back to the unauthenticated crawl unchanged
 11. **Feature** (`smith-audit feature`) — End-to-end deep audit of a single feature: data flow tracing, concurrency/race condition analysis, data integrity spot-checks, error handling gaps, and real-world output validation. Includes user interview phase.
 
 ## Report Generation

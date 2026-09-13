@@ -272,6 +272,39 @@ if [ -d "$PROJECT_DIR/.smith" ]; then
 fi
 ```
 
+### 5.1b Seed `browser_verification.urls` in `.smith/security-config.json`
+
+Same key, same non-destructive merge idiom as `/smith` init's scaffold step (`skills/smith/SKILL.md`), applied here to existing projects refreshed by `/smith-update`. `.smith/security-config.json` is Smith-owned config (not vault *data*), so it is in scope for this phase's "refresh Smith-owned files" boundary — the "NEVER touch `.smith/vault/`" rule protects vault data specifically, not this file.
+
+- If `.smith/security-config.json` **exists** and already declares `browser_verification.urls`, this is a no-op.
+- If it **exists** but lacks `browser_verification.urls`, merge the key in as `{"staging": [], "production": []}`, preserving every other existing key (`warn_only_mode`, `allowed_commands`, `production_domains`, etc.) untouched.
+- If it does **not exist at all**, leave it absent — do not invent a security-config file for a project that never opted into one (the guard already no-ops on a missing config file per FR-6/NFR-1).
+
+```bash
+if [ -f "$PROJECT_DIR/.smith/security-config.json" ]; then
+    python3 - "$PROJECT_DIR/.smith/security-config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict):
+    bv = config.get("browser_verification")
+    if not isinstance(bv, dict) or "urls" not in bv:
+        bv = bv if isinstance(bv, dict) else {}
+        bv.setdefault("urls", {"staging": [], "production": []})
+        config["browser_verification"] = bv
+        with open(path, "w") as f:
+            json.dump(config, f, indent=2)
+            f.write("\n")
+PYEOF
+fi
+```
+
 ### 5.2 Run `/smith-index --migrate-templates`
 
 Non-destructively merge new template sections into `CLAUDE.md` and `constitution.md`. Invoke as a sub-action of this skill.

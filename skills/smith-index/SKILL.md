@@ -323,6 +323,7 @@ of `constitution.md` (or `.specify/memory/constitution.md`) and
    - `## Project Manifest`
    - `## Smith Context System`
    - `## File Size Awareness`
+   - `## MCP-First Browser Verification`
 2. If any are missing, write a `.bak.<ISO8601>` backup of the original.
 3. Append the missing sections (sourced from
    `templates/constitution-additions.md` and
