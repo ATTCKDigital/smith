@@ -326,17 +326,28 @@ sys.stdout.write("".join(out) if ok else s)
         # Shell redirection: > or >> but NOT 2> or 2>>. Also accept &>.
         # Tested against REDIR_TEST (quoted spans blanked) so a '>' inside a
         # quoted string is not a false positive; a real redirect survives.
+        #
+        # Redirections whose target is /dev/null mutate nothing and are
+        # stripped before the check (fix/gate-markerless-ops). Smith's own
+        # documented markerless procedures (/smith-sync's `git reset --
+        # ... >/dev/null 2>&1`, version probes, guard steps) rely on
+        # /dev/null redirects and were false-blocked after the last
+        # workflow marker was cleared. The boundary capture keeps
+        # `/dev/null-adjacent` paths (e.g. /dev/nullx) blocking.
+        DEVNULL_STRIPPED=$(printf '%s' "$REDIR_TEST" \
+            | sed -E 's@[0-9]?&?>>?[[:space:]]*/dev/null([^[:alnum:]_/.-]|$)@\1@g')
         if [ -z "$MATCHED_SUBCMD" ]; then
-            if printf '%s' "$REDIR_TEST" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
+            if printf '%s' "$DEVNULL_STRIPPED" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
                 # Subtract stderr-only redirections.
                 # Strip 2> 2>> from a copy and re-check.
-                stripped=$(printf '%s' "$REDIR_TEST" | sed -E 's/2>>?//g')
+                stripped=$(printf '%s' "$DEVNULL_STRIPPED" | sed -E 's/2>>?//g')
                 if printf '%s' "$stripped" | grep -qE '(^|[^0-9&])>>?[^&|]'; then
                     MATCHED_SUBCMD="redirection (>, >>)"
                 fi
             fi
-            # Match combined-stream redirect: &>
-            if [ -z "$MATCHED_SUBCMD" ] && printf '%s' "$REDIR_TEST" | grep -qE '&>'; then
+            # Match combined-stream redirect: &> (already stripped when the
+            # target is /dev/null).
+            if [ -z "$MATCHED_SUBCMD" ] && printf '%s' "$DEVNULL_STRIPPED" | grep -qE '&>'; then
                 MATCHED_SUBCMD="redirection (&>)"
             fi
         fi

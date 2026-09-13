@@ -111,6 +111,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Workflow-gate false-blocked Smith's own documented markerless operations**
+  (fix/gate-markerless-ops). The gate's markerless redirection guard denied ANY
+  non-stderr redirect, including `>/dev/null` — so the post-workflow `/smith-sync`
+  (choreographed to run AFTER the marker clear, and legitimately markerless when
+  run standalone) was blocked by its own documented snippets (`git reset --
+  ... >/dev/null 2>&1`), `/smith-update` Phase 0's heredoc marker bootstrap was
+  blocked (it contradicted the gate's anti-forgery rule for `active-workflows/`),
+  and pre-marker vault session-log appends were blocked. The gap was masked for
+  two months by a stale `smith-research` active-workflow marker (2026-07-06 →
+  2026-09-12) that kept the gate permanently open in the dev repo; clearing it
+  surfaced all three. Fixes: the gate now strips redirections targeting
+  `/dev/null` (any fd form, `&>` included, with a boundary check so
+  `/dev/nullx` still blocks) before the redirect check — marker forgery via
+  `cat > active-workflows/*.yaml` and all real-file redirects still deny;
+  `/smith-update` Phase 0 now bootstraps via the exempt
+  `create-active-workflow.sh` helper like the other workflow skills;
+  `smith-sync` Key Rules pin the markerless-safe snippet constraint
+  (stderr-only + `/dev/null` redirects only); and the four workflow skills'
+  Vault Logging sections now require the marker BEFORE the first log append.
+  9 new redirect-suite cases (23/23 bash+zsh; exemption suite 12/12 unchanged).
+
 - **Debug reports were never committed — `/smith-sync` sweep excluded `.specify/`**
   (see `.specify/debug/debug-2026-07-30-debug-report-sync-gap.md`). `/smith-debug`
   writes its report to `.specify/systems/<system>/debug/` (or `.specify/debug/`),

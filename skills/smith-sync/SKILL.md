@@ -176,3 +176,8 @@ the user resolves manually.
 - No PR — direct push (a PR that sits un-merged defeats the transparency goal).
 - No-op cleanly when there is nothing committable to sync (dev repo / no changes).
 - Idempotent — safe to run repeatedly and standalone.
+- **Markerless-safe snippets**: this skill runs AFTER workflows clear their
+  active-workflow marker (and standalone with no marker at all), so every
+  bash snippet above must use only stderr-only (`2>`, `2>>`) and `/dev/null`
+  redirections — the workflow-gate denies any other redirection when no
+  marker exists. Keep it that way when editing this file.
