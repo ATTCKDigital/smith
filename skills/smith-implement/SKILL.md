@@ -177,7 +177,19 @@ If `.smith/vault/ledger/` exists and contains non-empty files, load relevant Led
    - **Validation checkpoints**: Verify each phase completion before proceeding
 
 7. Implementation execution rules:
-   - **Clean architecture**: follow the constitution's **Clean Architecture Policy** — small single-responsibility units, reuse existing components over duplicating, and keep files within the File Size Policy (split large ones rather than growing monolithic files). Honor the file structure defined in plan.md.
+   - Small, single-responsibility functions and files; one clear reason to
+     change. Keep files within the File Size Policy (300-line soft target,
+     500-line decomposition threshold) and honor the file structure
+     `plan.md` prescribes — split large files rather than growing
+     monolithic ones.
+   - Intention-revealing names (avoid `data`, `temp`, `handler`, `util` when a
+     meaningful name exists).
+   - Guard clauses over deep nesting; keep control flow shallow.
+   - Separation of concerns — keep I/O, business rules, and persistence in
+     distinct units.
+   - No dead code, commented-out blocks, or duplicated logic.
+   - Reuse existing components over recreating them — check for an existing
+     module/service/utility that already does it before writing something new.
    - **Setup first**: Initialize project structure, dependencies, configuration
    - **Tests before code**: If you need to write tests for contracts, entities, and integration scenarios
    - **Core development**: Implement models, services, CLI commands, endpoints

@@ -249,6 +249,82 @@ Launch a testing subagent after all implementation is complete.
 - If tests cannot be fixed after 3 attempts: log the failure and continue
   - The release notes will flag this as requiring manual attention
 
+## Phase 3.5: Clean Code Review Pass
+
+Launch exactly ONE subagent (Task tool) to evaluate the full branch diff vs
+`$BASE_BRANCH` against `smith-clean-code`'s rubric, strictly after Phase 3
+has reached a passing state and strictly before Phase 4 begins. This is an
+ordering precondition only — flag-never-block still governs the PR outcome
+(§5.4), never this pass's own invocation.
+
+**Invocation.** Thread the same `WORKTREE_PATH`/`BASE_BRANCH` context
+Phase 4/Phase 5 already use:
+```bash
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+```
+Diff against `$BASE_BRANCH` only — never a hardcoded or inferred ref. Pin
+the subagent to `model: sonnet` (not Haiku — this pass makes
+auto-fix judgment calls, not narrow classification/lookup).
+
+**Rubric delivery.** The subagent Reads `skills/smith-clean-code/SKILL.md`
+(worktree copy first), falling back to `~/.claude/skills/smith-clean-code/SKILL.md`
+(installed copy) only when the worktree copy is unavailable. It locates the
+`## Review Process`, `## Decision Rules`, and `## What You Should Avoid`
+sections by HEADING — e.g. `grep -n '^## Review Process'`, then Read from
+that line to the next `^## ` heading — never by hardcoded line number,
+since that file is edited independently of this feature and any cited
+range would drift out of date.
+
+**Findings contract.** Each finding carries exactly one severity
+(Critical/High/Medium/Low) plus: Location (`path:line`), Tenet violated
+(short label — e.g. "Deep nesting", "Duplicated logic", "God
+function/file", "Unclear naming", "Mixed responsibilities"),
+Behavior-preserving fix available (true/false), Fix-safety
+(clear/unclear), Auto-fix eligible (derived, see below), Fix applied
+(true/false — set only once the edit is actually made), and a 1-2
+sentence Rationale. A finding missing any field defaults to Fix-safety:
+unclear (flag, never fix).
+
+**Auto-fix eligibility.** A finding is auto-fix eligible if and only if
+it is behavior-preserving AND its fix-safety is clear. Not
+behavior-preserving, or fix-safety unclear → always FLAG, never auto-fix.
+State explicitly: a Critical finding whose only available fix would
+change program behavior is NEVER auto-fixed, always flagged, regardless
+of configuration — no override may relax this.
+
+**`.meta` coverage.** This pass does NOT add its own proactive
+`.meta`-write step. For builds launched via `smith-new`, that workflow's
+existing per-edit `.meta` instruction already covers every edit the build
+subagent makes, auto-fix edits included. For standalone `smith-build`
+runs, auto-fix edits fall back to the existing passive §5.3.1 Description
+Coverage Warnings scan, exactly like ordinary Phase 2 implementation
+edits already do.
+
+**No `tasks.md` coupling.** Auto-fix edits from this pass are polish, not
+tracked tasks — they require no corresponding `tasks.md` change.
+
+**Bounded re-test.** If one or more auto-fixes were applied (any count),
+run exactly one full re-run of Phase 3 in its entirety (3.1 → 3.2 → 3.3).
+If zero auto-fixes were applied, Phase 3 MUST NOT be re-run. A failing
+re-run resolves entirely via Phase 3.3's own existing bounded-attempts
+behavior — this pass adds no second retry loop, no second fix batch, and
+does NOT re-review the diff, regardless of the re-run's outcome. The
+bound is exactly: one review → at most one fix-application batch → at
+most one Phase 3 re-run. No step repeats.
+
+**Unresolved findings → scratch file.** Findings where `Fix applied:
+false` are written by the review subagent itself (its own output — there
+is no deterministic scan block to write here, unlike §5.3/§5.3.1, since
+judging "is this a god function" is not something a script can do) to
+`/tmp/smith-build-clean-code-findings.txt`:
+```
+- **[<Severity>]** `<path>:<line>` — <one-line description> (tenet: <Tenet violated>)
+```
+Medium, High, and Critical findings each get one line. Low-severity
+findings are never listed individually — if any remain unfixed, append
+exactly one trailing `+ N low-severity notes` line instead (omitted when
+N=0). An auto-fixed finding contributes nothing to this file.
+
 ## Phase 4: Spec Updates (Subagent)
 
 Launch a subagent to update related system spec files.
@@ -319,6 +395,11 @@ git push -u origin <branch-name>
 Before composing the PR body, scan all files modified on this branch for
 oversized source files. This is a non-blocking advisory — always proceed
 with the PR.
+
+By this point, Phase 3.5 (Clean Code Review Pass) has already run and any
+auto-fixes it applied are already in the working tree, so this scan's (and
+§5.3.1's) `git diff $BASE_BRANCH` snapshot naturally reflects the post-fix
+diff — no separate re-scan or staleness-avoidance step exists or is needed.
 
 ```bash
 # Enumerate files changed vs the configured base branch
@@ -511,6 +592,16 @@ This is a FLAG, never a blocker. Always proceed with PR creation. If
 `git diff "$BASE_BRANCH"` returns no files (clean tree, target branch ahead), the
 section is a no-op. Per data-model.md §9.3.
 
+Include a **"Clean Code Review"** section in the PR body when
+`/tmp/smith-build-clean-code-findings.txt` (written by Phase 3.5) is
+non-empty:
+```bash
+[ -s /tmp/smith-build-clean-code-findings.txt ] && echo "include section" || echo "omit section"
+```
+If empty, omit the section entirely — matching the same include-if-non-empty
+pattern as the two scans above. This is a FLAG, never a blocker. Always
+proceed with PR creation.
+
 ### 5.4 Create PR & Merge
 ```bash
 BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
@@ -543,6 +634,19 @@ for decomposition in follow-up work:
 Run `/smith-index --describe --system <name>` to backfill before merge,
 or rely on the next `/smith-bugfix`/`/smith-new` workflow to update
 descriptions for touched methods in-context.
+
+## Clean Code Review
+<include this section only when /tmp/smith-build-clean-code-findings.txt is non-empty>
+
+<contents of /tmp/smith-build-clean-code-findings.txt verbatim, e.g.:>
+- **[High]** `services/billing/webhook.py:142` — God function mixes request
+  validation, HTTP retry logic, and dead-letter persistence in one 80-line
+  method (tenet: Mixed responsibilities)
+- **[Medium]** `frontend/src/lib/api/products.ts:58` — Near-duplicate of
+  `fetchOrderBundle`'s pagination-assembly logic (tenet: Duplicated logic)
++ 2 low-severity notes
+
+This is a FLAG, never a blocker. Always proceed with PR creation.
 
 ## Release notes
 See specs/<feature>/release.md

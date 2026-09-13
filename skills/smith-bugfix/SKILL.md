@@ -166,10 +166,19 @@ If the bugfix execution fails, check config for auto-retry:
 
 1. **Read the affected files** to understand current behavior
 2. **Implement the fix** — keep changes minimal and focused. When the fix adds
-   or changes code, keep that code clean per the constitution's **Clean
-   Architecture Policy** (small single-responsibility units, reuse existing
-   components instead of duplicating). This does NOT license refactoring
-   untouched surrounding code — see the constraints below.
+   or changes code, keep that code clean:
+   - Small, single-responsibility functions and files; one clear reason to change.
+   - Intention-revealing names (avoid `data`, `temp`, `handler`, `util` when a
+     meaningful name exists).
+   - Guard clauses over deep nesting; keep control flow shallow.
+   - Separation of concerns — keep I/O, business rules, and persistence in
+     distinct units.
+   - No dead code, commented-out blocks, or duplicated logic.
+   - Reuse existing components over recreating them — check for an existing
+     module/service/utility that already does it before writing something new.
+
+   This does NOT license refactoring untouched surrounding code — see the
+   constraints below.
 3. **Do NOT**:
    - Refactor surrounding code
    - Add features beyond the fix
