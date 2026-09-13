@@ -35,7 +35,7 @@ Hooks are bash scripts that Claude Code executes automatically at specific lifec
 |-------|--------------|----------------|
 | SessionStart | Claude Code session begins | session-start-logger |
 | Stop | Claude Code session ends | session-end-review |
-| PreToolUse | Before Claude executes a tool call | security-guard-bash, security-guard-files, task-router |
+| PreToolUse | Before Claude executes a tool call | security-guard-bash, security-guard-files, security-guard-mcp-browser, task-router |
 | PostToolUse | After Claude executes a tool call | file-change-logger, lint-on-save |
 | SubagentStop | When a sub-agent completes | subagent-vault-writeback |
 
@@ -45,7 +45,7 @@ See [Hooks Reference](hooks.md) for full details on each hook.
 
 ## Security Guards
 
-Smith ships two security guard hooks that implement a deny-by-default approach:
+Smith ships three security guard hooks that implement a deny-by-default approach:
 
 ### security-guard-bash.sh (PreToolUse, Bash)
 
@@ -69,9 +69,20 @@ Inspects every file write or edit before execution and blocks writes to sensitiv
 
 The guard uses an allowlist approach for the vault directory (writes to `.smith/vault/` are always permitted) and a blocklist for known sensitive paths.
 
+### security-guard-mcp-browser.sh (PreToolUse, mcp__playwright__)
+
+Inspects every Playwright MCP browser tool call before execution:
+
+- Read-only tools (`browser_navigate`, `browser_snapshot`, `browser_take_screenshot`, `browser_console_messages`, `browser_network_requests`, `browser_wait_for`, `browser_tabs`) always run, on any target, including production.
+- Interaction tools (`browser_click`, `browser_type`, `browser_fill_form`, `browser_select_option`, `browser_press_key`, `browser_drag`, `browser_hover`, and `browser_evaluate` — always interaction-class, no JS-source heuristic) are denied outright when `browser_verification.allow_interactions` is `false` (a project-level kill-switch), and denied against a production-labeled or unclassified target (fail-safe default) unless a matching human confirmation was already recorded for that exact target.
+- The kill-switch denial can be downgraded to a warning by `warn_only_mode`, same as the other two guards. The production confirm-gate denial cannot — it is the sole non-bypassable denial across all three guards, regardless of `warn_only_mode`.
+- Reads `.smith/security-config.json`'s `browser_verification.urls`/`allow_interactions` keys (never `.smith/config.json`'s `mcp_mode`, which is agent-read only). No-ops silently — never blocks, never errors — when the vault or the config file is absent.
+
+See `data-model.md` in the `53-mcp-browser-access` feature spec for the full decision table.
+
 ### Customizing guards
 
-Both guards are plain bash scripts in `~/.claude/hooks/`. You can edit them to add or remove patterns. If you modify them, keep the deny-by-default philosophy: block first, allow explicitly.
+All three guards are plain bash scripts in `~/.claude/hooks/`. You can edit them to add or remove patterns. If you modify them, keep the deny-by-default philosophy: block first, allow explicitly.
 
 ---
 
@@ -89,13 +100,15 @@ The scheduler (`~/.smith/scheduler/smith-scheduler.sh`) enables autonomous overn
 
 ## What to Audit Before Enabling
 
-Before enabling the scheduler or relying on the security guards, review these three files:
+Before enabling the scheduler or relying on the security guards, review these four files:
 
 1. **`~/.claude/hooks/security-guard-bash.sh`** -- Review the blocklist patterns. Confirm they cover the commands you consider dangerous in your environment. Add any project-specific patterns.
 
 2. **`~/.claude/hooks/security-guard-files.sh`** -- Review the blocked file paths. Add any project-specific sensitive files (database configs, API key files, deployment manifests with secrets).
 
 3. **`~/.smith/scheduler/smith-scheduler.sh`** -- Review the task selection logic and worktree creation. Confirm you are comfortable with the scheduler creating branches and worktrees in your registered projects.
+
+4. **`~/.claude/hooks/security-guard-mcp-browser.sh`** -- Review the interaction-tool policy (`browser_verification.allow_interactions`, staging/production classification in `.smith/security-config.json`) and confirm the production-confirmation requirement matches your risk tolerance -- this is the one denial in all of Smith's guards that `warn_only_mode` cannot downgrade or bypass.
 
 ---
 

@@ -66,17 +66,22 @@ Consult `CLAUDE.md` for the project's current test URLs. Common patterns:
 | `design_prototype` | See CLAUDE.md | Visual design reference |
 | `app` | See CLAUDE.md | Full app with auth |
 | `storybook` | See CLAUDE.md | Isolated component testing |
+| `staging` | See CLAUDE.md's "MCP-First Browser Verification" URL table | Staging environment for MCP-first authenticated verification |
+| `production` | See CLAUDE.md's "MCP-First Browser Verification" URL table | Production environment — interaction tools require explicit operator confirmation |
+
+The `staging`/`production` rows are the human-readable view of `.smith/security-config.json`'s `browser_verification.urls` — the same source `security-guard-mcp-browser.sh` reads to classify any navigation target, so any URL you navigate to is identifiable by the guard as staging or production.
 
 ## E2E Testing Approach
 
 You test for **feature correctness from the user's perspective**:
 
 1. Read the Gherkin acceptance criteria from the spec
-2. Navigate the running `app` using Playwright
-3. Execute each scenario step-by-step (Given → When → Then)
-4. Compare against the `design_prototype` for visual correctness
-5. Verify the feature works as the user story intended
-6. Document any deviations as bugs with `gh issue create`
+2. Check whether this session qualifies for MCP-first authenticated browser verification (`mcp__playwright__*` tools present, `browser_verification.mcp_mode` resolves to `extension`, session interactive — see CLAUDE.md's "MCP-First Browser Verification" section for the full decision chain). If so, drive the operator's own logged-in browser via those tools, subject to `security-guard-mcp-browser.sh`'s policy — respect any denial, and get the operator's explicit confirmation before a production interaction. Otherwise continue with the existing approach below, unchanged.
+3. Navigate the running `app` using Playwright
+4. Execute each scenario step-by-step (Given → When → Then)
+5. Compare against the `design_prototype` for visual correctness
+6. Verify the feature works as the user story intended
+7. Document any deviations as bugs with `gh issue create`
 
 When a scenario requires deeper technical validation (visual pixel-matching, accessibility audit, performance), delegate to the senior-qa agent.
 

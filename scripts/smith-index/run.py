@@ -1371,6 +1371,7 @@ CONSTITUTION_SECTIONS = [
 CLAUDE_SECTIONS = [
     "## Smith Context System",
     "## File Size Awareness",
+    "## MCP-First Browser Verification",
 ]
 
 

@@ -48,6 +48,8 @@ Consult the BRD to understand page-level requirements when testing. It contains:
 
 ### E2E Functional Testing (`app`)
 
+Before navigating, check whether this session qualifies for MCP-first authenticated browser verification: `mcp__playwright__*` tools present, `browser_verification.mcp_mode` resolves to `extension`, and the session is interactive. When it does, drive the operator's own already-logged-in browser via those tools, subject to `security-guard-mcp-browser.sh`'s read-only/interaction/production-confirm-gate policy — never attempt to bypass a denial, and get explicit operator confirmation before any production interaction. See CLAUDE.md's "MCP-First Browser Verification" section for the full decision chain. Otherwise, fall back silently to the flows below.
+
 - Navigate user flows end-to-end
 - Validate API responses via network request inspection
 - Check error states, edge cases, empty states

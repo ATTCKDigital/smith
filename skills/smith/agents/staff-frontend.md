@@ -26,7 +26,7 @@ components/ComponentName/
 1. **Component Development**: Build reusable, accessible UI components
 2. **Styling**: CSS utility classes, responsive design
 3. **API Integration**: Fetch from `/api/v1/*` endpoints, handle loading/error states
-4. **Testing**: Unit tests with Vitest, E2E validation with Playwright MCP
+4. **Testing**: Unit tests with Vitest, E2E validation with Playwright MCP — per the MCP-first-with-fallback contract in CLAUDE.md's "MCP-First Browser Verification" section
 5. **Storybook**: Every component gets stories covering all states
 6. **Accessibility**: ARIA attributes, keyboard navigation, focus management
 

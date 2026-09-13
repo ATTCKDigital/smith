@@ -18,6 +18,7 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 | context-budget-guard | PostToolUse | Write, Edit | Warn when an edited file exceeds the size soft cap (default 50 KB); flag `@`-referenced files loudly |
 | security-guard-bash | PreToolUse | Bash | Block dangerous commands |
 | security-guard-files | PreToolUse | Write, Edit, NotebookEdit | Block writes to sensitive files |
+| security-guard-mcp-browser | PreToolUse | mcp__playwright__ | Gate Playwright MCP browser interaction tools; block production actions without confirmation |
 | task-router | PreToolUse | Task | Route tasks during workflows |
 | subagent-vault-writeback | SubagentStop | * | Persist sub-agent findings |
 | user-prompt-logger | UserPromptSubmit | * | Append each user prompt verbatim to the session log |
@@ -106,6 +107,17 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 - **What it does:** Intercepts every file write or edit before execution. Checks the target file path against a blocklist of sensitive file patterns (environment files, credentials, keys, SSH config, Claude Code config). Writes to `.smith/vault/` are always allowed. If a blocked path is detected, the hook returns a block response and logs the attempt.
 - **Files touched:** None (inspection only)
 - **To disable:** Remove the `PreToolUse` entry for Write/Edit/NotebookEdit referencing this script from `settings.json`. Warning: disabling this hook removes protection against accidental writes to sensitive files.
+
+---
+
+### security-guard-mcp-browser.sh
+
+- **Event:** PreToolUse
+- **Matcher:** `mcp__playwright__`
+- **What it does:** Intercepts every Playwright MCP browser tool call before execution. Read-only tools (navigate, snapshot, screenshot, console/network inspection, wait_for, tabs) always run, on any target including production. Interaction tools (click, type, fill_form, select_option, press_key, drag, hover, and `browser_evaluate` — always treated as interaction-class, no read-only heuristic) are denied when `browser_verification.allow_interactions` is `false`, and denied against a production-labeled or unclassified target unless a matching human confirmation was already recorded for that exact target. The production-confirmation denial cannot be downgraded by `warn_only_mode`; every other denial in this guard can.
+- **Configuration:** Reads `browser_verification.urls` and `browser_verification.allow_interactions` from `.smith/security-config.json`, and the existing `warn_only_mode` key. Does not read `.smith/config.json`'s `browser_verification.mcp_mode` (that key is agent-read only, not consulted by this guard).
+- **Files touched:** Writes `.smith/vault/.mcp-browser-target` on every allowed `browser_navigate` call, and reads (never writes) `.smith/vault/.mcp-browser-confirmed` when deciding whether a production interaction is confirmed.
+- **To disable:** Remove the `PreToolUse` entry for `mcp__playwright__` referencing this script from `settings.json`. Warning: disabling this hook removes the confirmation requirement for interaction tools against production targets.
 
 ---
 

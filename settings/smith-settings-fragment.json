@@ -77,6 +77,12 @@
         ]
       },
       {
+        "matcher": "mcp__playwright__",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/security-guard-mcp-browser.sh" }
+        ]
+      },
+      {
         "matcher": "Task",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/task-router.sh" }
