@@ -13,6 +13,8 @@ This is the primary entry point for all new features. It combines requirements g
 
 Throughout this action, log significant events to the vault session log. Read the session log path from `.smith/vault/.current-session`. If the file is missing or the vault is not initialized, skip all logging silently.
 
+**Marker before first append**: the workflow-gate denies markerless Bash redirection, so `cat >> "$SESSION"` appends are blocked until the active-workflow marker exists. Create the marker (Phase 1 step 0 helper) FIRST, then write the invocation entry immediately after — do not log before the marker.
+
 Append entries to the session log using this format:
 
 ```

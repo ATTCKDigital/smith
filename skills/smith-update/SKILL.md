@@ -50,19 +50,18 @@ If the user says any of these (or similar), treat as invoking this command:
 
 `/smith-update` writes many files: install.sh's destructive `cp -R` of skills, the version file, settings.json merge, per-project script copies, etc. The PreToolUse workflow-gate hook (PR #20) would deny all of these without an active marker. So create the marker first.
 
-**Skip if no `.smith/` directory exists in the current working directory** (the gate naturally exits silent in that case per PR #20, so no marker is needed). Otherwise:
+**Skip if no `.smith/` directory exists in the current working directory** (the gate naturally exits silent in that case per PR #20, so no marker is needed). Otherwise create the marker via the shipped helper — the gate exempts `create-active-workflow.sh` by basename (per spec/31-workflow-gate-bootstrap) and deliberately blocks raw redirection into `active-workflows/` to prevent forged markers, so a `cat > marker.yaml` heredoc here would be DENIED when no marker exists yet:
 
 ```bash
 TS=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
 PROJECT_DIR=$(pwd)
 if [ -d "$PROJECT_DIR/.smith" ]; then
-    mkdir -p "$PROJECT_DIR/.smith/vault/active-workflows"
-    cat > "$PROJECT_DIR/.smith/vault/active-workflows/update-${TS}.yaml" << EOF
-workflow: smith-update
-feature: smith-version-sync
-branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-started: ${TS//-/:}
-EOF
+    ~/.smith/scripts/create-active-workflow.sh \
+      --branch "update-${TS}" \
+      --workflow smith-update \
+      --slug "update-${TS}" \
+      --worktree "$PROJECT_DIR"
+    # (Falls back to scripts/create-active-workflow.sh in repo-dev layouts.)
     # remember marker path for cleanup at end
     MARKER_PATH="$PROJECT_DIR/.smith/vault/active-workflows/update-${TS}.yaml"
 fi

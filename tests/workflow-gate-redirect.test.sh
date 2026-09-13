@@ -90,6 +90,21 @@ assert DENY 'command > /tmp/x'                            'redirect to absolute 
 assert DENY 'echo hello > out.txt'                        'unquoted redirect after echo'
 
 echo ""
+echo "=== SHOULD NOT BLOCK (/dev/null redirects mutate nothing — fix/gate-markerless-ops) ==="
+assert ALLOW 'git reset -- foo >/dev/null 2>&1'           '>/dev/null 2>&1 (smith-sync abort idiom)'
+assert ALLOW 'echo hi > /dev/null'                        '> /dev/null with space'
+assert ALLOW 'cmd 1>/dev/null'                            '1>/dev/null explicit fd'
+assert ALLOW 'cmd &>/dev/null'                            '&>/dev/null combined stream'
+assert ALLOW 'cmd >>/dev/null'                            '>>/dev/null append form'
+assert ALLOW 'B=$(x.sh 2>/dev/null || echo main); git add .smith/ 2>/dev/null; git reset -- $X >/dev/null 2>&1' 'markerless /smith-sync-shaped compound'
+
+echo ""
+echo "=== SHOULD BLOCK (/dev/null lookalikes and mixed cases) ==="
+assert DENY 'echo x > /dev/nullx'                         '/dev/nullx lookalike still blocked'
+assert DENY 'echo x >/dev/null; echo y > real.txt'        'real redirect beside a /dev/null one'
+assert DENY 'cat > .smith/vault/active-workflows/m.yaml'  'marker forgery via redirect still blocked (anti-forgery)'
+
+echo ""
 echo "=== FAIL-SAFE (ambiguous/unbalanced quoting → block) ==="
 assert DENY 'echo "unterminated > thing'                  'unbalanced double-quote with > → fail-safe block'
 
