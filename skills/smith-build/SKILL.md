@@ -199,7 +199,7 @@ For each phase in tasks.md:
 - Use existing project patterns (read surrounding code before writing)
 - Follow constitution.md principles
 - **Clean-code architecture** — apply this checklist directly (it implements
-  the constitution's **Clean Architecture Policy** and mirrors the `/clean-code`
+  the constitution's **Clean Architecture Policy** and mirrors the `/smith-clean-code`
   skill; do NOT rely on being able to load that skill, as build subagents may
   not have skill access):
   - Small, single-responsibility functions and files; one clear reason to change.

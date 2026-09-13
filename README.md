@@ -15,7 +15,7 @@ _See [smith.attck.com](https://smith.attck.com) for a walkthrough._
 
 Claude Code is a powerful AI coding assistant, but it has no built-in workflow structure. Developers jump straight from a vague idea to generated code with no specification, no plan, and no audit trail. The result is hard to review, harder to maintain, and impossible to trace back to requirements. When something goes wrong — and it will — there is no record of what was intended, what was decided, or why.
 
-Smith fixes this by adding 33 skills — a full spec-driven development workflow plus general-purpose utilities (like `/clean-code` and `/to-mermaid`) — into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
+Smith fixes this by adding 33 skills — a full spec-driven development workflow plus general-purpose utilities (like `/smith-clean-code` and `/to-mermaid`) — into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
 
 The outcome: you talk to Claude about what you want to build, Smith handles the structured process, and you get a merged PR with full traceability from idea to code. Hooks log every session automatically and guard against common mistakes — dangerous shell commands, secret exposure, writes to sensitive files. A scheduler can process queued tasks overnight. Everything runs locally on your machine, nothing phones home, and every artifact is a plain text file you can read, diff, and version-control.
 
@@ -63,7 +63,7 @@ Once installed, open any new or existing project in your terminal and run `/smit
 | Reporting | `/smith-report`, `/smith-taskstoissues` | Client-facing reports and GitHub issue generation |
 | Manifest | `/smith-index`, `/smith-navigate`, `/smith-migrate-system-paths` | Precomputed project index, Haiku navigator, and one-shot path-frontmatter migration for structured context retrieval (see [docs/manifest-system.md](docs/manifest-system.md)) |
 | Meta | `/smith`, `/smith-update`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, version sync, governance, and reference |
-| Utilities | `/clean-code`, `/to-mermaid` | Framework-agnostic Clean Code / Clean Architecture refactoring and Mermaid diagram generation from plans and workflows |
+| Utilities | `/smith-clean-code`, `/to-mermaid` | Framework-agnostic Clean Code / Clean Architecture refactoring and Mermaid diagram generation from plans and workflows |
 
 ### Hooks (12)
 

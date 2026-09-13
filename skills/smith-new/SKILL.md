@@ -274,7 +274,7 @@ reusable, single-responsibility modules rather than a few large files:
    number. Flag any planned file expected to exceed 300 lines and split it up
    front.
 
-3. **Apply the Clean Code rubric.** Use the `/clean-code` skill as the canonical
+3. **Apply the Clean Code rubric.** Use the `/smith-clean-code` skill as the canonical
    rubric — intention-revealing names, small single-purpose functions,
    separation of concerns, low duplication. Reference it rather than restating
    it; record only the feature-specific structural decisions in `plan.md`.
