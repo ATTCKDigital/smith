@@ -5,7 +5,7 @@ description: Diagnostic workflow that systematically gathers evidence, identifie
 
 # SpecKit Debug Workflow
 
-A diagnostic-only workflow that systematically investigates errors, failures, and unexpected behavior across Armory's services. Produces a structured debug report stored in the relevant system's `.specify/` folder. Does NOT modify code — the report becomes input to `/smith-bugfix` if a fix is warranted.
+A diagnostic-only workflow that systematically investigates errors, failures, and unexpected behavior across the project's services. Produces a structured debug report stored in the relevant system's `.specify/` folder. Does NOT modify code — the report becomes input to `/smith-bugfix` if a fix is warranted.
 
 **Arguments:** $ARGUMENTS
 
@@ -142,26 +142,18 @@ Only ask for what's actually missing. If the description already covers 3+ field
 
 ## Phase 2: System Detection
 
-Determine which Armory system(s) this debug session relates to.
+Determine which of **this project's** system(s) this debug session relates to. Derive the system list from the current project — never assume a fixed set of systems.
 
-1. **Map the symptom to systems** using service-to-system mapping:
-   - `command-center` / port 8080 → `system-15-command-center`
-   - `sentiment-engine` / port 8081 → `system-15-command-center` (scoring subsystem)
-   - `content-strategy` / port 8082 → `system-12-content-social-engine`
-   - `email-pipeline` → `system-03-email-archive-contact-graph`
-   - `communication-triage` → `system-05-communication-triage`
-   - `voice-training` → `system-04-personal-voice`
-   - `openclaw` / Jason / port 18789 → cross-system (agent layer)
-   - `social-listening` → `system-10-social-listening`
-   - `trend-intelligence` → `system-13-trend-intelligence`
-   - `n8n` / port 5678 → `system-01-infrastructure`
-   - `postgres` / `neo4j` / `qdrant` / `redis` → `system-01-infrastructure`
-   - Docker / Colima / networking → `system-01-infrastructure`
-   - Ollama / model loading → `system-02-ai-models-layer`
+1. **Discover the project's systems** in this priority order:
+   - If `.smith/index/manifest.md` exists, read it (and `.smith/index/systems/`) for the authoritative service-to-system mapping. Prefer `/smith-navigate "<symptom>"` if available — it returns the relevant system(s) for a task description directly.
+   - Otherwise, list `.specify/systems/*/` to enumerate the project's systems and read each `spec.md` frontmatter (`paths:`) and body to understand what each covers.
+   - If neither exists, treat the project as un-systematized: use a single default system folder (`.specify/`) and skip system routing.
 
-2. **If ambiguous**: pick the most likely primary system and note secondary systems.
+2. **Map the symptom to systems**: match the affected service(s), ports, file paths, or component names from Phase 1 against the discovered systems. Use `paths:` frontmatter and service/port references in each system's `spec.md` to route.
 
-3. **Set the report path**:
+3. **If ambiguous**: pick the most likely primary system and note secondary systems.
+
+4. **Set the report path**:
    ```
    .specify/systems/<primary-system>/debug/debug-YYYY-MM-DD-<slug>.md
    ```
