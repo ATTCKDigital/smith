@@ -44,6 +44,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`/smith-debug` Phase 2 is now project-agnostic** (fix/debug-de-armory). The
+  skill's System Detection carried a hardcoded Armory-specific service-to-system
+  mapping table (command-center/port 8080, sentiment-engine, n8n, Ollama, …) and
+  an "across Armory's services" header — leftovers from the project the skill
+  was first authored in, meaningless in every other consumer project. Phase 2
+  now derives the system list from the current project in priority order:
+  `.smith/index/manifest.md` + `/smith-navigate` when available, else enumerate
+  `.specify/systems/*/` (reading each spec's `paths:` frontmatter), else treat
+  the project as un-systematized (`.specify/` default), then match the Phase 1
+  symptom against the discovered systems. No behavior change for projects with
+  manifests; Armory itself now routes via its own manifest instead of a stale
+  inline table.
+
 - **Clean-architecture guidance baked into every code-generating workflow** — new/changed code is now steered toward small, single-responsibility files and component reuse at generation time, instead of only being flagged after the fact. A new **Clean Architecture Policy** in `templates/constitution-additions.md` (alongside the File Size Policy) is the canonical, inherited source: single responsibility, reuse over duplication (via `/smith-navigate` / `.smith/index/`), intention-revealing names, small files, with a scope note that `/smith-bugfix` applies it only to code the fix adds/changes (no refactoring untouched code). The code-writing skills reference it:
   - `skills/smith-new/SKILL.md` Phase 4 (Plan Generation) — **Clean-Architecture & Reuse Requirements** block: consult the manifest to reuse existing components before proposing new files, prescribe a decomposed file structure against the File Size Policy (300 soft / 500 decompose), reference `/clean-code`. Includes a nudge to build `.smith/index/` up front so reuse detection is fast.
   - `skills/smith-build/SKILL.md` — Implementation rules carry an inline clean-code checklist (subagent-safe: build subagents may lack skill-loading access) that implements the Clean Architecture Policy; split files proactively rather than relying on the post-hoc File Size Warnings PR flag (§5.3).
