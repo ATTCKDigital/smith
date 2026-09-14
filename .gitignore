@@ -37,3 +37,31 @@ skills/smith-research/scripts/.venv/
 
 # Temporary files
 /tmp/
+
+# >>> smith-gitignore-policy >>>
+# Smith team-shareable vault & index policy. Managed by /smith init and
+# /smith-update — edit via those skills, not by hand. Lines outside the
+# sentinel markers are never touched by Smith.
+#
+# COMMITTED (shared with the team):
+#   .smith/index/manifest.md, .smith/index/config/, .smith/index/.schema-version
+#   .smith/index/files/ + .smith/index/systems/  (the --describe .meta layer)
+#   .smith/vault/ledger/, .smith/vault/bank/, .smith/vault/agents/
+#   .smith/vault/sessions/*.md
+#
+# IGNORED (local / volatile / per-user) — listed below:
+.smith/index/.smith-index-checkpoint.json
+.smith/index/.smith-index-describe-checkpoint.json
+.smith/vault/.current-session
+.smith/vault/.current-session-*
+# transient per-session / per-user runtime markers (0-byte dedup + stray workflow marker)
+.smith/vault/.warned-manifest-missing-*
+.smith/vault/.active-workflow
+.smith/vault/.scheduled-audits-state.json
+.smith/vault/active-workflows/
+.smith/vault/queue/
+.smith/vault/todo/
+# client-billing timesheets — kept local, never shared by default
+.smith/vault/timesheets/
+.smith/config/
+# <<< smith-gitignore-policy <<<
