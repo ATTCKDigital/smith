@@ -280,8 +280,14 @@ assert_not_contains() {
     cp "$ENGINE" "$scratch/secret_scan.py"
     chmod 000 "$scratch/secret_scan.py"
     printf 'benign\n' > "$repo/f.txt"
-    (cd "$repo" && "$INTERPRETER_BIN" "$scratch/secret-scan.sh" --files f.txt >/dev/null 2>&1)
+    # HOME override: the wrapper prefers the INSTALLED engine at
+    # $HOME/.smith/scripts/security/; on machines where Smith is installed
+    # that healthy copy would silently rescue this deliberately-broken
+    # scratch engine (test passed pre-install, failed post-install).
+    isolated_home=$(mktemp -d)
+    (cd "$repo" && HOME="$isolated_home" "$INTERPRETER_BIN" "$scratch/secret-scan.sh" --files f.txt >/dev/null 2>&1)
     ec=$?
+    rm -rf "$isolated_home"
     assert_eq "unreadable engine -> exit code 2" "2" "$ec"
     chmod 644 "$scratch/secret_scan.py"
     rm -rf "$scratch"

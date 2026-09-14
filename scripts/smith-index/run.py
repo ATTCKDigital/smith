@@ -78,6 +78,15 @@ EXCLUDED_DIR_NAMES = {
     "htmlcov",
 }
 
+# Sibling keys a config author plausibly typed instead of "rules" — see
+# BANK-028 Gotcha 1 ("system-paths.json top-level key is `rules` (NOT
+# `overrides`)"). Small, named, non-fuzzy: "overrides" is the literal
+# gotcha reported; "override" is its singular; "mappings"/"map" are the
+# two other names this repo's own docs use informally for the same
+# concept ("path -> system overrides", "explicit path -> system mapping"
+# — see docs/manifest-system.md and this file's own stub `_comment`).
+_PLAUSIBLE_RULES_KEY_ALIASES = ("overrides", "override", "mappings", "map")
+
 MANIFEST_MAX_LINES = 50
 SYSTEM_MAX_LINES = 80
 SYSTEM_MAX_FILES_LISTED = 60  # Truncate beyond this; data-model section 3 (>65).
@@ -152,6 +161,28 @@ try:
         _meta_describe = None  # type: ignore[assignment]
 except Exception:
     _meta_describe = None  # type: ignore[assignment]
+
+# wp_defaults (Part A: WordPress-core detection/exclusion rules for
+# --init-system-paths). Lives beside run.py itself (not scripts/parsers/)
+# since it is smith-index-specific, not a general parser-layer module —
+# resolved from THIS_DIR only, no dual dev-tree/global-install search.
+# Optional/graceful-degrade like path_resolver/meta_describe above: a
+# mid-/smith-update upgrade window (run.py refreshed, wp_defaults.py not
+# yet staged) must not crash --init-system-paths — it just skips WP
+# detection for that one invocation (see FR-5/FR-6).
+try:
+    _wpd_path = THIS_DIR / "wp_defaults.py"
+    if _wpd_path.is_file():
+        _wpd_spec = _ilu.spec_from_file_location("wp_defaults", _wpd_path)
+        if _wpd_spec and _wpd_spec.loader:
+            wp_defaults = _ilu.module_from_spec(_wpd_spec)
+            _wpd_spec.loader.exec_module(wp_defaults)  # type: ignore[attr-defined]
+        else:
+            wp_defaults = None  # type: ignore[assignment]
+    else:
+        wp_defaults = None  # type: ignore[assignment]
+except Exception:
+    wp_defaults = None  # type: ignore[assignment]
 
 
 def parse_existing_descriptions(meta_text: str) -> dict | None:
@@ -780,9 +811,20 @@ class IndexRun:
             return None
         try:
             with open(self.system_paths_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except (OSError, json.JSONDecodeError):
             return None
+        if isinstance(data, dict) and "rules" not in data:
+            for alias in _PLAUSIBLE_RULES_KEY_ALIASES:
+                if alias in data:
+                    sys.stderr.write(
+                        f"/smith-index: {self.system_paths_path} has "
+                        f'{alias!r} but no "rules" key — system-paths.json '
+                        'overrides must be under "rules"; '
+                        f"{alias!r} is ignored (no override applied from it).\n"
+                    )
+                    break
+        return data
 
     def _load_system_descriptions(self) -> dict[str, str]:
         """Map system id -> spec.md frontmatter `description:` field.
@@ -1060,6 +1102,63 @@ class IndexRun:
                 error=str(e),
             )
 
+    def prune_stale_index(self) -> dict:
+        """Full-rebuild-only garbage collection (see mode_full's gating —
+        never called from --check/--incremental/--system/--resume; see
+        spec.md FR-9 for why each is structurally unsafe to prune from).
+
+        Removes:
+          (a) .smith/index/files/**/*.meta whose source no longer exists OR
+              now resolves to "excluded" — same predicate
+              _refresh_full_aggregations() already established for
+              incremental mode's aggregation-skip (run.py, in
+              _refresh_full_aggregations() below), reused here as an
+              actual deletion trigger.
+          (b) .smith/index/systems/<id>.md for any system with zero entries
+              in self.systems after this run's walk + write_system_manifests().
+
+        Confined to self.files_dir / self.systems_dir — NEVER self.config_dir
+        or the .schema-version marker. A per-file OSError is logged and does
+        not abort the walk (matches this file's existing per-file try/except
+        discipline elsewhere).
+
+        Returns {"files_pruned": int, "systems_pruned": int}.
+        """
+        files_pruned = 0
+        if self.files_dir.is_dir():
+            for meta_path in self.files_dir.rglob("*.meta"):
+                rel_meta = meta_path.relative_to(self.files_dir)
+                source_rel = str(rel_meta)
+                if source_rel.endswith(".meta"):
+                    source_rel = source_rel[: -len(".meta")]
+                source_path = self.project_root / source_rel
+                stale = (not source_path.is_file()) or (
+                    self.resolve_system(source_path) == "excluded"
+                )
+                if not stale:
+                    continue
+                try:
+                    meta_path.unlink()
+                    files_pruned += 1
+                    self.logger.log(source_rel, "prune", "ok")
+                except OSError as e:
+                    self.logger.log(source_rel, "prune", "failed", error=str(e))
+
+        systems_pruned = 0
+        if self.systems_dir.is_dir():
+            for manifest_path in self.systems_dir.glob("*.md"):
+                system_id = manifest_path.stem
+                if self.systems.get(system_id):
+                    continue
+                try:
+                    manifest_path.unlink()
+                    systems_pruned += 1
+                    self.logger.log(system_id, "prune-system", "ok")
+                except OSError as e:
+                    self.logger.log(system_id, "prune-system", "failed", error=str(e))
+
+        return {"files_pruned": files_pruned, "systems_pruned": systems_pruned}
+
     def cleanup(self) -> None:
         # Remove checkpoint on clean exit.
         try:
@@ -1126,6 +1225,27 @@ def mode_full(
     duration = time.monotonic() - start
     run.write_top_manifest(duration)
     run.write_schema_version_marker()
+
+    # Stale-index GC only runs on a full, unfiltered, non-resumed rebuild —
+    # each of the four other modes is structurally unsafe to prune from,
+    # for its own distinct reason (spec.md FR-9):
+    #   --incremental never reaches mode_full() at all (separate function).
+    #   --check never instantiates a rebuild IndexRun (read-only scan).
+    #   --system <name> reaches mode_full(), but run.systems only ever
+    #     contains the ONE filtered system — pruning from that partial view
+    #     would delete every other (still-valid) system's manifest.
+    #   --resume reaches mode_full() with system_filter unset, but unlike
+    #     mode_incremental there is no _refresh_full_aggregations()-style
+    #     re-hydration call for the resumed path, so run.systems after a
+    #     resumed run reflects only the CURRENTLY-resumed segment, not the
+    #     full project — pruning from that partial view would wrongly
+    #     delete a still-valid system's manifest too.
+    # Placed BEFORE run.cleanup() specifically because prune_stale_index()'s
+    # FR-12 logging needs self.logger still open (cleanup() closes it).
+    gc_result = None
+    if system_filter is None and not resume:
+        gc_result = run.prune_stale_index()
+
     run.cleanup()
 
     summary = (
@@ -1133,9 +1253,19 @@ def mode_full(
         f"({run.succeeded} succeeded, {run.failed} failed, "
         f"{run.skipped} skipped) in {duration:.1f}s"
     )
+    if gc_result is not None:
+        total_pruned = gc_result["files_pruned"] + gc_result["systems_pruned"]
+        summary += f" · {total_pruned} pruned"
     print(summary)
     if run.stats.get("over_300", 0):
         print(f"  Files over 300 lines: {run.stats['over_300']}")
+    if gc_result is not None and (
+        gc_result["files_pruned"] or gc_result["systems_pruned"]
+    ):
+        print(
+            f"  Pruned: {gc_result['files_pruned']} stale .meta file(s), "
+            f"{gc_result['systems_pruned']} empty system manifest(s)"
+        )
     return 0
 
 
@@ -1551,6 +1681,11 @@ def mode_init_system_paths(project_root: Path) -> int:
         )
         return 0
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    is_wp = wp_defaults is not None and wp_defaults.detect_wordpress(project_root)
+    wp_rules = wp_defaults.wp_exclusion_rules() if is_wp else []
+    wp_dir_names = {d.rstrip("/") for d in wp_defaults.WP_CORE_DIRS} if is_wp else set()
+
     rules: list[dict] = []
     for entry in sorted(project_root.iterdir()):
         if not entry.is_dir():
@@ -1560,6 +1695,8 @@ def mode_init_system_paths(project_root: Path) -> int:
             continue
         if name in {"tests", "test", "docs", "doc"}:
             continue
+        if name in wp_dir_names:
+            continue  # already covered by an explicit WP exclusion rule
         rules.append(
             {
                 "_comment": f"Auto-generated stub for {name}/",
@@ -1567,6 +1704,8 @@ def mode_init_system_paths(project_root: Path) -> int:
                 "system": f"system-{name}",
             }
         )
+
+    rules = wp_rules + rules
     payload = {
         "_comment": (
             "Optional path -> system overrides. Longest prefix wins. "
@@ -1576,6 +1715,12 @@ def mode_init_system_paths(project_root: Path) -> int:
         "default": "unassigned",
     }
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    if is_wp:
+        print(
+            f"/smith-index --init-system-paths: WordPress project detected "
+            f"(wp-load.php + wp-includes/) — added {len(wp_rules)} "
+            "WordPress-core exclusion rule(s)"
+        )
     print(
         f"/smith-index --init-system-paths: wrote {target} with "
         f"{len(rules)} stub rule(s)"

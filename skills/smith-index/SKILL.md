@@ -74,6 +74,18 @@ either works. The skill markdown is the entry point that parses
    manifest); silently skipped if neither source file is found.
 9. Print a summary line:
    `/smith-index: N files indexed (N succeeded, N failed, N skipped) in T.Ts`.
+10. **Prune stale index state.** Runs only when this is a full,
+    unfiltered, non-resumed rebuild (i.e. no `--system` and no `--resume`
+    on this invocation). Removes `.smith/index/files/**/*.meta` entries
+    whose source file is gone or now resolves to `"excluded"`, and any
+    `.smith/index/systems/<id>.md` left with zero files after this run.
+    The summary line gains a ` · <N> pruned` clause on every applicable
+    run (including `· 0 pruned` when nothing was stale) — the clause is
+    absent entirely on `--system`, `--resume`, `--check`, and
+    `--incremental` runs, none of which prune. See this feature's
+    `plan.md` (`.specify/systems/cross-system/features/
+    59-wordpress-aware-index/plan.md`) Contracts section for the full
+    per-mode rationale.
 
 **Performance budget:** <60s p95 for a 100-file project (acceptance
 criterion from spec).
@@ -379,6 +391,18 @@ top-level directories. Per Q7, `system-paths.json` is OPTIONAL — the
 heuristic engine handles missing config — so this flag exists only for
 users who want explicit overrides as a starting point. Does NOT
 overwrite an existing file.
+
+**WordPress-aware defaults.** Before writing the stub, this flag checks
+for a WordPress-core checkout: both `wp-load.php` (file) AND
+`wp-includes/` (directory) must be present at the project root — either
+alone is too weak a signal. When both are found, the generated stub is
+seeded with 17 exclusion rules covering WordPress core — 2 directory
+prefixes (`wp-admin/`, `wp-includes/`) and 15 exact root-file prefixes
+(`index.php`, `wp-config.php`, `xmlrpc.php`, etc.) — each mapped to
+`"excluded"`. These are never collapsed into a bare `"wp-"` prefix,
+which would also swallow `wp-content/` — the actual themes/plugins/
+uploads site code stays indexed as `system-wp-content`, same as any
+other top-level directory.
 
 ### `/smith-index --resume`
 
