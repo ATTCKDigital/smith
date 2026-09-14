@@ -190,6 +190,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Response datetime-stamp silently stopped appearing** (fix/stop-hook-stamp).
+  `hooks/stamp-response.sh` emitted the stamp with `printf` as PLAIN stdout on a
+  `Stop` event. Claude Code surfaces plain hook stdout only for
+  `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart` and
+  `PostModelSwitch`; for every other event — `Stop` included — stdout goes to the
+  debug log and is never shown. The stamp was computed correctly on every turn
+  and then discarded, with no error anywhere, so the regression was invisible.
+  The hook's own comments asserted the opposite ("Claude Code surfaces stdout as
+  a system message"), which is what made the bug durable.
+  - **Fix** — the hook now returns JSON, `{"systemMessage": "<stamp>"}`, which is
+    displayed to the user, and still exits 0. `hookSpecificOutput.additionalContext`
+    was rejected deliberately: on `Stop` it CONTINUES the conversation under the
+    same loop protections as `decision: "block"`, i.e. it would re-fire the turn.
+    `exit 2`/stderr was rejected for the same reason, and `terminalSequence`
+    carries only OSC escapes, invisible in non-terminal hosts. A `Stop` hook
+    cannot edit the assistant message it just finished, so the stamp now renders
+    as a system line after the turn rather than inside the message body.
+  - **Every safeguard preserved** — `stop_hook_active` anti-recursion guard,
+    idempotency (no double-stamp), main-session-only scope, branch resolution
+    from `cwd` with bare-timestamp fallback, and always-`exit 0` best-effort
+    behaviour that never breaks a turn.
+  - **Idempotency check made reliable** — it now reads the `Stop` payload's
+    `last_assistant_message` instead of parsing `transcript_path`; per the hooks
+    reference the transcript file is not guaranteed to contain the final message
+    at `Stop` time on all versions. Transcript parsing remains as a fallback for
+    hosts that omit the field. The hook also reads its payload with `printf`
+    rather than `echo`, so a `\n` inside a JSON string can no longer be
+    reinterpreted into an invalid control character and silently disable the
+    check.
+
+- **Installer left duplicate hook entries in `settings.json`** (fix/stop-hook-stamp).
+  `scripts/install.sh` and `scripts/dedupe-settings.sh` deduplicated whole
+  entries, keyed on `matcher + (hooks | tostring)`. Claude Code runs every
+  command in every entry, so the unit that must be unique is the individual
+  `(matcher, command)` pair — and the same commands regrouped across fragment
+  versions produce distinct entry keys. On a machine carrying several
+  generations of the fragment this left `session-end-review.sh` and
+  `workflow-summary.sh` registered (and running) three times per `Stop`,
+  `grade-response.sh` and `active-workflow-janitor.sh` twice.
+  - **Fix** — new shared jq module `scripts/lib/dedupehooks.jq` deduplicates at
+    the `(matcher, command)` level, keeping a command's first occurrence,
+    dropping entries left empty, and preserving entry order so hook chain order
+    (e.g. `manifest-updater.sh` last in the `PostToolUse` chain) is unaffected.
+    `install.sh` and `dedupe-settings.sh` both `include` it, so the two can no
+    longer drift apart. Re-running the installer over already-duplicated
+    settings now self-heals them.
+  - **Merge output is now validated** — `install.sh` only replaces
+    `settings.json` when the jq merge produced non-empty, valid JSON; previously
+    a failed merge would have overwritten it.
+
+- **Tests** — `tests/stamp-response.test.sh` (12 assertions: JSON-not-plain-stdout
+  contract, no blocking/`additionalContext` field, anti-recursion, both
+  double-stamp cases, bare-timestamp fallback, malformed/empty input still
+  `exit 0`) and `tests/settings-dedupe.test.sh` (11 assertions: real-world
+  multi-generation duplicate fixture collapses to one of each, different
+  matchers not merged, chain order preserved, idempotent, non-hook keys
+  untouched). Both live at `tests/*.test.sh` so CI runs them.
+
 - **Workflow-gate false-blocked Smith's own documented markerless operations**
   (fix/gate-markerless-ops). The gate's markerless redirection guard denied ANY
   non-stderr redirect, including `>/dev/null` — so the post-workflow `/smith-sync`

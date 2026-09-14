@@ -275,26 +275,37 @@ ok "Installed CLAUDE.md rubric at $CLAUDE_MD"
 info "Merging hook entries into $CLAUDE_SETTINGS"
 FRAGMENT="$REPO_ROOT/settings/smith-settings-fragment.json"
 TMP_SETTINGS="$(mktemp)"
-jq -s '
+jq -s -L "$REPO_ROOT/scripts/lib" '
+  include "dedupehooks";
   # True-idempotent hook merge (added per /smith-update Q1-D):
   # - Concatenate existing + fragment entries per event type
-  # - Deduplicate by (matcher + hooks-array equality) — re-running the installer
-  #   no longer adds duplicate hook entries.
+  # - Deduplicate at the individual (matcher, command) level via dedupehooks.jq.
+  #   Entry-level dedup was not enough: the same commands regrouped across
+  #   fragment versions produce distinct entry keys, so a command could stay
+  #   registered (and run) several times per event. Command-level dedup also
+  #   collapses duplicates left behind by older installs.
   .[0] as $existing | .[1] as $fragment |
   $existing * $fragment |
   .hooks = (
-    ($existing.hooks // {}) as $eh |
-    ($fragment.hooks // {}) as $fh |
-    ($eh | to_entries) as $ehe |
-    ($fh | to_entries) as $fhe |
-    (($ehe + $fhe)
+    (($existing.hooks // {}) | to_entries) as $existing_events |
+    (($fragment.hooks // {}) | to_entries) as $fragment_events |
+    (($existing_events + $fragment_events)
       | group_by(.key)
-      | map({key: .[0].key, value: (map(.value) | add | unique_by(.matcher + "|" + (.hooks | tostring)))})
-      | from_entries)
+      | map({key: .[0].key, value: (map(.value) | add)})
+      | from_entries
+      | dedupe_hooks)
   )
 ' "$CLAUDE_SETTINGS" "$FRAGMENT" > "$TMP_SETTINGS"
-mv "$TMP_SETTINGS" "$CLAUDE_SETTINGS"
-ok "Settings merged (idempotent: existing duplicates collapsed)"
+# Never replace settings.json with the output of a failed jq run (a missing
+# module path or unreadable fragment would otherwise leave it empty).
+if [ -s "$TMP_SETTINGS" ] && jq empty "$TMP_SETTINGS" >/dev/null 2>&1; then
+    mv "$TMP_SETTINGS" "$CLAUDE_SETTINGS"
+    ok "Settings merged (idempotent: existing duplicates collapsed)"
+else
+    rm -f "$TMP_SETTINGS"
+    err "Settings merge produced invalid JSON — left $CLAUDE_SETTINGS unchanged"
+    [ -n "${BACKUP:-}" ] && info "A backup is available at $BACKUP"
+fi
 
 # ---------- install manifest-system hooks (auto-register per Q4) ----------
 if [ "$NO_HOOKS" != "1" ]; then

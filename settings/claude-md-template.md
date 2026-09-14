@@ -183,10 +183,13 @@ No files are being modified and no Smith workflow is active.
 - [ ] Python commands use `python3`, not `python`.
 
 > Note: the `YYYY-MM-DD HH:MM:SS — <branch-name>` datetime stamp is no longer
-> graded here. It is now appended deterministically by the `stamp-response.sh`
+> graded here. It is now emitted deterministically by the `stamp-response.sh`
 > Stop hook (`~/.claude/hooks/stamp-response.sh`), which is fail-closed — it
 > always runs and is not subject to the critic's timeout/parse/retry fail-open
-> path. Do not re-add a stamp sub-criterion to this rule.
+> path. A Stop hook cannot edit the assistant message it just finished, so the
+> stamp is returned as a `systemMessage` and shown as a system line after the
+> turn rather than inside the message body. Do not re-add a stamp sub-criterion
+> to this rule, and do not write the stamp into your own response text.
 
 ### Rule applies when:
 Always. (The Python-commands criterion auto-passes if the response has no
