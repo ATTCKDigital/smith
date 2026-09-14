@@ -226,10 +226,114 @@ For each phase in tasks.md:
 
 Launch a testing subagent after all implementation is complete.
 
-### 3.1 Unit Tests
+### 3.1 Testing
+Read `.smith/config.json`'s `quality.test` array (spec FR-1/FR-2). When
+present and non-empty, run each listed command independently via `python3
+subprocess.run(cmd, shell=True, timeout=quality.timeout_seconds)` — feature
+56's Sub-layer D `_run_tool` mechanism (`scripts/security/dependency-scan.py`),
+reused verbatim: catch `subprocess.TimeoutExpired`, never a shell
+`timeout`/`gtimeout` wrapper. No legacy fallback bullets execute in this case.
+
+```bash
+python3 - << 'PYEOF'
+import json, subprocess
+
+try:
+    with open(".smith/config.json") as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+quality = config.get("quality") if isinstance(config, dict) else None
+commands = quality.get("test") if isinstance(quality, dict) else None
+timeout_seconds = (quality or {}).get("timeout_seconds", 120)
+
+if isinstance(commands, list) and commands:
+    for cmd in commands:
+        print(f"--- quality.test: {cmd} ---")
+        try:
+            result = subprocess.run(cmd, shell=True, timeout=timeout_seconds)
+            if result.returncode != 0:
+                print(f"FAILED (exit {result.returncode}): {cmd}")
+        except subprocess.TimeoutExpired:
+            print(f"TIMEOUT after {timeout_seconds}s: {cmd}")
+else:
+    print("__LEGACY_FALLBACK__")
+PYEOF
+```
+
+When the script prints `__LEGACY_FALLBACK__` (`quality.test` is absent,
+empty, or `.smith/config.json` itself is absent/malformed), run the CURRENT
+two bullets verbatim, unchanged, byte-for-byte — zero behavior change:
 - **If frontend code changed**: `cd services/command-center && pnpm test`
 - **If Python service changed**: `cd services/<service> && poetry run pytest`
 - Run existing test suites — do NOT skip tests
+
+### 3.1b Lint
+Read `.smith/config.json`'s `quality.lint` array (spec FR-3). Same
+per-command `subprocess.run(cmd, shell=True, timeout=quality.timeout_seconds)`
+mechanism as §3.1. When absent or empty, this step is skipped ENTIRELY — no
+run, no PR mention. No legacy fallback exists here (unlike §3.1).
+
+```bash
+python3 - << 'PYEOF'
+import json, subprocess
+
+try:
+    with open(".smith/config.json") as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+quality = config.get("quality") if isinstance(config, dict) else None
+commands = quality.get("lint") if isinstance(quality, dict) else None
+timeout_seconds = (quality or {}).get("timeout_seconds", 120)
+
+if isinstance(commands, list) and commands:
+    for cmd in commands:
+        print(f"--- quality.lint: {cmd} ---")
+        try:
+            result = subprocess.run(cmd, shell=True, timeout=timeout_seconds)
+            if result.returncode != 0:
+                print(f"FAILED (exit {result.returncode}): {cmd}")
+        except subprocess.TimeoutExpired:
+            print(f"TIMEOUT after {timeout_seconds}s: {cmd}")
+else:
+    print("__SKIP__")
+PYEOF
+```
+
+### 3.1c Typecheck
+Read `.smith/config.json`'s `quality.typecheck` array (spec FR-4). Same
+mechanism and same skip-when-absent behavior as §3.1b, same reasoning.
+
+```bash
+python3 - << 'PYEOF'
+import json, subprocess
+
+try:
+    with open(".smith/config.json") as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+quality = config.get("quality") if isinstance(config, dict) else None
+commands = quality.get("typecheck") if isinstance(quality, dict) else None
+timeout_seconds = (quality or {}).get("timeout_seconds", 120)
+
+if isinstance(commands, list) and commands:
+    for cmd in commands:
+        print(f"--- quality.typecheck: {cmd} ---")
+        try:
+            result = subprocess.run(cmd, shell=True, timeout=timeout_seconds)
+            if result.returncode != 0:
+                print(f"FAILED (exit {result.returncode}): {cmd}")
+        except subprocess.TimeoutExpired:
+            print(f"TIMEOUT after {timeout_seconds}s: {cmd}")
+else:
+    print("__SKIP__")
+PYEOF
+```
 
 ### 3.2 Playwright E2E Tests (MANDATORY for UI changes)
 - **Check if any frontend files were modified** in this feature:
@@ -248,6 +352,101 @@ Launch a testing subagent after all implementation is complete.
 - If a test is flaky (passes on retry without code changes): note in release notes
 - If tests cannot be fixed after 3 attempts: log the failure and continue
   - The release notes will flag this as requiring manual attention
+- §3.1b/§3.1c command failures, and any per-command `quality.timeout_seconds`
+  timeout across §3.1/§3.1b/§3.1c alike, are covered by this SAME bound — up
+  to 3 attempts, then log and continue — no new retry loop.
+
+### 3.4 Coverage Check
+Read `.smith/config.json`'s `quality.coverage.command` (spec FR-9..FR-14).
+When absent or empty, this step is skipped entirely — no `/tmp` file
+written, no PR section can ever appear for this build. When configured, run
+it EXACTLY ONCE via the SAME `subprocess.run(cmd, shell=True,
+timeout=quality.timeout_seconds)` mechanism as §3.1 — this step never
+retries, regardless of outcome (distinct from §3.1/§3.1b/§3.1c, whose
+failures/timeouts DO route through §3.3's bounded retry).
+
+Match the command's combined stdout+stderr against `quality.coverage.regex`
+FIRST when configured (exactly one capture group), else the built-in
+catalogue in this fixed order:
+
+| Tool shape | Pattern |
+|---|---|
+| pytest-cov `TOTAL` line | `TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%` |
+| jest/istanbul `text-summary` `Lines` line | `Lines\s*:\s*(\d+(?:\.\d+)?)%` |
+| `go test -cover` | `coverage:\s*(\d+(?:\.\d+)?)%\s+of statements` |
+
+```bash
+python3 - << 'PYEOF'
+import json, re, subprocess
+
+try:
+    with open(".smith/config.json") as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+quality = config.get("quality") if isinstance(config, dict) else None
+coverage = quality.get("coverage") if isinstance(quality, dict) else None
+command = coverage.get("command") if isinstance(coverage, dict) else None
+
+if not command:
+    raise SystemExit(0)
+
+timeout_seconds = (quality or {}).get("timeout_seconds", 120)
+override = (coverage or {}).get("regex")
+minimum_percent = (coverage or {}).get("minimum_percent")
+
+CATALOGUE = [
+    r"TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%",
+    r"Lines\s*:\s*(\d+(?:\.\d+)?)%",
+    r"coverage:\s*(\d+(?:\.\d+)?)%\s+of statements",
+]
+patterns = ([override] if override else []) + CATALOGUE
+
+lines = []
+try:
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True,
+        timeout=timeout_seconds,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+
+    percent = None
+    for pat in patterns:
+        m = re.search(pat, output)
+        if m:
+            percent = float(m.group(1))
+            break
+
+    if percent is None:
+        lines.append(f"- Coverage: output unparsed, could not verify against configured minimum (command: `{command}`)")
+    elif minimum_percent is not None and percent < float(minimum_percent):
+        lines.append(f"- **[High]** Coverage {percent:g}% < configured minimum {float(minimum_percent):g}% (command: `{command}`)")
+    # percent extracted, no minimum configured, or percent >= minimum: no finding.
+except subprocess.TimeoutExpired:
+    lines.append(f"- Coverage: command timed out after {timeout_seconds}s, output unparsed (command: `{command}`)")
+
+with open("/tmp/smith-build-coverage-findings.txt", "w") as f:
+    for line in lines:
+        f.write(line + "\n")
+PYEOF
+```
+
+- Percent extracted AND `quality.coverage.minimum_percent` configured AND
+  percent < minimum → exactly one High finding (`<percent>% < <minimum>%`,
+  command excerpt, no `path:line` — coverage-run-scoped, not file-scoped)
+  written to `/tmp/smith-build-coverage-findings.txt` (FR-11).
+- Percent extracted but no minimum configured → informational report only
+  (FR-12), zero findings produced.
+- No regex (override or catalogue) matches → "coverage output unparsed"
+  disclosure, NEVER a failure, never blocks or retries, never silently
+  omitted from disclosure (FR-13).
+- A command timeout is treated IDENTICALLY to unparsed output — disclosed,
+  never a build failure (FR-14) — distinct from §3.1/§3.1b/§3.1c, whose
+  timeouts DO route through §3.3's retry; §3.4 never retries, ever.
+
+Non-empty findings file → PR body gains a "Quality Metrics" section
+(§5.4); empty → section omitted entirely (FR-19).
 
 ## Phase 3.5: Clean Code Review Pass
 
@@ -779,6 +978,131 @@ This is a FLAG, never a blocker. Always proceed with PR creation. If
 `git diff "$BASE_BRANCH"` returns no files (clean tree, target branch ahead), the
 section is a no-op. Per data-model.md §9.3.
 
+### 5.3.2 Pre-PR Function-Length Scan
+
+Scan the diff for functions/methods whose body exceeds
+`quality.function_length.soft` (default 50) or `.decompose` (default 100)
+lines (spec FR-15..FR-18). Reuses `/tmp/smith-build-changed.txt` (from
+§5.3), the same extension filter (`.py`/`.js`/`.jsx`/`.ts`/`.tsx`) and
+exclude list (`vendor/`, `node_modules/`, `.venv/`, `dist/`, `build/`,
+`.smith/`) §5.3/§5.3.1 already use, and the same installed-path-preferred
+(`.smith/scripts/` → `~/.smith/scripts/` → repo-dev-fallback
+`scripts/parsers/`) parser resolution §5.3.1 already uses.
+
+**Import mechanics.** `scripts/parsers/meta_describe.py` has no CLI
+entrypoint, so it cannot be invoked as a subprocess — it MUST be imported.
+Resolve its containing directory the same installed-path-preferred way,
+then `sys.path.insert(0, dir); import meta_describe as md` — the EXACT
+pattern `scripts/parsers/describe_write.py:31,34` and
+`scripts/parsers/describe_discover.py:65,68` already use in production.
+Call `md.qualifying_methods(parsed, threshold=quality.function_length.soft)`
+UNCHANGED, returning `{id, name, scope, line, end_line, body_lines, params,
+return_type}` per entry — the exact shape needed, no parser change required
+(OOS-2).
+
+```bash
+> /tmp/smith-build-function-length-findings.txt
+
+for cand in .smith/scripts/meta_describe.py "$HOME/.smith/scripts/meta_describe.py" scripts/parsers/meta_describe.py; do
+  [ -f "$cand" ] && META_DESCRIBE_DIR="$(dirname "$cand")" && break
+done
+
+while IFS= read -r f; do
+  case "$f" in
+    *.py|*.js|*.jsx|*.ts|*.tsx) ;;
+    *) continue ;;
+  esac
+  [ -f "$f" ] || continue
+
+  case "$f" in
+    vendor/*|*/vendor/*|node_modules/*|*/node_modules/*|.venv/*|*/.venv/*|dist/*|*/dist/*|build/*|*/build/*|.smith/*|*/.smith/*) continue ;;
+  esac
+
+  PARSER=""
+  case "$f" in
+    *.py)
+      for cand in .smith/scripts/parse-python.py "$HOME/.smith/scripts/parse-python.py" scripts/parsers/parse-python.py; do
+        [ -f "$cand" ] && PARSER="python3 $cand" && break
+      done ;;
+    *)
+      for cand in .smith/scripts/parse-js.js "$HOME/.smith/scripts/parse-js.js" scripts/parsers/parse-js.js; do
+        [ -f "$cand" ] && PARSER="node $cand" && break
+      done ;;
+  esac
+  [ -z "${PARSER:-}" ] && continue
+
+  CUR_JSON=$($PARSER "$f" 2>/dev/null || true)
+  [ -z "$CUR_JSON" ] && continue
+  [ -z "${META_DESCRIBE_DIR:-}" ] && continue
+
+  python3 - "$f" "$CUR_JSON" "$META_DESCRIBE_DIR" >> /tmp/smith-build-function-length-findings.txt <<'PY' || true
+import json, sys
+
+rel, cur_json, md_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+sys.path.insert(0, md_dir)
+import meta_describe as md
+
+try:
+    with open(".smith/config.json") as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+quality = config.get("quality") if isinstance(config, dict) else None
+fl = quality.get("function_length") if isinstance(quality, dict) else None
+soft = int((fl or {}).get("soft", 50))
+decompose = int((fl or {}).get("decompose", 100))
+
+parsed = json.loads(cur_json)
+entries = md.qualifying_methods(parsed, threshold=soft)
+
+soft_count = 0
+for e in entries:
+    body = e["body_lines"]
+    if body >= decompose:
+        print(f"- `{rel}:{e['line']}` — `{e['name']}` ({body} lines, exceeds {decompose} — decompose)")
+    else:
+        soft_count += 1
+
+if soft_count:
+    print(f"__SOFT_COUNT__:{soft_count}")
+PY
+done < /tmp/smith-build-changed.txt
+
+# Fold every file's soft-tier count into exactly one trailing line.
+python3 - /tmp/smith-build-function-length-findings.txt << 'PY'
+import sys
+
+path = sys.argv[1]
+with open(path) as f:
+    lines = f.readlines()
+
+total_soft = 0
+kept = []
+for line in lines:
+    if line.startswith("__SOFT_COUNT__:"):
+        total_soft += int(line.strip().split(":", 1)[1])
+    else:
+        kept.append(line)
+
+if total_soft:
+    kept.append(f"+ {total_soft} soft-tier warnings\n")
+
+with open(path, "w") as f:
+    f.writelines(kept)
+PY
+```
+
+Bucket each returned entry by `body_lines`: `>= quality.function_length.decompose`
+(100) → decompose-tier, listed INDIVIDUALLY (`path:line`, name, body-line
+count) in `/tmp/smith-build-function-length-findings.txt`; `>= soft` (50)
+and `< decompose` → soft-tier, folded into exactly ONE trailing `+ N
+soft-tier warnings` line, omitted when N=0, never listed individually
+(FR-17, mirrors this pipeline's existing low-severity-folding convention).
+
+Non-empty findings file → PR body gains a "Function Length Warnings"
+section (§5.4); empty → section omitted entirely (FR-18).
+
 Include a **"Clean Code Review"** section in the PR body when
 `/tmp/smith-build-clean-code-findings.txt` (written by Phase 3.5) is
 non-empty:
@@ -883,6 +1207,23 @@ lockfile; node_modules absent).
 
 This is a FLAG, never a blocker — no finding from either sub-layer, at any severity,
 blocks or delays this PR (FR-19/FR-20).
+
+## Function Length Warnings
+<include this section only when /tmp/smith-build-function-length-findings.txt is non-empty>
+
+<contents verbatim, e.g.:>
+- `services/billing/webhook.py:88` — `process_refund_batch` (118 lines, exceeds 100 — decompose)
++ 3 soft-tier warnings
+
+This is a FLAG, never a blocker. Always proceed with PR creation.
+
+## Quality Metrics
+<include this section only when /tmp/smith-build-coverage-findings.txt is non-empty>
+
+<contents verbatim, e.g.:>
+- **[High]** Coverage 62% < configured minimum 80% (command: `pytest --cov=app --cov-report=term`)
+
+This is a FLAG, never a blocker. Always proceed with PR creation.
 
 ## Release notes
 See specs/<feature>/release.md
