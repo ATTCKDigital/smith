@@ -9,6 +9,20 @@
     "production_domains": [],
     "warn_only_mode": false
   },
+  "security_review": {
+    "enforcement_tier": "flag",
+    "review_model": "opus",
+    "layers": {
+      "secret_scan": true,
+      "sast": true,
+      "llm_review": true
+    },
+    "excludes": [],
+    "allowlist_globs": [
+      "package-lock.json",
+      "yarn.lock"
+    ]
+  },
   "context_budget": {
     "_comment": "context-budget-guard.sh warns (never blocks) when an edited file exceeds max_file_kb. @-referenced files (loaded in full every session) are flagged extra-loudly. Set max_file_kb to 0 to disable.",
     "max_file_kb": 50

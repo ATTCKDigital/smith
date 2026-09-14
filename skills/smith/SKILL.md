@@ -297,6 +297,39 @@ if not isinstance(bv, dict) or "urls" not in bv:
 PYEOF
 ```
 
+Seed the `security_review` key in `.smith/config.json` (this feature's `data-model.md` §1 schema; see `docs/security-model.md`'s "Security Review Pass" section) so an already-existing `.smith/config.json` also receives it. A brand-new `.smith/config.json` already gets this key for free from `hooks/session-start-logger.sh`'s whole-file copy of `templates/config.default.json`, which now includes `security_review` — but that whole-file-copy-if-absent logic never touches a file that already exists, which is the case on every project that has run even one Claude Code session before this feature shipped. Same non-destructive merge idiom as `/smith-update`'s §5.1c sibling (`skills/smith-update/SKILL.md`): a bash-level existence gate plus a python-level `isinstance(config, dict)` check, so an absent or malformed file is left alone rather than (re)created with only this key. Merge the key only when `security_review` isn't already present at all, preserving every other existing key untouched. If `.smith/config.json` does not exist at all, leave it absent — the template copy described above already handles a fresh project. bash+zsh-safe read-modify-write via `python3`:
+
+```bash
+if [ -f "$PWD/.smith/config.json" ]; then
+    python3 - "$PWD/.smith/config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict) and "security_review" not in config:
+    config["security_review"] = {
+        "enforcement_tier": "flag",
+        "review_model": "opus",
+        "layers": {
+            "secret_scan": True,
+            "sast": True,
+            "llm_review": True
+        },
+        "excludes": [],
+        "allowlist_globs": ["package-lock.json", "yarn.lock"]
+    }
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+fi
+```
+
 Copy from `~/.claude/skills/smith/`:
 - `templates/*` → `.specify/templates/`
 - `scripts/*` → `.specify/scripts/bash/`

@@ -320,6 +320,27 @@ If the fix is relevant to project status tracking, update `STATUS.md`.
 ## Phase 7: Commit, Push & Merge
 
 ### 7.1 Commit
+
+Before staging anything, run the built-in secret scan (feature 55's Layer 1 only —
+the full three-layer pass, additional static-analysis tooling, and the LLM security
+review remain `smith-build`-only; this workflow stays lightweight):
+```bash
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+for cand in "$HOME/.smith/scripts/security/secret-scan.sh" scripts/security/secret-scan.sh; do
+  [ -f "$cand" ] && SECRET_SCAN="$cand" && break
+done
+bash "$SECRET_SCAN" --diff-base "$BASE_BRANCH"
+```
+On a Critical finding: STOP — do NOT run `git add`/`git commit`/`git push`. Log the
+outcome to the vault session log (this file's own `### [HH:MM:SS] /smith-bugfix
+<event>` format), `**Outcome:**` naming the finding (severity, `path:line`, category
+— excerpt REDACTED per feature 55's `data-model.md` §2, no internal-only exception),
+and report at completion — never a synchronous prompt, mirroring this workflow's
+existing non-interactive STOP conventions (§5.4, Key Rules). The worktree is left in
+place, matching the existing on-failure-preserve convention (Workflow Cleanup's
+removal step is never reached). On a clean scan, or only non-Critical findings
+(which proceed like any other flag): commit/push below are otherwise unchanged.
+
 ```bash
 git add <all modified files — list explicitly, never git add -A>
 git commit -m "fix: <description>"

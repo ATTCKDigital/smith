@@ -325,6 +325,104 @@ findings are never listed individually — if any remain unfixed, append
 exactly one trailing `+ N low-severity notes` line instead (omitted when
 N=0). An auto-fixed finding contributes nothing to this file.
 
+## Phase 3.6: Security Review Pass
+
+Runs exactly once per build, strictly after Phase 3.5 completes (an ordering
+precondition only, independent of its outcome) and strictly before Phase 4 begins
+(FR-2). Never re-entered.
+
+**Invocation.**
+```bash
+BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
+```
+Diff against `$BASE_BRANCH` only.
+
+**Step 1 — presence-detect.** Resolve `detect-scanners.sh` (installed-path-preferred,
+repo-dev fallback — the convention `scripts/install.sh` stages this script family
+under) and run it once, before any layer:
+```bash
+for cand in "$HOME/.smith/scripts/security/detect-scanners.sh" scripts/security/detect-scanners.sh; do
+  [ -f "$cand" ] && DETECT_SCANNERS="$cand" && break
+done
+SCANNERS=$(bash "$DETECT_SCANNERS")   # gitleaks/semgrep/bandit=present|absent, one line each
+```
+Write `/tmp/smith-build-security-layers-ran.txt` (this feature's `data-model.md` §4)
+unconditionally, derived from `$SCANNERS`: `layer1_builtin=ran`,
+`layer1_gitleaks=ran|skipped_absent`, `layer2_sast=ran:<tool-name>|skipped_absent`,
+`layer3_llm=ran`.
+
+**Step 2 — Layer 1, unconditional (FR-8).** Resolve `secret-scan.sh` the same way and
+invoke it, adding `--with-gitleaks` only if `gitleaks=present`:
+```bash
+for cand in "$HOME/.smith/scripts/security/secret-scan.sh" scripts/security/secret-scan.sh; do
+  [ -f "$cand" ] && SECRET_SCAN="$cand" && break
+done
+echo "$SCANNERS" | grep -q '^gitleaks=present$' && GL="--with-gitleaks" || GL=""
+bash "$SECRET_SCAN" --diff-base "$BASE_BRANCH" $GL
+```
+Exit `0` clean, `1` findings on stdout (parse, not a failure), `2` internal error
+(log, treat this layer as skipped — not fatal). This is the only guaranteed-coverage
+deterministic layer; must work correctly with zero external scanners installed
+(FR-8).
+
+**Step 3 — Layer 2, conditional.** If Step 1 reported `semgrep=present` and/or
+`bandit=present`, run each against the same `git diff "$BASE_BRANCH" --name-only`
+file list, normalized into this feature's `data-model.md` §2 five-field format
+(`pattern-id` = `semgrep:<rule-id>` / `bandit:<check-id>`). Silently skip entirely if
+neither is present (FR-9) — no error, no install attempt; neither tool is ever added
+as an installed dependency of Smith or the project.
+
+**Step 4 — Layer 3, unconditional.** Launch exactly ONE subagent (Task tool) to
+review the full `git diff "$BASE_BRANCH"` against this rubric, stated verbatim:
+injection (SQL/command/template), authentication/authorization flaws,
+secrets/credential handling, unsafe deserialization or `eval`-family use, path
+traversal, SSRF and unvalidated redirects, cryptographic misuse, sensitive-data
+logging or exposure, dependency-adjacent code smells (not CVE/SCA scanning), and race
+conditions/TOCTOU in security-relevant paths. Do NOT invoke Smith's built-in
+`/security-review` capability — this rubric is the sole methodology. Pin `model:
+opus`; read `.smith/config.json`'s `security_review.review_model`
+(haiku|sonnet|opus|fable) to override, using the same file-exists-and-parses validity
+gate as every other config read in this pipeline — missing/malformed config or key
+defaults to `opus`.
+
+**Findings contract.** Every finding carries exactly one Severity
+(Critical/High/Medium/Low), `path:line` Location, Category, a 1-2 sentence Rationale,
+and the originating Layer (1/2/3) — this feature's `data-model.md` §3.
+
+**No auto-fix, ever (FR-13).** This phase makes ZERO Write/Edit calls to the working
+tree, for any finding, any layer, any configuration — unlike Phase 3.5, there is no
+eligibility test, because none exists.
+
+**Step 5 — merge + decide.** Merge all layers' findings; evaluate this feature's
+`data-model.md` §5 tier × severity × layer decision table against
+`.smith/config.json`'s `security_review.enforcement_tier` (default `flag` if
+absent/malformed, same defensive read as `review_model` above). One row applies in
+every build regardless of tier: **any Critical Layer 1 (secret) finding ALWAYS
+terminates** — non-bypassable, independent of `enforcement_tier`. The per-line
+`# smith-secret-scan: allow` marker (applied before the scan runs) is the sole
+false-positive remedy — no runtime-confirmation escape hatch, unlike the
+browser-production confirm-gate (this is the system's second non-bypassable denial).
+
+**Terminate branch.** Other layers may still finish evaluating so the eventual record
+lists everything found, but nothing from this run reaches the flag-only scratch file
+— the outcome is terminated, not a partial flag+terminate mix (NFR-6). Phase 4 never
+begins, so Phase 5.1 (Commit)/5.2 (Push) never execute. Write a hard-stop marker to
+the vault session log using this file's own `### [HH:MM:SS] /smith-build <event>`
+format, `**Outcome:**` naming the terminating finding(s) (severity, `path:line`,
+category, layer — excerpt REDACTED per this feature's `data-model.md` §2, no
+internal-only exception), plus an explicit `**Hard-stop:** Security Review Pass
+(Phase 3.6) terminated this build before Phase 4.` line. Surface the stop via Phase
+7.5's Display Summary mechanism ("build terminated at Phase 3.6" instead of a PR
+link). Preserve the worktree exactly like Phase 7.3's "on failure" convention; leave
+the active-workflow marker uncleared. NEVER a prompt — this is a log entry, not a
+pause (NFR-1).
+
+**Flag branch.** If nothing resolves to "terminate," write every non-terminating
+finding to `/tmp/smith-build-security-findings.txt` per this feature's
+`data-model.md` §4 line format (Medium/High/Critical listed individually, Low folded
+into one trailing `+ N low-severity notes` line, omitted when N=0) and proceed to
+Phase 4 exactly like Phase 3.5 does today.
+
 ## Phase 4: Spec Updates (Subagent)
 
 Launch a subagent to update related system spec files.
@@ -602,6 +700,15 @@ If empty, omit the section entirely — matching the same include-if-non-empty
 pattern as the two scans above. This is a FLAG, never a blocker. Always
 proceed with PR creation.
 
+Include a **"Security Review"** section in the PR body when
+`/tmp/smith-build-security-findings.txt` (written by Phase 3.6, which already ran
+pre-commit — before Phase 4 or Phase 5 began) is non-empty:
+```bash
+[ -s /tmp/smith-build-security-findings.txt ] && echo "include section" || echo "omit section"
+```
+If empty, omit the section entirely — same include-if-non-empty pattern as the
+scans above. This is a FLAG, never a blocker. Always proceed with PR creation.
+
 ### 5.4 Create PR & Merge
 ```bash
 BASE_BRANCH=$(.specify/scripts/bash/get-base-branch.sh)
@@ -647,6 +754,26 @@ descriptions for touched methods in-context.
 + 2 low-severity notes
 
 This is a FLAG, never a blocker. Always proceed with PR creation.
+
+## Security Review
+<include this section only when /tmp/smith-build-security-findings.txt is non-empty>
+
+<layer-disclosure line derived from /tmp/smith-build-security-layers-ran.txt — MUST
+name every layer ran vs skipped-absent, never imply full coverage when a tool was
+absent, e.g.:>
+Layers: built-in secret scan ✓, gitleaks (absent), semgrep (absent), bandit (absent),
+LLM review ✓.
+
+<contents of /tmp/smith-build-security-findings.txt verbatim, e.g.:>
+- **[High]** `services/billing/webhook.py:142` — Matches AWS access-key-id pattern
+  `aws-akia` (excerpt: AKIA********Z9Q1) (category: Secrets/credential handling,
+  layer: 1)
+- **[Medium]** `services/api/db.py:12` — Query built via string concatenation from a
+  request parameter (category: Injection (SQL), layer: 2)
++ 3 low-severity notes
+
+This is a FLAG, never a blocker for a non-terminating finding. Always proceed with PR
+creation.
 
 ## Release notes
 See specs/<feature>/release.md
@@ -841,7 +968,9 @@ If `/smith-build` is run manually (not from `/smith-new`):
 
 ## Key Rules
 
-- ALL phases run without user interaction
+- ALL phases run without user interaction — a Phase 3.6 security hard-stop is itself
+  prompt-free (a logged, autonomous termination decision), never a subagent failure,
+  and must not be swept into the "retry once" bullet below
 - Use subagents for each major phase to manage context
 - If a subagent fails, retry once before logging the error and continuing
 - Always rebuild Docker after code changes — never skip this

@@ -217,6 +217,19 @@ if [ "$NO_PARSERS" != "1" ]; then
     ok "Parsers installed"
 fi
 
+# ---------- copy security scripts ----------
+# Feature 55-security-review-pass: secret-scan.sh/secret_scan.py/
+# detect-scanners.sh are not parsers, so this stanza is unconditional
+# (not gated by --no-parsers) — mirrors the smith-index/
+# create-active-workflow.sh staging precedent just above.
+info "Copying security scripts"
+mkdir -p "$SMITH_HOME/scripts/security"
+cp "$REPO_ROOT/scripts/security/secret-scan.sh" "$SMITH_HOME/scripts/security/secret-scan.sh" 2>/dev/null || true
+cp "$REPO_ROOT/scripts/security/secret_scan.py" "$SMITH_HOME/scripts/security/secret_scan.py" 2>/dev/null || true
+cp "$REPO_ROOT/scripts/security/detect-scanners.sh" "$SMITH_HOME/scripts/security/detect-scanners.sh" 2>/dev/null || true
+chmod +x "$SMITH_HOME/scripts/security/"*.sh 2>/dev/null || true
+ok "Security scripts installed"
+
 # ---------- copy scheduler ----------
 info "Copying scheduler"
 cp "$REPO_ROOT/scheduler/smith-scheduler.sh" "$SMITH_HOME/scheduler/smith-scheduler.sh"
