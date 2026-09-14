@@ -116,6 +116,35 @@ The `security_review` key lives in `.smith/config.json` only — see `data-model
 
 ---
 
+## Supply-Chain & License Review
+
+The Code-Content Security Review Pass above inspects diff content for hard-coded secrets, SAST findings, and LLM-reviewed vulnerability classes. The Supply-Chain & License Review Pass is different again: it runs inside `smith-build` as `## Phase 3.7: Supply-Chain Review Pass`, strictly after the Code-Content Security Review Pass and before Phase 4, and inspects the full project's dependency manifests -- not the branch diff -- exactly once per build.
+
+### Two sub-layers
+
+1. **Sub-layer D -- dependency CVE scan.** `scripts/security/dependency-scan.py` (wrapped by `dependency-scan.sh`) discovers every `package.json`/`pyproject.toml`/`requirements.txt`/`go.mod`/`Cargo.toml` manifest in the repository, prefers a single whole-repo pass from `osv-scanner` or `trivy` when either is present, and otherwise falls back per manifest to `npm audit` (npm, lockfile-gated) or `pip-audit` (poetry/pip). `grype`'s presence is detected and disclosed but never invoked by this v1.
+2. **Sub-layer L -- dependency-free license inventory.** `scripts/security/license-inventory.py` (wrapped by `license-inventory.sh`) walks `node_modules/` for npm packages and each poetry manifest's environment (via `poetry run python3` + `importlib.metadata`, never system Python) for Python packages, merges the results into a repo-wide license inventory, and flags any package whose license matches a configured `supply_chain.license_policy.deny` entry.
+
+Both sub-layers read manifests through the same shared discovery module (`_manifest_discovery.py`), so they never disagree about what counts as a manifest.
+
+### No redaction -- by design
+
+Unlike the Code-Content Security Review Pass, findings here carry no secret-shaped content -- a CVE advisory ID and a license identifier are not sensitive values -- so there is no masking/excerpt-redaction step anywhere in this pass. Worth stating explicitly so a reader does not wonder why this section has no redaction guarantee to point to.
+
+### Flag-only -- no terminate path, ever
+
+This pass has no decision table and no terminate branch of any kind, unlike the Code-Content Security Review Pass above: no severity from either sub-layer -- not even a Critical CVE with a known exploit, not even a deny-listed license on a production package -- can block, delay, or terminate the workflow. Smith's two non-bypassable denials remain exactly the ones documented above (the browser-production confirm-gate, and a Layer 1 Critical secret finding in the Code-Content Security Review Pass); this pass introduces no third one, and no `supply_chain` config field can ever create one -- there is no `enforcement_tier`-shaped key in its schema.
+
+### Honest disclosure
+
+Whenever a build's PR body includes a "Supply-Chain Review" section, it states plainly that the scan is full-project, not diff-scoped (findings may predate the change), and discloses per-manifest which scan path actually ran versus was skipped and why (`absent`, `enolock`, `enolock_wrong_format`, `no_node_modules`, `no_venv`, `timeout`, `offline`, `disabled`) -- it never implies full scanner coverage when a tool or manifest was actually skipped.
+
+### Config home
+
+The `supply_chain` key lives in `.smith/config.json`, a sibling of `security_review`, never nested under it -- see `data-model.md` §1 in the `56-supply-chain-gate` feature spec for the exact schema. `/smith` init and `/smith-update` both seed `supply_chain` non-destructively, including into an already-existing `.smith/config.json`.
+
+---
+
 ## Scheduler Security
 
 The scheduler (`~/.smith/scheduler/smith-scheduler.sh`) enables autonomous overnight processing of queued tasks. Because it runs without user interaction, it has additional constraints:
@@ -130,7 +159,7 @@ The scheduler (`~/.smith/scheduler/smith-scheduler.sh`) enables autonomous overn
 
 ## What to Audit Before Enabling
 
-Before enabling the scheduler or relying on the security guards, review these seven files:
+Before enabling the scheduler or relying on the security guards, review these nine files:
 
 1. **`~/.claude/hooks/security-guard-bash.sh`** -- Review the blocklist patterns. Confirm they cover the commands you consider dangerous in your environment. Add any project-specific patterns.
 
@@ -144,7 +173,11 @@ Before enabling the scheduler or relying on the security guards, review these se
 
 6. **`~/.smith/scripts/security/secret_scan.py`** -- Review the pattern catalogue and the entropy threshold for the generic high-entropy heuristic. Confirm the redaction behavior (masked excerpts only, never a secret's real value) matches your team's expectations for what may appear in a PR body or the vault session log.
 
-7. **`~/.smith/scripts/security/detect-scanners.sh`** -- Review the presence-detection list (`gitleaks`, `semgrep`, `bandit`) and confirm it matches which scanners you actually expect Layer 2 to pick up on your machine or CI runner -- remember that a Layer 1 Critical secret finding terminates the build regardless of what this script detects; see [Code-Content Security Review](#code-content-security-review) above.
+7. **`~/.smith/scripts/security/detect-scanners.sh`** -- Review the presence-detection list (`gitleaks`, `semgrep`, `bandit`, `osv-scanner`, `grype`, `trivy`, `pip-audit`, `licensee`, `syft`) and confirm it matches which scanners you actually expect Layer 2 / the Supply-Chain Review Pass to pick up on your machine or CI runner -- remember that a Layer 1 Critical secret finding terminates the build regardless of what this script detects, and that no Supply-Chain Review finding ever can; see [Code-Content Security Review](#code-content-security-review) and [Supply-Chain & License Review](#supply-chain--license-review) above.
+
+8. **`~/.smith/scripts/security/dependency-scan.py`** -- Review the scanner-hierarchy selection (`osv-scanner`/`trivy` preferred whole-repo, else per-manifest `npm audit`/`pip-audit` fallback) and the timeout handling (`supply_chain.timeout_seconds`, default 60s) for every scanner invocation that reaches out to a vulnerability database.
+
+9. **`~/.smith/scripts/security/license-inventory.py`** -- Review the npm (`node_modules`) and Python (`importlib.metadata` via `poetry run python3`) license-resolution fallback chains and the `supply_chain.license_policy.deny` evaluation, to confirm they match which licenses you actually want flagged.
 
 ---
 

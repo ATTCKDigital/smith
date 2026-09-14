@@ -423,6 +423,95 @@ finding to `/tmp/smith-build-security-findings.txt` per this feature's
 into one trailing `+ N low-severity notes` line, omitted when N=0) and proceed to
 Phase 4 exactly like Phase 3.5 does today.
 
+## Phase 3.7: Supply-Chain Review Pass
+
+Runs exactly once per build, sequenced strictly after Phase 3.6 completes — an
+ordering precondition only, independent of Phase 3.6's own outcome on runs
+where 3.6 does not itself hard-stop (FR-2, this feature's `data-model.md`
+§1-§7 is `56-supply-chain-gate`'s own local numbering). If Phase 3.6 DID
+hard-stop and terminate the build, Phase 3.7 is never reached at all — the
+pipeline never resumes past a Phase 3.6 termination; this is a consequence of
+Phase 3.6's own existing contract, not something Phase 3.7 itself gates.
+Never re-entered.
+
+**Invocation — the divergence, stated up front.** Thread `WORKTREE_PATH` to
+locate the repository root. Do **NOT** resolve or thread the base-branch diff
+variable every phase before it in this file resolves via
+`.specify/scripts/bash/get-base-branch.sh` (phases 3, 3.5, 3.6, 4, §5.3,
+§5.3.1) — this phase performs a full-project scan, never a diff scan
+(FR-3/A-3): every manifest in the repository is evaluated regardless of
+whether this branch touched it.
+
+**Step 1 — run Sub-layer D.** Resolve `dependency-scan.sh` the SAME
+installed-path-preferred/repo-dev-fallback way Phase 3.6 resolves its own
+scripts, and invoke it:
+```bash
+for cand in "$HOME/.smith/scripts/security/dependency-scan.sh" scripts/security/dependency-scan.sh; do
+  [ -f "$cand" ] && DEPENDENCY_SCAN="$cand" && break
+done
+D_OUT=$(bash "$DEPENDENCY_SCAN" --repo-root "$WORKTREE_PATH")
+```
+Unlike Phase 3.6, this step does **not** separately invoke `detect-scanners.sh`
+first — `dependency-scan.py`'s own Step 1 performs its own internal
+tool-presence detection (`shutil.which()` over `osv-scanner`/`trivy`/`npm`/
+`pip-audit`/`poetry`), so there is nothing left for Phase 3.7 itself to
+orchestrate here. The extended nine-tool `detect-scanners.sh` still exists and
+is still the presence-detection mechanism `smith-audit`'s Dependencies
+sub-audit reads directly for its own disclosure output — it is simply not a
+dependency of THIS phase's own control flow.
+
+Parse `$D_OUT`'s first line as `MANIFEST_COUNT: <n>`. **If `n == 0`:** write
+only the sentinel line `0 manifests found` to
+`/tmp/smith-build-supply-chain-scan-status.txt`; leave
+`/tmp/smith-build-supply-chain-findings.txt` empty/absent; record the SAME
+`0 manifests found` text, verbatim, as this phase's vault session-log entry
+(FR-6 — reused verbatim, never a second phrasing of the same outcome); do
+**not** invoke `license-inventory.sh` at all (both scripts share the identical
+discovery module, so a second invocation would deterministically rediscover
+the same empty result); proceed straight to Step 3. **If `n > 0`:** split the
+remainder of `$D_OUT` by line shape into (a) finding-bullet lines, (b)
+`cve_scan=` status lines, (c) the trailing `LOW_COUNT: <n_d>` line — hold all
+three for the merge in Step 3.
+
+**Step 2 — run Sub-layer L (only reached when Sub-layer D's own
+`MANIFEST_COUNT` was `> 0`).** Resolve `license-inventory.sh` identically:
+```bash
+for cand in "$HOME/.smith/scripts/security/license-inventory.sh" scripts/security/license-inventory.sh; do
+  [ -f "$cand" ] && LICENSE_INVENTORY="$cand" && break
+done
+L_OUT=$(bash "$LICENSE_INVENTORY" --repo-root "$WORKTREE_PATH")
+```
+Split `$L_OUT` identically into finding lines, `license_inventory=` status
+lines, and its own trailing `LOW_COUNT: <n_l>` line.
+
+**Step 3 — merge + write (the ONLY place either sub-layer's output reaches
+disk; never a decision, never a terminate check here).** Concatenate: Sub-layer
+D's finding lines, then Sub-layer L's finding lines, then — only when
+`n_d + n_l > 0` — exactly one trailing `+ <n_d + n_l> low-severity notes` line
+(the two scripts' own `LOW_COUNT` values summed into a single merged line) →
+write to `/tmp/smith-build-supply-chain-findings.txt`. Concatenate Sub-layer
+D's status lines then Sub-layer L's status lines (per-manifest, so a given
+`manifest_path` naturally gets both a `cve_scan=` and a `license_inventory=`
+line, matching this feature's `data-model.md` §5 worked example) → write to
+`/tmp/smith-build-supply-chain-scan-status.txt`.
+
+**No auto-fix, ever (FR-19).** Zero `Write`/`Edit` calls to the working tree
+for any finding, from either sub-layer, under any configuration — identical
+invariant to Phase 3.6, for a categorically different reason: a dependency
+bump or a license swap is an even larger judgment call than a security
+remediation.
+
+**Unlike Phase 3.6: no decision table, no terminate branch, ever (FR-20/OOS-3,
+this feature's `data-model.md` §7).** This is a deliberate v1 boundary, not an
+oversight — Phase 3.6 sits directly upstream and a reader who just
+internalized ITS terminate semantics could otherwise wrongly assume Phase 3.7
+inherits them. Phase 4 **always** begins next, unconditionally, regardless of
+what either sub-layer found — even a Critical CVE with a known exploit, even a
+deny-listed license on a production package.
+
+**NEVER a prompt or pause of any kind (NFR-1)** — every branch above,
+including the zero-manifest path, is silent and autonomous.
+
 ## Phase 4: Spec Updates (Subagent)
 
 Launch a subagent to update related system spec files.
@@ -774,6 +863,26 @@ LLM review ✓.
 
 This is a FLAG, never a blocker for a non-terminating finding. Always proceed with PR
 creation.
+
+## Supply-Chain Review
+<include this section only when /tmp/smith-build-supply-chain-findings.txt is non-empty>
+
+**full-project scan, not diff-scoped; findings may predate this change**
+
+<per-manifest scan-path disclosure derived from /tmp/smith-build-supply-chain-scan-status.txt, e.g.:>
+Scanned: `frontend/package.json` (npm-audit, license inventory), `backend/pyproject.toml`
+(license inventory only — CVE scan absent). Skipped: `menu-generator/package.json` (no
+lockfile; node_modules absent).
+
+<contents of /tmp/smith-build-supply-chain-findings.txt verbatim, e.g.:>
+- **[High]** `lodash@4.17.15` (`frontend/package.json`) — Prototype pollution in
+  zipObjectDeep (category: GHSA-p6mc-m468-83gw, sub-layer: D)
+- **[High]** `some-gpl-package@2.1.0` (`backend/pyproject.toml`) — License 'GPL-3.0'
+  matches a configured deny-list entry (category: license-policy, sub-layer: L)
++ 4 low-severity notes
+
+This is a FLAG, never a blocker — no finding from either sub-layer, at any severity,
+blocks or delays this PR (FR-19/FR-20).
 
 ## Release notes
 See specs/<feature>/release.md

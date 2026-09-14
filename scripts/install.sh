@@ -227,6 +227,15 @@ mkdir -p "$SMITH_HOME/scripts/security"
 cp "$REPO_ROOT/scripts/security/secret-scan.sh" "$SMITH_HOME/scripts/security/secret-scan.sh" 2>/dev/null || true
 cp "$REPO_ROOT/scripts/security/secret_scan.py" "$SMITH_HOME/scripts/security/secret_scan.py" 2>/dev/null || true
 cp "$REPO_ROOT/scripts/security/detect-scanners.sh" "$SMITH_HOME/scripts/security/detect-scanners.sh" 2>/dev/null || true
+# Feature 56-supply-chain-gate: _manifest_discovery.py/dependency-scan.{py,sh}/
+# license-inventory.{py,sh} — unconditional for the same reason as feature 55's
+# own scripts above (not parsers, so not gated by --no-parsers).
+cp "$REPO_ROOT/scripts/security/_manifest_discovery.py" "$SMITH_HOME/scripts/security/_manifest_discovery.py" 2>/dev/null || true
+cp "$REPO_ROOT/scripts/security/_scan_parsers.py" "$SMITH_HOME/scripts/security/_scan_parsers.py" 2>/dev/null || true
+cp "$REPO_ROOT/scripts/security/dependency-scan.py" "$SMITH_HOME/scripts/security/dependency-scan.py" 2>/dev/null || true
+cp "$REPO_ROOT/scripts/security/dependency-scan.sh" "$SMITH_HOME/scripts/security/dependency-scan.sh" 2>/dev/null || true
+cp "$REPO_ROOT/scripts/security/license-inventory.py" "$SMITH_HOME/scripts/security/license-inventory.py" 2>/dev/null || true
+cp "$REPO_ROOT/scripts/security/license-inventory.sh" "$SMITH_HOME/scripts/security/license-inventory.sh" 2>/dev/null || true
 chmod +x "$SMITH_HOME/scripts/security/"*.sh 2>/dev/null || true
 ok "Security scripts installed"
 
