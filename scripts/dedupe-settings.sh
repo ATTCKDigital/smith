@@ -7,7 +7,12 @@
 #
 # Duplicates arise because jq's merge in install.sh concatenated hook arrays
 # without dedup before this PR. This script applies the same dedup filter
-# now baked into install.sh, retroactively.
+# now baked into install.sh, retroactively — sharing one implementation via
+# scripts/lib/dedupehooks.jq so the two can never drift apart.
+#
+# Dedup is per (matcher, command), not per entry: the same commands regrouped
+# across fragment versions yield distinct entry keys, so entry-level dedup left
+# a command registered — and running — several times per event.
 #
 # Idempotent. Backs up the settings.json before mutating. Touches only the
 # `hooks` namespace.
@@ -32,18 +37,12 @@ fi
 BACKUP="${SETTINGS}.predupe-$(date +%Y%m%d-%H%M%S)"
 cp "$SETTINGS" "$BACKUP"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 TMP=$(mktemp)
-jq '
-  if .hooks then
-    .hooks |= (
-      to_entries
-      | map({
-          key: .key,
-          value: (.value | unique_by(.matcher + "|" + (.hooks | tostring)))
-        })
-      | from_entries
-    )
-  else . end
+jq -L "$SCRIPT_DIR/lib" '
+  include "dedupehooks";
+  if .hooks then .hooks |= dedupe_hooks else . end
 ' "$SETTINGS" > "$TMP"
 
 # Sanity: file must remain valid JSON
