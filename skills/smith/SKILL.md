@@ -875,6 +875,15 @@ You can edit the body of each spec at any time. Run `/smith-migrate-system-paths
 
 If the operator types `skip` at any per-system prompt, skip that system (do not write a spec for it) and continue the outer "another system?" loop.
 
+**Cross-reference — WordPress-shaped projects.** If the operator separately
+runs `/smith-index --init-system-paths` on a project whose root contains
+both `wp-load.php` and `wp-includes/`, that flag now auto-seeds the
+generated `system-paths.json` stub with 17 WordPress-core exclusion rules
+(see `skills/smith-index/SKILL.md`). This is unrelated to the system-spec
+scaffolding above and is not triggered by `/smith init` itself — the
+operator (or a later workflow step) must invoke `/smith-index
+--init-system-paths` explicitly for it to apply.
+
 #### 4.10 Clear Bootstrap Marker
 
 The bootstrap marker created in Phase 4.1 has done its job — Phase 4 file generation is complete. Remove it via the shipped helper:
