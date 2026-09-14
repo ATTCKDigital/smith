@@ -128,6 +128,7 @@ EOF
     assert_file_contains "fresh project: contains ledger section" "$project/.smith/config.json" '"ledger"'
     assert_file_contains "fresh project: contains security_review section" "$project/.smith/config.json" '"security_review"'
     assert_file_contains "fresh project: contains supply_chain section" "$project/.smith/config.json" '"supply_chain"'
+    assert_file_contains "fresh project: contains quality section" "$project/.smith/config.json" '"quality"'
 
     # Byte-for-byte equal to the source.
     if cmp -s "$home/.smith/templates/config.default.json" "$project/.smith/config.json"; then

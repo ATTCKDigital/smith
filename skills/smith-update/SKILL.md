@@ -381,6 +381,50 @@ PYEOF
 fi
 ```
 
+### 5.1e Seed `quality` in `.smith/config.json`
+
+Same non-destructive merge idiom as `/smith` init's scaffold step (`skills/smith/SKILL.md`), applied here to existing projects refreshed by `/smith-update`, for the `quality` config key (spec FR-21, `plan.md`'s §Contracts schema). `.smith/config.json` is Smith-owned config, not vault *data*, so it is in scope for this phase's "refresh Smith-owned files" boundary.
+
+- If `.smith/config.json` **exists** and already declares a `quality` key (in any shape), this is a no-op.
+- If it **exists** but lacks `quality` entirely, merge the key in with `plan.md`'s §Contracts full default shape (the same shape `templates/config.default.json` ships), preserving every other existing key untouched.
+- If it does **not exist at all**, leave it absent — `hooks/session-start-logger.sh`'s own whole-file seeding path is what creates it from scratch for a brand-new project (already carrying `quality`), not this step.
+
+```bash
+if [ -f "$PROJECT_DIR/.smith/config.json" ]; then
+    python3 - "$PROJECT_DIR/.smith/config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict) and "quality" not in config:
+    config["quality"] = {
+        "test": [],
+        "lint": [],
+        "typecheck": [],
+        "coverage": {
+            "command": None,
+            "minimum_percent": None,
+            "regex": None
+        },
+        "function_length": {
+            "soft": 50,
+            "decompose": 100
+        },
+        "timeout_seconds": 120,
+        "excludes": []
+    }
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+fi
+```
+
 ### 5.2 Run `/smith-index --migrate-templates`
 
 Non-destructively merge new template sections into `CLAUDE.md` and `constitution.md`. Invoke as a sub-action of this skill.

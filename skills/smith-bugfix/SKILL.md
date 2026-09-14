@@ -296,8 +296,52 @@ If any files changed belong to a Docker service:
 - **If NO**: Skip Playwright
 
 ### 5.3 Lint
+Read `.smith/config.json`'s `quality.lint` array (spec FR-6/FR-7). When
+present and non-empty, run each listed command independently via `python3
+subprocess.run(cmd, shell=True, timeout=quality.timeout_seconds)` — the
+same mechanism `smith-build`'s §3.1/§3.1b use (feature 56's Sub-layer D
+`_run_tool` mechanism, reused verbatim). No legacy fallback bullets execute
+in this case.
+
+```bash
+python3 - << 'PYEOF'
+import json, subprocess
+
+try:
+    with open(".smith/config.json") as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+quality = config.get("quality") if isinstance(config, dict) else None
+commands = quality.get("lint") if isinstance(quality, dict) else None
+timeout_seconds = (quality or {}).get("timeout_seconds", 120)
+
+if isinstance(commands, list) and commands:
+    for cmd in commands:
+        print(f"--- quality.lint: {cmd} ---")
+        try:
+            result = subprocess.run(cmd, shell=True, timeout=timeout_seconds)
+            if result.returncode != 0:
+                print(f"FAILED (exit {result.returncode}): {cmd}")
+        except subprocess.TimeoutExpired:
+            print(f"TIMEOUT after {timeout_seconds}s: {cmd}")
+else:
+    print("__LEGACY_FALLBACK__")
+PYEOF
+```
+
+When the script prints `__LEGACY_FALLBACK__` (`quality.lint` is absent,
+empty, or `.smith/config.json` itself is absent/malformed), run the CURRENT
+two bullets verbatim, unchanged, byte-for-byte — zero behavior change:
 - **If frontend**: `cd services/command-center && pnpm lint`
 - **If Python**: `cd services/<service> && poetry run ruff check .`
+
+This is the ONLY change to `smith-bugfix` from this feature (FR-6) — §5.1
+"Unit Tests", §5.2 "Playwright E2E Tests", §5.4 "Test Failure Handling",
+and the §7.3 PR-body template are all untouched (FR-8): `smith-bugfix`
+gains no coverage check, no function-length scan, and no new PR-body
+section of its own from this feature.
 
 ### 5.4 Test Failure Handling
 - If tests fail due to the fix: fix the code and re-run (up to 3 attempts)
