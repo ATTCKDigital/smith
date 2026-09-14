@@ -100,6 +100,46 @@ SMITH_SCHEDULER_ENABLED=1 SMITH_SCHEDULER_MODEL=haiku \
 
 ---
 
+## Audits Step
+
+Alongside the queue step above, the scheduler also runs a second, independent step that dispatches recurring `/smith-audit` runs. It is a fully separate pass — structurally, not interleaved with the queue step — and runs strictly AFTER the queue loop has finished for every registered project.
+
+1. **What it scans** — For each registered project, the audits step reads `.smith/config.json`'s `scheduled_audits.enabled` key. An absent config file, an absent `scheduled_audits` section, or `enabled: false` (the shipped default) skips that project silently apart from one logged skip line — no dispatch, no state-file write. When enabled, it reads `.smith/vault/.scheduled-audits-state.json`'s `last_run.date` (an absent, unreadable, or unparseable state file is treated as "never run," never as an error) and compares it against `scheduled_audits.cadence_days` (default 7) to decide whether the project is due. Cadence is calendar-day-granular — computed from `last_run.date`, never from time-of-day.
+
+2. **What it dispatches** — When a project is due, the audits step invokes:
+
+   ```bash
+   "$CLAUDE_BIN" --model "$CLAUDE_MODEL" --permission-mode bypassPermissions \
+       -p "/smith-audit --all --scheduled <subsets>"
+   ```
+
+   from the project root, where `<subsets>` is `scheduled_audits.subsets` comma-joined in configured order (the shipped default: `requirements,codequality,security,dependencies,workflow`). This reuses the SAME already-resolved `$CLAUDE_BIN`/`$CLAUDE_MODEL` the queue step resolved earlier in the run — no second binary/model resolution pass — and routes stdout/stderr into the same `scheduler.log` the queue step already writes to.
+
+3. **Ordering relative to the queue step** — The audits step never interleaves per-project with the queue step; it is a second top-level pass over the same registered-project list, so a project's queued tasks are always fully processed for that run before its scheduled audit (if due) is considered.
+
+4. **Failure handling** — A dispatch failure (non-zero exit, or a state-file read-back after dispatch that doesn't confirm a fresh `timestamp`/`report_path`/`severity_totals`) is logged with the project name and reason and does NOT stop the audits step from continuing to the next registered project — it will simply be retried on the next scheduler run, since no state-file write occurred.
+
+5. **State file** — `.smith/vault/.scheduled-audits-state.json` is written by `/smith-audit` itself, only after a scheduled run's report (and rolling-log entry) have both succeeded — the scheduler never writes this file directly. See `skills/smith-audit/SKILL.md`'s "Phase 0: Scheduled Mode & Marker Bootstrap" and "Report Generation" sections for the full `--scheduled` contract.
+
+### Dry run (audits step)
+
+`SMITH_AUDIT_DISPATCH_DRY_RUN=1` logs the planned dispatch (project name, resolved subsets, computed due/not-due) without invoking `$CLAUDE_BIN` at all. This is a variable DISTINCT from `SMITH_SCHEDULER_DRY_RUN` above — the two steps' dry-run modes toggle independently, so you can dry-run only the audits step while letting the queue step dispatch for real, or vice versa:
+
+```bash
+SMITH_SCHEDULER_ENABLED=1 SMITH_AUDIT_DISPATCH_DRY_RUN=1 \
+    bash ~/.smith/scheduler/smith-scheduler.sh
+```
+
+### Linux: not automated, run manually
+
+Same platform story as the queue step above — the audits step has no Linux daemon of its own. Run it manually, or add it to the same crontab line already documented for the queue step (`bash ~/.smith/scheduler/smith-scheduler.sh` runs both steps in one invocation, so no separate cron entry is needed):
+
+```
+0 2 * * * bash ~/.smith/scheduler/smith-scheduler.sh >> ~/.smith/scheduler/scheduler.log 2>&1
+```
+
+---
+
 ## Logs
 
 All scheduler output is written to:

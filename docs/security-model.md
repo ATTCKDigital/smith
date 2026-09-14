@@ -150,10 +150,18 @@ The `supply_chain` key lives in `.smith/config.json`, a sibling of `security_rev
 The scheduler (`~/.smith/scheduler/smith-scheduler.sh`) enables autonomous overnight processing of queued tasks. Because it runs without user interaction, it has additional constraints:
 
 - **Runs as your user** -- The scheduler is a macOS LaunchAgent, running under your account with your permissions. It does not require or use root access.
-- **Only processes autonomous tasks** -- The scheduler only picks up tasks in the vault queue that are explicitly marked with `"mode": "autonomous"`. Interactive or untagged tasks are skipped.
+- **Only processes autonomous tasks** -- The scheduler only picks up tasks in the vault queue that are explicitly marked with `complexity: autonomous`. Interactive or untagged tasks are skipped.
 - **Git worktree isolation** -- Each task runs in a fresh git worktree, not in your working directory. This prevents autonomous work from conflicting with your in-progress changes.
 - **Non-interactive Claude** -- The scheduler invokes Claude Code with the `-p` flag (non-interactive mode). Claude cannot prompt for input; if it encounters ambiguity, the task fails rather than guessing.
 - **Scoped to registered projects** -- The scheduler only processes projects listed in `~/.smith/scheduler/projects.json`. It does not scan your filesystem.
+
+### Audits step security posture
+
+The scheduler's audits step (see [Scheduler](scheduler.md)'s "Audits Step" section) is a second, narrower pass with a distinct security profile from the queue step above:
+
+- **Read-only sub-audits** -- Every sub-audit `/smith-audit` runs in `--scheduled` mode is read-only; per `smith-audit/SKILL.md`'s own "Key Rules," an audit never modifies code, only produces report files. A scheduled dispatch inherits this unchanged.
+- **`enabled: false` shipped default** -- No project gets unattended dispatch, report-writing, or marker-bootstrapping behavior until `scheduled_audits.enabled` is explicitly set to `true` in that project's `.smith/config.json`.
+- **Git-worktree-free** -- Unlike the queue step's per-task worktree isolation above, `/smith-audit` never creates or checks out a branch for a scheduled run. Its workflow-gate marker (a `maintenance`-type active-workflow marker, bootstrapped via the same helper `/smith-update` already uses) carries a synthetic `--branch` label that names no real git ref -- it exists only to satisfy the marker file's required fields, not to create or track an actual branch.
 
 ---
 

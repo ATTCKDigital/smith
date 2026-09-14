@@ -33,6 +33,96 @@ Log at these points:
 3. **After unified report generated** — path to report, total findings across all sub-audits
 4. **If action plan generated** — count of remediation items by priority
 
+## Phase 0: Scheduled Mode & Marker Bootstrap
+
+`/smith-audit` writes report files (`specs/audits/*.md`, per-system `specs/system-XX-*/audits/*.md`) but has no workflow-gate marker handling of its own — `hooks/workflow-gate.sh` denies any file-modifying tool call without an active-workflow marker present. This phase closes that gap for BOTH invocation modes: a non-interactive `--scheduled` dispatch from the scheduler, and a plain interactive `/smith-audit` run.
+
+### Parse `--scheduled` and its subset list
+
+If `$ARGUMENTS` contains `--scheduled`, this is a scheduled-mode invocation. `--scheduled` is followed immediately by a bare comma-separated subset list, no further flag — e.g.:
+
+```
+/smith-audit --all --scheduled requirements,codequality,security,dependencies,workflow
+```
+
+```bash
+SCHEDULED_MODE=""
+SCHEDULED_SUBSETS=""
+case "$ARGUMENTS" in
+    *--scheduled*)
+        SCHEDULED_MODE=1
+        SCHEDULED_SUBSETS=$(echo "$ARGUMENTS" | sed -n 's/.*--scheduled[[:space:]]*\([^ ]*\).*/\1/p')
+        ;;
+esac
+```
+
+Extract the comma-separated list and validate each token against the 11 named sub-audit categories already enumerated in "Sub-Audit Orchestration" below. Reuses the same unquoted-`tr`-split idiom `scheduler/smith-scheduler.sh` already uses for its own comma-separated `depends_on` field, not a new parsing convention:
+
+```bash
+VALID_SUBSETS="requirements codequality performance security accessibility ux dependencies infrastructure workflow seo feature"
+REFUSE_REASON=""
+for tok in $(echo "$SCHEDULED_SUBSETS" | tr ',' '\n' | tr -d ' '); do
+    [ -z "$tok" ] && continue
+    case " $VALID_SUBSETS " in
+        *" $tok "*) ;;
+        *) REFUSE_REASON="unrecognized subset: $tok" ;;
+    esac
+    if [ "$tok" = "feature" ]; then
+        REFUSE_REASON="feature sub-audit is not permitted in --scheduled mode (requires interactive interview)"
+    fi
+done
+```
+
+### Refusal checks — BEFORE any marker creation or sub-audit dispatch
+
+Three refusal conditions, checked in this order, all before the marker bootstrap below runs:
+
+1. **Unrecognized token.** Any subset token not in the 11-category vocabulary above is a refused invocation. FR-9.
+2. **`feature` anywhere in the list.** `feature` is NEVER permitted in `--scheduled` mode, regardless of configuration — it has a user interview phase with no non-interactive substitute. This is unconditional; no `scheduled_audits` config field can permit it. FR-10, US-4.
+3. **Missing `--all` / system identifier.** A `--scheduled` invocation whose `$ARGUMENTS`, once `--scheduled` and its subset list are set aside, resolves to neither `--all` nor a system identifier (see "System Selection" below) is refused rather than falling through to the empty-args interactive prompt — this is the one prompt branch a non-interactive `claude -p` invocation could otherwise hang on indefinitely. FR-8.
+
+Any of these three refusals is a logged failure (to the vault session log per "Vault Logging" above, and to stdout/stderr so the scheduler's own dispatch capture sees it) with a clear reason — no active-workflow marker is created, no report file is written, and `/smith-audit` returns without further action. All three checks run before marker bootstrap, so none of them requires a `clear-active-workflow.sh` call — there is nothing yet to clear.
+
+### Marker bootstrap — BOTH `--scheduled` and plain interactive invocations
+
+Once the refusal checks above pass (or don't apply — a plain interactive invocation triggers none of them), bootstrap a `maintenance` active-workflow marker before writing any report file. This applies unconditionally to every `/smith-audit` invocation, not only `--scheduled` ones — the exact same `create-active-workflow.sh`/`clear-active-workflow.sh` code path already has to exist for `--scheduled`, so gating it behind `--scheduled` would leave interactive runs relying on whatever marker happens to already be active from an unrelated workflow, or failing closed with no marker at all, for zero additional implementation cost. This mirrors `skills/smith-update/SKILL.md`'s own Phase 0 pattern verbatim:
+
+```bash
+TS=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
+if [ -n "$SCHEDULED_MODE" ]; then
+    LABEL="scheduled-audit-${TS}"
+else
+    LABEL="audit-${TS}"
+fi
+PROJECT_DIR=$(pwd)
+if [ -d "$PROJECT_DIR/.smith" ]; then
+    ~/.smith/scripts/create-active-workflow.sh \
+      --branch "$LABEL" --workflow maintenance --slug "$LABEL" \
+      --worktree "$PROJECT_DIR"
+    # (Falls back to scripts/create-active-workflow.sh in repo-dev layouts.)
+    MARKER_PATH="$PROJECT_DIR/.smith/vault/active-workflows/${LABEL}.yaml"
+fi
+```
+
+`maintenance` is the existing `--workflow` allowlist entry on `scripts/create-active-workflow.sh` — reused unchanged, no new enum value added. The `--branch "$LABEL"` value is a **synthetic label naming no real git ref** — `/smith-audit` never creates a worktree or branch; it exists solely to satisfy `create-active-workflow.sh`'s required `--branch` argument and to give the marker file a unique, sortable name. FR-11, FR-18, A-2.
+
+### Clearing the marker — EVERY exit path
+
+Because `/smith-audit`'s orchestration spans multiple separately-invoked bash blocks and Claude tool calls (subagent dispatch, report writes), not one OS process, a single shell `trap ... EXIT` cannot span the whole flow — the same constraint `skills/smith-update/SKILL.md` already solves the identical way. Clear the marker via the shipped helper at every documented exit point below, mirroring `smith-update`'s own per-early-return "cleanup marker, exit cleanly" comment pattern:
+
+```bash
+[ -n "${MARKER_PATH:-}" ] && [ -f "$MARKER_PATH" ] && \
+    "$PROJECT_DIR/.specify/scripts/bash/clear-active-workflow.sh" "$LABEL" 2>/dev/null || true
+```
+
+Documented exit points requiring this call:
+- **Normal completion** — call `clear-active-workflow.sh "$LABEL"` after the report (and, for `--scheduled`, the Drift block, rolling-log append, and state-file write — see "Report Generation" below) is fully written.
+- **A sub-audit crash** — call `clear-active-workflow.sh "$LABEL"` immediately, log the failure, and return without a partial or incomplete report.
+- **A report/drift/log-write failure** — call `clear-active-workflow.sh "$LABEL"` immediately, log the failure, and return.
+- **Pre-marker refusals need no clearing** — the three refusal checks above occur before marker creation, so there is nothing to clear on that path.
+
+A lingering marker is never an acceptable outcome — leaving one active silently disables the workflow-gate for every other file-modifying tool call in that project until `hooks/active-workflow-janitor.sh`'s 1-hour-minimum-grace-period sweep eventually removes it. FR-9, FR-10, FR-12, US-3.
+
 ## System Selection
 
 ### If `$ARGUMENTS` contains `--all`:
@@ -45,6 +135,7 @@ Log at these points:
 - Run all sub-audits on that system only
 
 ### If `$ARGUMENTS` is empty:
+- **Note:** a `--scheduled` invocation with no `--all`/system identifier never reaches this branch — Phase 0 above refuses it before System Selection runs, so this interactive prompt only ever fires for a plain interactive invocation.
 - Scan for all system spec directories:
   ```bash
   ls -d specs/system-*/spec.md specs/[0-9]*/spec.md 2>/dev/null
@@ -126,6 +217,8 @@ After all sub-audits complete, generate a unified report at:
 specs/system-XX-<name>/audits/<YYYY-MM-DD>-full.md
 ```
 
+When `--scheduled` is present, substitute the stem `<YYYY-MM-DD>-scheduled-<name>` for `<YYYY-MM-DD>-full` — `<name>` here is the validated subset list from Phase 0, hyphen-joined in configured order (e.g. `requirements-codequality-security-dependencies-workflow`), not the system name. Directory placement is unchanged (`specs/system-XX-<name>/audits/` either way) — only the filename stem changes. FR-13.
+
 Structure:
 ```markdown
 # Audit Report: [System Name]
@@ -133,6 +226,8 @@ Structure:
 **Date**: YYYY-MM-DD
 **System**: [system identifier]
 **Auditor**: Claude Code (automated)
+
+<!-- --scheduled only: when a prior scheduled report resolves, the "Drift Since Last Scheduled Audit" section (see below) is inserted here, before Executive Summary. Omitted entirely otherwise — never rendered empty. -->
 
 ## Executive Summary
 
@@ -233,15 +328,78 @@ See individual reports:
 - ...
 ```
 
+### Drift Since Last Scheduled Audit (`--scheduled` only)
+
+When `--scheduled` is present, before writing the Executive Summary, check whether a prior scheduled report is resolvable:
+
+1. Read `.smith/vault/.scheduled-audits-state.json`'s `last_run.report_path`. An absent state file, a state file that fails to parse as JSON, or a `report_path` that does not point at a readable file are all treated identically as "no prior report" — never as an error. FR-22.
+2. When no prior report resolves, omit the `## Drift Since Last Scheduled Audit` section entirely from the new report — never rendered empty, never with placeholder text. This is the expected, non-error path for a project's first-ever scheduled run, or when the previously recorded report has since been moved or deleted. FR-15, US-6.
+3. When a prior report DOES resolve, parse its `## Executive Summary` table (`Category | Critical | Warning | Info | Score` rows) and write a `## Drift Since Last Scheduled Audit` section into the new report, positioned immediately after the report's header block (Date/System/Auditor) and before `## Executive Summary` (see the placeholder comment in the Structure template above):
+
+```markdown
+## Drift Since Last Scheduled Audit
+**Previous scheduled report:** specs/audits/2026-09-07-scheduled-requirements-codequality-security-dependencies-workflow.md (2026-09-07)
+
+| Category | Critical Δ | Warning Δ | Info Δ |
+|---|---|---|---|
+| Requirements | +0 | +2 (new) | -1 (resolved) |
+| Security | -2 (resolved) | +2 (new) | +0 |
+| Accessibility | not compared — subset not run in both audits | | |
+| **Overall** | -2 (resolved) | +4 (new) | -1 (resolved) |
+```
+
+One row per category present in EITHER report. A delta is annotated `(new)` when the count increased and `(resolved)` when it decreased; an unchanged (`+0`) delta carries no annotation. A category present in only one of the two reports (a subset that wasn't run this time, or wasn't run last time) is disclosed as `not compared — subset not run in both audits` — never rendered as a false `0`, which would misleadingly imply the category was checked and found clean. FR-14, US-5.
+
 ### Full-Spectrum Report (--all mode)
 Generate a global summary at:
 ```
 specs/audits/<YYYY-MM-DD>-full-spectrum.md
 ```
 
+When `--scheduled` is present, substitute the stem `<YYYY-MM-DD>-scheduled-<name>` for `<YYYY-MM-DD>-full-spectrum` — `<name>` is the validated subset list from Phase 0, hyphen-joined in configured order (e.g. `requirements-codequality-security-dependencies-workflow`). Directory placement is unchanged (`specs/audits/` either way) — only the filename stem changes. The Drift block above applies identically to this report shape when `--scheduled` is present. FR-13.
+
 With per-system scores and cross-system issues (e.g., inconsistent patterns between services, shared dependency conflicts).
 
+### Rolling Log Append (`--scheduled` only)
+
+On successful completion of a `--scheduled` run — after the report (and the Drift block above, when present) is fully written — append exactly one line to `.smith/vault/reports/audits-log.md` (create the file fresh with no header if it doesn't exist yet; never rewrite or truncate existing lines):
+
+```
+2026-09-14T02:00:03Z | scheduled | subsets=requirements,codequality,security,dependencies,workflow | report=specs/audits/2026-09-14-scheduled-requirements-codequality-security-dependencies-workflow.md | critical=1 warning=12 info=30
+```
+
+Sourced from the new report's own Executive Summary `**Overall**` row: the UTC timestamp of completion, the comma-joined subset list, the report's own path, and its critical/warning/info totals. No gate-marker or gitignore-template change applies to this specific file — `.smith/vault/reports/` is already in `hooks/workflow-gate.sh`'s `SAFE_VAULT_DIRS` exemption list and is already outside the `IGNORED` section of the managed `.gitignore-smith-additions` template, both re-confirmed on disk while planning this feature. FR-16.
+
+### State File Write (`--scheduled` only, write-after-success)
+
+Only after BOTH the report (and Drift block, when applicable) and the Rolling Log Append above have succeeded, write `.smith/vault/.scheduled-audits-state.json` fresh (overwriting whatever was there before):
+
+```json
+{
+  "last_run": {
+    "date": "2026-09-14",
+    "timestamp": "2026-09-14T02:00:03Z",
+    "subsets": ["requirements", "codequality", "security", "dependencies", "workflow"],
+    "report_path": "specs/audits/2026-09-14-scheduled-requirements-codequality-security-dependencies-workflow.md",
+    "severity_totals": {"critical": 1, "warning": 12, "info": 30}
+  }
+}
+```
+
+`date` (not `timestamp`) is the field the scheduler's `is_audit_due()` compares against — cadence is calendar-day-granular, never time-of-day-granular. This is a write-after-success contract: never write this file before dispatch, and never write it when the run failed partway — a report-write failure, a Rolling Log Append failure, or a sub-audit crash all leave the PRIOR state file untouched, so the next scheduled run still compares against the last genuinely successful run rather than a half-written one. The scheduler's own audits step confirms success by reading this file back after dispatch — a fresh `timestamp` different from the one recorded before dispatch, a non-empty `report_path`, and a `severity_totals` object all present — never by trusting the dispatched process's exit code alone. FR-21.
+
+**Clearing on completion:** once all of the above (report, Drift block, Rolling Log Append, state-file write) succeeds for a `--scheduled` run — or once the report is written for a plain interactive run — call `clear-active-workflow.sh "$LABEL"` (Phase 0 above) before `/smith-audit` returns control. A failure at any step in Report Generation is logged and ALSO calls `clear-active-workflow.sh "$LABEL"` before returning (Phase 0's documented exit-point list) — never left lingering.
+
 ## PDF Report Generation
+
+When `--scheduled` is present, read `scheduled_audits.skip_pdf` from `.smith/config.json` (default `true` when the key or file is absent — matching this pipeline's precedent of not assuming `puppeteer`/`npm` are available or wanted on an unattended nightly run) and skip this entire section when `true`. When `false`, or for a plain interactive run (this gate never applies outside `--scheduled`), PDF generation runs best-effort exactly as it already does — a PDF-generation failure was already non-fatal to report delivery before this feature, and that is unchanged. FR-17.
+
+```bash
+SKIP_PDF="true"
+if [ -n "$SCHEDULED_MODE" ] && [ -f "$PROJECT_DIR/.smith/config.json" ]; then
+    SKIP_PDF=$(python3 -c "import json; d=json.load(open('$PROJECT_DIR/.smith/config.json')); print(str(bool((d.get('scheduled_audits') or {}).get('skip_pdf', True))).lower())" 2>/dev/null || echo "true")
+fi
+```
 
 After the markdown report is written, generate a professional PDF version for client delivery.
 
@@ -272,6 +430,7 @@ The PDF is written alongside the markdown file (e.g., `specs/audits/2026-03-30-f
 
 ## Key Rules
 
+- Active-workflow marker must be created BEFORE any report file is written, for BOTH `--scheduled` and plain interactive invocations, and must be cleared via `clear-active-workflow.sh` at every exit path (normal completion, a sub-audit crash, or a report/drift/log-write failure) — a lingering marker is never an acceptable outcome (see "Phase 0: Scheduled Mode & Marker Bootstrap")
 - Always create the `audits/` directory inside the system spec folder before writing reports
 - Each sub-audit runs as a subagent to preserve context
 - Sub-audits can run in parallel (they're read-only)

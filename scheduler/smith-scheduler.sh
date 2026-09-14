@@ -25,6 +25,11 @@
 #   SMITH_SCHEDULER_DRY_RUN   =1 to log planned dispatches without invoking claude
 #   SMITH_SCHEDULER_MODEL     model for claude invocations (default: sonnet)
 #   CLAUDE_BIN                explicit path to the claude CLI (skips auto-resolve)
+#   SMITH_AUDIT_DISPATCH_DRY_RUN  =1 to log planned scheduled-audit dispatches
+#                                 without invoking claude — independent of
+#                                 SMITH_SCHEDULER_DRY_RUN, which only gates
+#                                 the queue step above (see "Audits step"
+#                                 below)
 
 set -uo pipefail
 
@@ -73,6 +78,20 @@ resolve_claude_bin() {
         fi
     fi
     return 1
+}
+
+# is_audit_due <now_date YYYY-MM-DD> <last_run_date-or-empty> <cadence_days>
+# Prints "1" (due) or "0" (not due) to stdout. Pure function — no file I/O,
+# no globals read/written — so tests/scheduler/ can exercise every branch
+# without a filesystem fixture. Used by the audits step below.
+is_audit_due() {
+    local now="$1" last="$2" cadence="$3"
+    [ -z "$last" ] && { echo 1; return; }   # never run → due
+    local now_epoch last_epoch
+    now_epoch=$(date -j -f "%Y-%m-%d" "$now" +%s 2>/dev/null || date -d "$now" +%s)
+    last_epoch=$(date -j -f "%Y-%m-%d" "$last" +%s 2>/dev/null || date -d "$last" +%s)
+    local days=$(( (now_epoch - last_epoch) / 86400 ))
+    [ "$days" -ge "$cadence" ] && echo 1 || echo 0
 }
 
 if ! CLAUDE_BIN=$(resolve_claude_bin); then
@@ -248,4 +267,118 @@ while IFS= read -r vault_path; do
 
 done <<< "$PROJECT_PATHS"
 
-log "=== Daily scheduler run complete — dispatched: $TOTAL_DISPATCHED, failed: $TOTAL_FAILED, skipped: $TOTAL_SKIPPED ==="
+# ---------------------------------------------------------------------------
+# Audits step — dispatches `/smith-audit --scheduled` for registered projects
+# whose scheduled_audits.enabled is true and whose cadence has elapsed. Runs
+# strictly AFTER the queue loop above finishes for every project (Phased
+# ordering). Reuses the same already-parsed $PROJECT_PATHS — no second
+# projects.json read — and the same already-resolved $CLAUDE_BIN/
+# $CLAUDE_MODEL — no second resolve_claude_bin() call. Never mutates a
+# /smith-queue queue file or history/ entry (NFR-3); never writes
+# .scheduled-audits-state.json itself — that file is written by
+# /smith-audit only, after a successful scheduled run (FR-21).
+# ---------------------------------------------------------------------------
+
+AUDIT_DRY_RUN="${SMITH_AUDIT_DISPATCH_DRY_RUN:-0}"
+AUDITS_DISPATCHED=0
+AUDITS_FAILED=0
+AUDITS_SKIPPED=0
+
+while IFS= read -r vault_path; do
+    [ -z "$vault_path" ] && continue
+
+    # Same idiom the queue loop above uses to recover the project root.
+    PROJECT_DIR="${vault_path%/.smith/vault}"
+    PROJECT_NAME=$(basename "$PROJECT_DIR")
+    CONFIG_FILE="$PROJECT_DIR/.smith/config.json"
+    STATE_FILE="$vault_path/.scheduled-audits-state.json"
+
+    # scheduled_audits.enabled — an absent config file, an absent
+    # scheduled_audits section, or enabled:false are all a silent skip (one
+    # logged line, no dispatch, no state-file write). JSON parsing goes
+    # through python3, not grep/sed, matching this repo's existing
+    # convention for structured-field reads elsewhere in the hooks/scripts
+    # layer (e.g. hooks/context-budget-guard.sh).
+    SA_ENABLED=$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(str(bool((d.get('scheduled_audits') or {}).get('enabled', False))).lower())" 2>/dev/null || echo "false")
+
+    if [ "$SA_ENABLED" != "true" ]; then
+        log "  Audits: skipping $PROJECT_NAME — scheduled_audits disabled"
+        AUDITS_SKIPPED=$((AUDITS_SKIPPED + 1))
+        continue
+    fi
+
+    CADENCE_DAYS=$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print((d.get('scheduled_audits') or {}).get('cadence_days', 7))" 2>/dev/null || echo "7")
+    SUBSETS_JOINED=$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(','.join((d.get('scheduled_audits') or {}).get('subsets') or []))" 2>/dev/null || echo "")
+
+    # .scheduled-audits-state.json's last_run.date — an absent file, an
+    # unreadable file, or JSON that fails to parse are all treated
+    # identically as "never run" (empty string fed into is_audit_due()),
+    # never as an error that skips or crashes this project's check (FR-22).
+    LAST_RUN_DATE=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print((d.get('last_run') or {}).get('date','') or '')" 2>/dev/null || echo "")
+
+    DUE=$(is_audit_due "$TODAY" "$LAST_RUN_DATE" "$CADENCE_DAYS")
+
+    if [ "$DUE" != "1" ]; then
+        log "  Audits: skipping $PROJECT_NAME — not yet due, last run $LAST_RUN_DATE"
+        AUDITS_SKIPPED=$((AUDITS_SKIPPED + 1))
+        continue
+    fi
+
+    if [ "$AUDIT_DRY_RUN" = "1" ]; then
+        log "  [dry-run] would dispatch audit: /smith-audit --all --scheduled $SUBSETS_JOINED (project: $PROJECT_NAME, due=true)"
+        AUDITS_DISPATCHED=$((AUDITS_DISPATCHED + 1))
+        continue
+    fi
+
+    log "  Dispatching scheduled audit: $PROJECT_NAME (subsets: $SUBSETS_JOINED)"
+
+    # Snapshot the state file's last_run.timestamp BEFORE dispatch so the
+    # post-dispatch read-back below can tell a fresh write apart from a
+    # stale one left over from a previous run.
+    PRE_TS=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print((d.get('last_run') or {}).get('timestamp','') or '')" 2>/dev/null || echo "")
+
+    # Invoke from the project directory in a subshell so `cd` does not
+    # persist across iterations. Route claude's stdout/stderr into the SAME
+    # scheduler log used by the queue step above — identical contract shape
+    # to the existing queue dispatch block.
+    (
+        cd "$PROJECT_DIR" && \
+        "$CLAUDE_BIN" \
+            --model "$CLAUDE_MODEL" \
+            --permission-mode bypassPermissions \
+            -p "/smith-audit --all --scheduled $SUBSETS_JOINED"
+    ) >> "$LOG_FILE" 2>&1
+    AUDIT_EXIT=$?
+
+    # Confirm success by reading back the state file /smith-audit writes
+    # AFTER a successful scheduled run (write-after-success contract,
+    # FR-21) — a fresh timestamp plus a readable report_path and
+    # severity_totals. Never trust the process exit code alone, mirroring
+    # the queue loop's own filesystem-state verification above. A non-zero
+    # exit OR a read-back that doesn't confirm success is logged with the
+    # project name and reason and does NOT stop the audits step from
+    # continuing to the next registered project (FR-6).
+    POST_OK=$(python3 -c "
+import json
+try:
+    d = json.load(open('$STATE_FILE'))
+    lr = d.get('last_run') or {}
+    ts = lr.get('timestamp', '') or ''
+    rp = lr.get('report_path', '') or ''
+    sev = lr.get('severity_totals')
+    print('true' if (ts and ts != '$PRE_TS' and rp and isinstance(sev, dict)) else 'false')
+except Exception:
+    print('false')
+" 2>/dev/null || echo "false")
+
+    if [ "$AUDIT_EXIT" -eq 0 ] && [ "$POST_OK" = "true" ]; then
+        log "    Completed: scheduled audit for $PROJECT_NAME (exit=$AUDIT_EXIT)"
+        AUDITS_DISPATCHED=$((AUDITS_DISPATCHED + 1))
+    else
+        log "    Failed: scheduled audit for $PROJECT_NAME (exit=$AUDIT_EXIT, state-confirmed=$POST_OK) — will retry next run"
+        AUDITS_FAILED=$((AUDITS_FAILED + 1))
+    fi
+
+done <<< "$PROJECT_PATHS"
+
+log "=== Daily scheduler run complete — dispatched: $TOTAL_DISPATCHED, failed: $TOTAL_FAILED, skipped: $TOTAL_SKIPPED | audits dispatched: $AUDITS_DISPATCHED, failed: $AUDITS_FAILED, skipped: $AUDITS_SKIPPED ==="
