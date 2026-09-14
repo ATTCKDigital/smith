@@ -425,6 +425,41 @@ PYEOF
 fi
 ```
 
+### 5.1f Seed `scheduled_audits` in `.smith/config.json`
+
+Same non-destructive merge idiom as `/smith` init's scaffold step (`skills/smith/SKILL.md`), applied here to existing projects refreshed by `/smith-update`, for the `scheduled_audits` config key (spec FR-19/FR-20 of the `58-scheduled-audits` feature, `plan.md`'s §Contracts schema). `.smith/config.json` is Smith-owned config, not vault *data*, so it is in scope for this phase's "refresh Smith-owned files" boundary.
+
+- If `.smith/config.json` **exists** and already declares a `scheduled_audits` key (in any shape), this is a no-op.
+- If it **exists** but lacks `scheduled_audits` entirely, merge the key in with `plan.md`'s §Contracts full default shape (the same shape `templates/config.default.json` ships), preserving every other existing key untouched. `enabled: false` MUST be the merged value — no project gets unattended scheduled-audit dispatch, report-writing, or marker-bootstrapping behavior without explicit opt-in.
+- If it does **not exist at all**, leave it absent — `hooks/session-start-logger.sh`'s own whole-file seeding path is what creates it from scratch for a brand-new project (already carrying `scheduled_audits`), not this step.
+
+```bash
+if [ -f "$PROJECT_DIR/.smith/config.json" ]; then
+    python3 - "$PROJECT_DIR/.smith/config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict) and "scheduled_audits" not in config:
+    config["scheduled_audits"] = {
+        "enabled": False,
+        "cadence_days": 7,
+        "subsets": ["requirements", "codequality", "security", "dependencies", "workflow"],
+        "systems": "--all",
+        "skip_pdf": True
+    }
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+fi
+```
+
 ### 5.2 Run `/smith-index --migrate-templates`
 
 Non-destructively merge new template sections into `CLAUDE.md` and `constitution.md`. Invoke as a sub-action of this skill.

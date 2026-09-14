@@ -400,6 +400,35 @@ PYEOF
 fi
 ```
 
+Seed the `scheduled_audits` key in `.smith/config.json` (spec FR-19/FR-20 of the `58-scheduled-audits` feature, `plan.md`'s §Contracts schema) so an already-existing `.smith/config.json` also receives it. A brand-new `.smith/config.json` already gets this key for free from `hooks/session-start-logger.sh`'s whole-file copy of `templates/config.default.json`, which now includes `scheduled_audits` — but that whole-file-copy-if-absent logic never touches a file that already exists, which is the case on every project that has run even one Claude Code session before this feature shipped. Same non-destructive merge idiom as `/smith-update`'s §5.1f sibling (`skills/smith-update/SKILL.md`): a bash-level existence gate plus a python-level `isinstance(config, dict)` check, so an absent or malformed file is left alone rather than (re)created with only this key. Merge the key only when `scheduled_audits` isn't already present at all, preserving every other existing key untouched. If `.smith/config.json` does not exist at all, leave it absent — the template copy described above already handles a fresh project. `enabled: false` MUST be the merged value — no project gets unattended scheduled-audit behavior without explicit opt-in. bash+zsh-safe read-modify-write via `python3`:
+
+```bash
+if [ -f "$PWD/.smith/config.json" ]; then
+    python3 - "$PWD/.smith/config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict) and "scheduled_audits" not in config:
+    config["scheduled_audits"] = {
+        "enabled": False,
+        "cadence_days": 7,
+        "subsets": ["requirements", "codequality", "security", "dependencies", "workflow"],
+        "systems": "--all",
+        "skip_pdf": True
+    }
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+fi
+```
+
 Copy from `~/.claude/skills/smith/`:
 - `templates/*` → `.specify/templates/`
 - `scripts/*` → `.specify/scripts/bash/`

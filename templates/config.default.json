@@ -49,6 +49,13 @@
     "timeout_seconds": 120,
     "excludes": []
   },
+  "scheduled_audits": {
+    "enabled": false,
+    "cadence_days": 7,
+    "subsets": ["requirements", "codequality", "security", "dependencies", "workflow"],
+    "systems": "--all",
+    "skip_pdf": true
+  },
   "context_budget": {
     "_comment": "context-budget-guard.sh warns (never blocks) when an edited file exceeds max_file_kb. @-referenced files (loaded in full every session) are flagged extra-loudly. Set max_file_kb to 0 to disable.",
     "max_file_kb": 50

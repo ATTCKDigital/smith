@@ -17,6 +17,7 @@
 # transient per-session / per-user runtime markers (0-byte dedup + stray workflow marker)
 .smith/vault/.warned-manifest-missing-*
 .smith/vault/.active-workflow
+.smith/vault/.scheduled-audits-state.json
 .smith/vault/active-workflows/
 .smith/vault/queue/
 .smith/vault/todo/
