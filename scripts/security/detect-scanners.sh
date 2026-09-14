@@ -2,10 +2,13 @@
 # detect-scanners.sh — presence-detect optional security scanners.
 #
 # Feature 55-security-review-pass (NFR-4's single reusable presence-detect
-# helper). Checks whether gitleaks/semgrep/bandit are on $PATH and prints
-# one machine-parseable line per tool: <tool>=present|absent. Silent
-# otherwise — never a side-channel warning on the absent path, per
-# research.md §7's "silent-skip is the universal fallback" convention.
+# helper; extended by feature 56-supply-chain-gate T009 to also cover
+# osv-scanner/grype/trivy/pip-audit/licensee/syft). Checks whether
+# gitleaks/semgrep/bandit/osv-scanner/grype/trivy/pip-audit/licensee/syft
+# are on $PATH and prints one machine-parseable line per tool:
+# <tool>=present|absent. Silent otherwise — never a side-channel warning
+# on the absent path, per research.md §7's "silent-skip is the universal
+# fallback" convention.
 #
 # A standalone script, not inlined into any SKILL.md, so smith-audit's
 # Security sub-audit and any future consumer can invoke it directly
@@ -17,7 +20,7 @@
 
 set -uo pipefail
 
-for tool in gitleaks semgrep bandit; do
+for tool in gitleaks semgrep bandit osv-scanner grype trivy pip-audit licensee syft; do
     if command -v "$tool" >/dev/null 2>&1; then
         printf '%s=present\n' "$tool"
     else

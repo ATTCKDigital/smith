@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # test_detect_scanners.sh — tests for scripts/security/detect-scanners.sh
-# (feature 55-security-review-pass, T005).
+# (feature 55-security-review-pass, T005; extended by feature
+# 56-supply-chain-gate T009 for the six added tools:
+# osv-scanner/grype/trivy/pip-audit/licensee/syft).
 #
 # Stub executables on a scratch $PATH simulate present/absent combinations
-# of gitleaks/semgrep/bandit; asserts the exact <tool>=present|absent
-# output. Structural template: tests/get-base-branch.test.sh's
+# of the nine tools; asserts the exact <tool>=present|absent output.
+# Structural template: tests/get-base-branch.test.sh's
 # PASS/FAIL/summary-line/exit-status shape.
 #
 # Run:  bash tests/security/test_detect_scanners.sh
@@ -68,35 +70,80 @@ run_case() {
     rm -rf "$scratch"
 }
 
-# --- Case 1: all three absent ---
+# --- Case 1: all nine absent ---
 DIR=$(make_path_with)
-run_case "all absent" "$DIR" "gitleaks=absent
+run_case "all nine absent" "$DIR" "gitleaks=absent
 semgrep=absent
-bandit=absent"
+bandit=absent
+osv-scanner=absent
+grype=absent
+trivy=absent
+pip-audit=absent
+licensee=absent
+syft=absent"
 
-# --- Case 2: all three present ---
-DIR=$(make_path_with gitleaks semgrep bandit)
-run_case "all present" "$DIR" "gitleaks=present
+# --- Case 2: all nine present ---
+DIR=$(make_path_with gitleaks semgrep bandit osv-scanner grype trivy pip-audit licensee syft)
+run_case "all nine present" "$DIR" "gitleaks=present
 semgrep=present
-bandit=present"
+bandit=present
+osv-scanner=present
+grype=present
+trivy=present
+pip-audit=present
+licensee=present
+syft=present"
 
 # --- Case 3: only gitleaks present ---
 DIR=$(make_path_with gitleaks)
 run_case "only gitleaks present" "$DIR" "gitleaks=present
 semgrep=absent
-bandit=absent"
+bandit=absent
+osv-scanner=absent
+grype=absent
+trivy=absent
+pip-audit=absent
+licensee=absent
+syft=absent"
 
 # --- Case 4: only semgrep+bandit present (gitleaks absent) ---
 DIR=$(make_path_with semgrep bandit)
 run_case "semgrep+bandit present, gitleaks absent" "$DIR" "gitleaks=absent
 semgrep=present
-bandit=present"
+bandit=present
+osv-scanner=absent
+grype=absent
+trivy=absent
+pip-audit=absent
+licensee=absent
+syft=absent"
 
 # --- Case 5: only bandit present ---
 DIR=$(make_path_with bandit)
 run_case "only bandit present" "$DIR" "gitleaks=absent
 semgrep=absent
-bandit=present"
+bandit=present
+osv-scanner=absent
+grype=absent
+trivy=absent
+pip-audit=absent
+licensee=absent
+syft=absent"
+
+# --- Case 6: osv-scanner+trivy present, everything else absent ---
+# The exact combination FR-8's preference logic (dependency-scan.py, feature
+# 56-supply-chain-gate) depends on: both multi-ecosystem scanners detected,
+# neither of the other seven tools present.
+DIR=$(make_path_with osv-scanner trivy)
+run_case "osv-scanner+trivy present, everything else absent" "$DIR" "gitleaks=absent
+semgrep=absent
+bandit=absent
+osv-scanner=present
+grype=absent
+trivy=present
+pip-audit=absent
+licensee=absent
+syft=absent"
 
 echo "----"
 echo "SUMMARY: $PASS passed, $FAIL failed"
