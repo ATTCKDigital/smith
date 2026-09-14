@@ -304,6 +304,45 @@ PYEOF
 fi
 ```
 
+### 5.1c Seed `security_review` in `.smith/config.json`
+
+Same non-destructive merge idiom as `/smith` init's scaffold step (`skills/smith/SKILL.md`), applied here to existing projects refreshed by `/smith-update`, for the `security_review` config key (this feature's `data-model.md` §1 schema; see `docs/security-model.md`'s "Security Review Pass" section). `.smith/config.json` is Smith-owned config, not vault *data*, so it is in scope for this phase's "refresh Smith-owned files" boundary.
+
+- If `.smith/config.json` **exists** and already declares a `security_review` key (in any shape), this is a no-op.
+- If it **exists** but lacks `security_review` entirely, merge the key in with `data-model.md` §1's full default shape (the same shape `templates/config.default.json` ships), preserving every other existing key untouched.
+- If it does **not exist at all**, leave it absent — `hooks/session-start-logger.sh`'s own whole-file seeding path is what creates it from scratch for a brand-new project (already carrying `security_review` per T012), not this step.
+
+```bash
+if [ -f "$PROJECT_DIR/.smith/config.json" ]; then
+    python3 - "$PROJECT_DIR/.smith/config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict) and "security_review" not in config:
+    config["security_review"] = {
+        "enforcement_tier": "flag",
+        "review_model": "opus",
+        "layers": {
+            "secret_scan": True,
+            "sast": True,
+            "llm_review": True
+        },
+        "excludes": [],
+        "allowlist_globs": ["package-lock.json", "yarn.lock"]
+    }
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+fi
+```
+
 ### 5.2 Run `/smith-index --migrate-templates`
 
 Non-destructively merge new template sections into `CLAUDE.md` and `constitution.md`. Invoke as a sub-action of this skill.
