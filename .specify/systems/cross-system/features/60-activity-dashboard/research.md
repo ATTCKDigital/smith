@@ -685,6 +685,94 @@ For contrast, `smith-debug` sidesteps the collision correctly by registering a
 ref"*). That is the precedent `/smith-activity`'s own `maintenance` marker
 (FR-8) follows.
 
+### CORRECTION NOTE — appended 2026-09-22, after empirical verification
+
+> **Everything above this heading is the original analysis and is left
+> unedited on purpose.** It is a findings record; rewriting it would destroy
+> the evidence of how the mistake was made, which is the more useful half of
+> the record. This note states what turned out to be false, and why.
+
+**The headline conclusion is wrong.** §Q6 concluded that the marker collision
+"guarantees exit 3 every single time" and that, in consequence, "two
+concurrent markers never exist". Both were verified false on 2026-09-22, by
+running `/smith-build` under `/smith-new` on branch `60-activity-dashboard`
+and then looking at the disk:
+
+| §Q6 predicted | What actually happened |
+|---|---|
+| `create-active-workflow.sh` exits **3** | It exited **0** |
+| One marker exists, reading `workflow: smith-new` | **Two** markers exist |
+| No `workflow-start` stamp is written for the build | One was written, into the worktree's vault |
+
+Both markers name the same `branch: 60-activity-dashboard`. The one in the
+**primary repo's** vault reads `workflow: smith-new`; the one in the
+**worktree's** vault reads `workflow: smith-build`.
+
+**Root cause: the writer and the readers disagree about where the project
+root is.**
+
+- `scripts/create-active-workflow.sh:139` resolves it with
+  `git rev-parse --show-toplevel`, which inside a worktree returns **the
+  worktree**.
+- `hooks/workflow-gate.sh:60` resolves it with `${CLAUDE_PROJECT_DIR:-$(pwd)}`
+  → `git rev-parse --git-common-dir` → `dirname`, which returns **the primary
+  repo**. `hooks/active-workflow-janitor.sh:42` does the same.
+
+So the collision check at `create-active-workflow.sh:158-165` — which §Q6
+quotes correctly, and which does behave exactly as quoted — never fires,
+because it stats `$MARKER_PATH` under a directory the first marker was never
+written to. The check is right. The path it checks is not the path the other
+marker is on.
+
+**Three consequences, all observed rather than reasoned:**
+
+1. **Two concurrent markers are the normal state, not an error state.** The
+   FR-17 nesting derivation therefore has a *better* primary signal than §Q6
+   believed was available: a marker in a linked worktree's vault naming the
+   same `branch:` as a marker in the primary vault, with a different
+   `workflow:`, is a nested workflow, directly. Phase-title matching against
+   the event stream — §Q6's "derivation that actually works" — is still
+   correct and still implemented, but it is now the **fallback**, used only
+   when no child marker exists. See the amended FR-17 in
+   [`spec.md`](./spec.md), which records the dual-vault enumeration as primary
+   and this section's derivation as the demoted second tier. `plan.md`
+   §Spec-plan tensions item 4 and `quickstart.md` Scenario 6 were corrected in
+   place for the same reason.
+2. **The worktree marker's `session_log:` field is empty** — written with a
+   trailing space and nothing after it, because `.smith/vault/.current-session`
+   does not exist in a worktree. This is a valid, occurring shape, not
+   corruption, and every marker parser must tolerate it and fall back to the
+   primary vault's `.current-session`.
+3. **The worktree marker is write-only state.** The gate resolves to the
+   primary repo and reads only that vault, so nothing in Smith ever consumes
+   the marker `smith-build` just wrote. A fourth consequence followed from
+   that during this very build: `active-workflow-janitor.sh` runs on every
+   `Stop` and sweeps markers whose branch tip is reachable from `main` — which
+   is trivially true before a branch's first commit. Its one-hour grace window
+   (`SMITH_JANITOR_GRACE_SECONDS`, default 3600) bounds this to short runs
+   only, and a multi-hour build with no commits yet sails past it. The janitor
+   swept the **primary** marker mid-build and silently revoked the build's
+   write authorization, while the worktree marker nothing reads sat untouched.
+
+**On the method, as distinct from the answer.** The reasoning above is sound
+and worth keeping: it read the real scripts, quoted the real collision check at
+the real line numbers, traced the real call sites in
+`skills/smith-build/SKILL.md` and `skills/smith-new/SKILL.md`, and drew the
+only conclusion those facts support. It was not sloppy and it was not a guess.
+What it lacked was a single observation — that `--show-toplevel` and
+`--git-common-dir` disagree inside a worktree — which no amount of further
+reading of those same files would have produced, because the disagreement
+lives *between* two files that never reference each other. It surfaced the
+moment the thing was run. That is the transferable lesson: static tracing
+across a boundary that neither side names is exactly where a run beats a read,
+and the resulting confidence ("guaranteed", "every single time", "never") was
+the part that should have been hedged, not the analysis.
+
+**Not fixed here.** The fix is a behavior change to one script and two hooks,
+with a blast radius across every workflow that registers a marker. It is
+documented in [`docs/architecture.md`](../../../../../docs/architecture.md)
+§Activity Daemon and banked as a separate bugfix alongside BANK-030.
+
 ---
 
 ## §Q7 — Emitter latency budget

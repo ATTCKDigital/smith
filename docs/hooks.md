@@ -1,6 +1,10 @@
 # Hooks Reference
 
-Smith installs 10 hooks into `~/.claude/hooks/`. Each hook is a bash script registered in `~/.claude/settings.json` under the `hooks` key. Claude Code fires hooks automatically at specific lifecycle events.
+Smith installs **every `hooks/*.sh` script this repository ships** into `~/.claude/hooks/` — 20 of them as of this writing — plus the Python helpers (`hooks/*.py`) and data files (`hooks/*.json`) those scripts read. Each hook is a bash script registered in `~/.claude/settings.json` under the `hooks` key. Claude Code fires hooks automatically at specific lifecycle events.
+
+The installer never hardcodes that number: `scripts/install.sh` derives `HOOK_TOTAL`, `HELPER_TOTAL` and `HOOKDATA_TOTAL` from the `hooks/` directory itself, and its copy loops glob rather than enumerate. The figure above is prose and can drift, so re-derive it with `ls hooks/*.sh | wc -l` before quoting it anywhere. (The previous "10" in this sentence had drifted to half the real number.)
+
+The table below documents the operator-facing subset. Seven installed hooks — `active-workflow-janitor.sh`, `context-loader.sh`, `manifest-updater.sh`, `metrics-tracker.sh`, `stamp-response.sh`, `workflow-gate.sh`, `workflow-summary.sh` — are internal to Smith's own workflows and are documented in their respective feature specs rather than here.
 
 To disable any hook, remove its entry from `~/.claude/settings.json`. The script file can remain in `~/.claude/hooks/` without effect.
 
@@ -23,6 +27,7 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 | question-gate-guard | PreToolUse | AskUserQuestion | Suppress the interactive question popup in favor of Smith's markdown Q&A contract (config `question_gate.mode`) |
 | subagent-vault-writeback | SubagentStop | * | Persist sub-agent findings |
 | user-prompt-logger | UserPromptSubmit | * | Append each user prompt verbatim to the session log |
+| activity-emitter | SessionStart, SessionEnd, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, SubagentStart, SubagentStop, Stop, Notification, PermissionRequest, PermissionDenied, PreCompact, PostCompact, ConfigChange | * | Forward hook events to the local `/smith-activity` daemon; silent no-op when the daemon is down |
 
 ---
 
@@ -166,6 +171,19 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 - **Privacy note (intentional):** Prompts are stored verbatim, including anything a user pastes (which may contain secrets), because the session log is team-shared. This is an accepted trade-off for internal team repos. Do not add redaction/truncation without a spec change.
 - **Files touched:** Appends to the current `.smith/vault/sessions/<session>.md`
 - **To disable:** Remove the `UserPromptSubmit` entry referencing this script from `settings.json` (leave `context-loader.sh` in place).
+
+---
+
+### activity-emitter.sh
+
+- **Event:** SessionStart, SessionEnd, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, SubagentStart, SubagentStop, Stop, Notification, PermissionRequest, PermissionDenied, PreCompact, PostCompact, ConfigChange
+- **Matcher:** `*` — and, importantly, **its own `{matcher, hooks}` entry per event**. It is never appended to an existing chain, so `manifest-updater.sh` stays last in the `PostToolUse` `Write|Edit` chain (`scripts/install-hooks.sh:6-7`). Each entry declares `timeout: 5`; Claude Code's default for a `command` hook is 600 s, which an emitter must never inherit.
+- **What it does:** Forwards the hook payload on stdin **byte-for-byte** to the local `/smith-activity` daemon at `POST http://127.0.0.1:<port>/ingest`. It parses nothing — no jq, no grep, no sed. Parsing is the only thing in an emitter that can fail in an interesting way, and on `PreToolUse` an interesting failure blocks the operator's tool call. The daemon is the sole parser and the sole redaction point, which keeps the redaction rules in exactly one file.
+- **Exit contract:** Absolute, and the reason this hook is safe to wire on fifteen events. It exits `0` on **every** path, including every error path (`set -uo pipefail` deliberately omits `-e`) — exit 2 is Claude Code's block signal and any other non-zero puts a visible "hook error" notice in the transcript. It writes **zero bytes** to stdout, which is not cosmetic: on `UserPromptSubmit` and `SessionStart`, stdout is injected into Claude's context. With `~/.smith/activity/activity.port` or `activity.token` absent — the state of every machine until `/smith-activity` is first run — it exits 0 before attempting any network call. The bound is `curl --max-time 2 --connect-timeout 1`, not `timeout`/`gtimeout` (neither exists on a stock macOS), and the call is detached, so the foreground cost is a fork rather than the ceiling. No `/dev/tcp` anywhere — it is a bash-only virtual path and this repo runs its shell surfaces under zsh too.
+- **Files touched:** Reads `"${SMITH_HOME:-$HOME/.smith}"/activity/activity.port` and `.../activity.token`. Writes nothing, anywhere — in particular it never writes to any project's `.smith/vault/`.
+- **Network:** One loopback `POST` to `127.0.0.1` and nothing else. No outbound network of any kind. See [Security Model](security-model.md#activity-daemon-security) for the full surface.
+- **Privacy note (default-safe, opposite of `user-prompt-logger.sh`):** The payload leaves this script unredacted because the receiver redacts it. With `SMITH_ACTIVITY_CAPTURE_PROMPTS` unset — the shipped default — the daemon replaces `prompt`, `tool_input` and `tool_response` with byte-length placeholders **before the payload reaches its state tree**, so nothing renderable, logged or served over `/api/*` retains prompt text. Set `SMITH_ACTIVITY_CAPTURE_PROMPTS=1` to opt in; the dashboard then shows a "prompt capture is ACTIVE" indicator for as long as it is on.
+- **To disable:** Remove the entries referencing this script from `~/.claude/settings.json`, or simply stop the daemon (`/smith-activity stop`) — with no port file the emitter bails before any network call, measured at a ~4.4 ms median (barely above the ~4.0 ms floor for a bash script that reads stdin and exits).
 
 ---
 

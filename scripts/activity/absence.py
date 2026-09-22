@@ -87,6 +87,61 @@ EVENT_SOURCE_MISSING_NOTICE = (
     "since it started, so hook firing cannot be observed"
 )
 
+# The SAME defect shape as the nine hook_never_fired warnings above, one panel
+# over, and it was equally live. `sessions.sessions_for` builds Session records
+# from hook events, because FR-21's trust hierarchy says the harness-observed
+# stream is the primary source. With no event source installed there are zero
+# events, therefore zero sessions -- and the panel rendered EMPTY, with no
+# notice, while `claude agents --json` sat there holding 22 live records.
+#
+# An empty panel is a lie with the same shape as the truth: it reads as
+# "nothing is running", which is the one thing it demonstrably does not mean
+# when the poll can see sessions. Blindness wearing the costume of absence,
+# exactly as before.
+#
+# The fix is NOT to build sessions out of the poll. A polled record is
+# `{pid, cwd, kind, name, sessionId, startedAt, status?}` -- no resolved
+# worktree, no branch, no permission state, no phase attribution, no usage. A
+# row assembled from it would be a confident-looking stub of mostly-absent
+# fields, and promoting a liveness reconciler to a data source is precisely the
+# inversion FR-21 exists to forbid. So the panel stays empty and SAYS WHY.
+#
+# Worded here rather than in `sessions.py` for the same reason
+# EVENT_SOURCE_MISSING_NOTICE is: one module owns what blindness sounds like,
+# so the two sentences cannot drift apart. (`sessions.py` also sits at 496
+# lines, one under this feature's 500-line split rule.)
+SESSIONS_BLIND_NOTICE = (
+    "Sessions cannot be reported: %d live session(s) in this project are "
+    "visible to `claude agents --json`, but no /smith-activity event source "
+    "is installed, so no hook events have reached the daemon. "
+    "A Session record is built from "
+    "hook events (FR-21); the poll is a liveness reconciler, not a data source, "
+    "so this panel stays empty rather than inventing rows from it. Wire "
+    "hooks/activity-emitter.sh via scripts/install.sh to populate it."
+)
+
+
+def sessions_blind(sessions, polled_count, event_source_gone):
+    """Is the sessions panel empty *because* the daemon cannot see (FR-21)?
+
+    All three conditions are required, and each one alone would mislead:
+
+    * **Sessions present** -- the panel works; nothing to explain.
+    * **Nothing in the poll** -- an empty panel is then simply correct. Saying
+      "sessions cannot be reported" when there are also no sessions to report
+      would manufacture a problem out of a quiet machine.
+    * **An event source exists** -- an empty panel is then a real observation
+      about the project, not about our instrumentation, and the poll's records
+      are for other projects or already reaped.
+
+    Returns the number of records to name in the notice, or 0 for "say
+    nothing". A count rather than a bool because the notice's whole force is
+    the specific number the operator can go and count for themselves.
+    """
+    if sessions or not event_source_gone:
+        return 0
+    return max(0, int(polled_count or 0))
+
 
 def event_source_missing(emitter_wired, events_ingested):
     """Is the daemon blind -- no transport installed AND nothing received?

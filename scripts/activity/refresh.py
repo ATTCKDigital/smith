@@ -20,6 +20,7 @@ import absence
 import findings as findings_mod
 import hookset
 import markers as markers_mod
+import paths as paths_mod
 import phases
 import resolver
 import state as state_mod
@@ -207,6 +208,31 @@ def worktrees_for(
     )
 
 
+def polled_in_project(project: str, snapshot) -> int:
+    """How many live polled sessions sit inside THIS project's tree.
+
+    Per project, never machine-wide: `claude agents --json` returns every live
+    session on the box, and a notice claiming N invisible sessions that all
+    belong to another repository would be the exact failure mode the notice
+    exists to prevent, committed by the notice itself.
+
+    Costs ONE `git worktree list` for the whole loop (`worktree_of` is prefix
+    matching), and is called only from the blind branch -- when an event source
+    IS installed the answer cannot change anything, so the hot path skips it.
+    """
+    if sessions_mod is None or not snapshot or not snapshot.get("available"):
+        return 0
+    records = list((snapshot.get("by_session") or {}).values())
+    if not records:
+        return 0
+    trees = paths_mod.list_worktrees(project)
+    return sum(
+        1
+        for record in records
+        if sessions_mod.worktree_of(project, record.get("cwd"), trees=trees)
+    )
+
+
 # ---------------------------------------------------------------------------
 # The pass
 # ---------------------------------------------------------------------------
@@ -224,8 +250,15 @@ def refresh_project(daemon, project: str) -> None:
     )
     workflows = resolved["workflows"]
 
+    poll_snapshot = None
     if sessions_mod is not None:
-        sessions = sessions_mod.sessions_for(project, events)
+        # One poll per pass, taken here and handed to sessions_for rather than
+        # left for it to take, so the blindness notice below counts off the
+        # same snapshot the panel was built from. Two polls could legitimately
+        # disagree, and a notice naming a number the panel never saw is its own
+        # small lie.
+        poll_snapshot = sessions_mod.poll()
+        sessions = sessions_mod.sessions_for(project, events, snapshot=poll_snapshot)
         subagent_records = sessions_mod.subagents_for(project, events, sessions)
         session_degraded = sessions_mod.degraded_tokens()
     else:
@@ -253,15 +286,21 @@ def refresh_project(daemon, project: str) -> None:
     # In both, `hook_never_fired` is suppressed and the REASON is put on
     # screen, because "absence detection is off" with no explanation reads as a
     # missing feature rather than as a deliberate refusal to guess.
+    #
+    # Hoisted out of the branch below because the SESSIONS panel needs the same
+    # answer, and the two must never disagree about whether an event source
+    # exists. Safe to ask unconditionally: unreadable settings yield False.
+    no_event_source = absence.event_source_missing(
+        hookset.emitter_wired(settings), events_ingested(daemon)
+    )
+
     blind_reason = None
     if wired is not None:
         if fired is None:
             blind_reason = (
                 "%s is unreadable, so hook firing cannot be observed" % hooks_log_path()
             )
-        elif absence.event_source_missing(
-            hookset.emitter_wired(settings), events_ingested(daemon)
-        ):
+        elif no_event_source:
             blind_reason = absence.EVENT_SOURCE_MISSING_NOTICE
 
     derived = findings_mod.derive_findings(
@@ -315,6 +354,27 @@ def refresh_project(daemon, project: str) -> None:
         derived = dict(
             derived,
             degraded=list(derived["degraded"] or ()) + list(session_degraded),
+        )
+
+    # The sessions panel's own blindness — the same defect as the suppressed
+    # hook_never_fired warnings, one panel over: no event source means no
+    # events, so no Session records, so an empty panel that reads as "nothing
+    # is running" while the poll can see live sessions. Explained, never
+    # filled in from the poll.
+    #
+    # Independent of `blind_reason` on purpose: an unreadable hooks.log blinds
+    # absence detection without touching the event stream, so it must not put
+    # this sentence on screen. Only a missing event SOURCE empties this panel.
+    blind_sessions = 0
+    if not sessions and no_event_source:
+        blind_sessions = absence.sessions_blind(
+            sessions, polled_in_project(project, poll_snapshot), no_event_source
+        )
+    if blind_sessions:
+        derived = dict(
+            derived,
+            notices=list(derived["notices"] or ())
+            + [absence.SESSIONS_BLIND_NOTICE % blind_sessions],
         )
 
     # Defect B disclosure. Only while absence detection is actually ON: with
