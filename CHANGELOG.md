@@ -190,6 +190,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Timestamped backups of `settings.json` / `CLAUDE.md` grew without bound**
+  (fix/settings-backup-gc). `scripts/install.sh`, `scripts/install-hooks.sh` and
+  `scripts/dedupe-settings.sh` each copy the file to a timestamped sidecar before
+  mutating it, but none of them ever removed an old one. `~/.smith/.backups`
+  already had a keep-last-3 policy; these per-run sidecars had none, so they
+  accumulated on every install, hook registration and dedupe — 56 files / 2.2MB
+  after four months on one machine.
+  - **Fix** — new shared helper `scripts/lib/prune-backups.sh` exposing
+    `prune_backups "<glob>" [keep]`, sourced by all three scripts and called at
+    each of the **four** backup sites: `settings.json.bak-*` and
+    `CLAUDE.md.bak-*` (install.sh), `settings.json.bak.*` (install-hooks.sh) and
+    `settings.json.predupe-*` (dedupe-settings.sh). Default keep is 3, overridable
+    with `SMITH_BACKUP_KEEP`.
+  - **`uninstall.sh` restore path protected** — it restores from the NEWEST
+    `settings.json.bak-*` / `CLAUDE.md.bak-*`, so `keep` is clamped to a minimum
+    of 1 and a non-numeric value falls back to 3; the newest backup can never be
+    pruned. The `.bak-*` and `.bak.*` pools use different separators and are
+    bounded independently.
+  - **Safe under `set -euo pipefail`** — `install.sh` and `install-hooks.sh` both
+    use it, so the helper swallows a no-match glob rather than aborting the run.
+    In `install.sh` the helper is sourced AFTER `REPO_ROOT` is resolved, i.e.
+    after the curl-pipe bootstrap guard, so `curl … | bash` still bootstraps
+    instead of dying on a relative source path.
+  - **Tests** — `tests/backup-retention.test.sh` (14 assertions: prunes to the
+    default 3, keeps the newest, newest survives for the uninstall restore path,
+    explicit keep honoured, `keep=0` clamped to 1 so a prune never wipes every
+    backup, non-numeric keep falls back to 3, idempotent, empty/no-match patterns
+    are clean no-ops, no-match safe under `set -e`, `.bak.*` untouched when
+    pruning `.bak-*`, and all four call sites wired). Verified end-to-end: 5, 10
+    and 20 consecutive install+dedupe cycles all plateau at 12 backup files
+    instead of growing linearly.
+
 - **Response datetime-stamp silently stopped appearing** (fix/stop-hook-stamp).
   `hooks/stamp-response.sh` emitted the stamp with `printf` as PLAIN stdout on a
   `Stop` event. Claude Code surfaces plain hook stdout only for

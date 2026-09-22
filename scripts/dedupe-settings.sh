@@ -22,6 +22,11 @@
 
 set -uo pipefail
 
+# Keep only the N newest timestamped backups (see scripts/lib/prune-backups.sh).
+BACKUP_KEEP="${SMITH_BACKUP_KEEP:-3}"
+# shellcheck source=lib/prune-backups.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/prune-backups.sh"
+
 SETTINGS="${1:-$HOME/.claude/settings.json}"
 
 if [ ! -f "$SETTINGS" ]; then
@@ -36,6 +41,7 @@ fi
 
 BACKUP="${SETTINGS}.predupe-$(date +%Y%m%d-%H%M%S)"
 cp "$SETTINGS" "$BACKUP"
+prune_backups "${SETTINGS}.predupe-*" "$BACKUP_KEEP"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
