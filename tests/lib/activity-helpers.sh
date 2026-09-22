@@ -227,19 +227,88 @@ except Exception:
 ' 2>/dev/null
 }
 
+# --- the started-daemon registry -------------------------------------------
+#
+# `daemon_count` used to be `pgrep -f 'activity/server.py' | wc -l` — every
+# daemon on the machine "whatever their home". That made three lifecycle
+# assertions fail whenever the operator had a legitimate /smith-activity
+# daemon of their own running: 81/81 with it stopped, 78/81 with it up. A
+# suite that fails because the feature it tests is IN USE teaches people to
+# skim past its failures, which is worse than the coverage it bought.
+#
+# The count is now scoped to the daemons THIS SUITE started. Scoping by
+# SMITH_HOME is what is wanted semantically, but it cannot be read back off a
+# running process: `ps -E` does not surface the environment of another
+# process on a stock macOS (verified), and the pidfile under
+# $SMITH_HOME/activity/ is DELETED by `stop` — which is precisely the moment
+# "did stop leave anything behind?" needs to look.
+#
+# So each `daemon_start` records the port the daemon actually bound, keyed by
+# home, and the count matches running processes against those ports. The
+# registry outlives the pidfile, so a leftover process is still caught after
+# a stop, and a foreign daemon on a port this suite never asked for is not.
+DAEMON_PORT_REGISTRY="$TMP/.daemon-ports"
+
+_home_slug() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-'; }
+
+# _remember_daemon_port <smith-home> — append the LIVE port (not the requested
+# one: the CLI may bind elsewhere) to this home's registry, deduplicated.
+_remember_daemon_port() {
+    local home="$1" port reg
+    port=$(daemon_port "$home")
+    [ -n "$port" ] || return 0
+    mkdir -p "$DAEMON_PORT_REGISTRY"
+    reg="$DAEMON_PORT_REGISTRY/$(_home_slug "$home")"
+    grep -qxF "$port" "$reg" 2>/dev/null || printf '%s\n' "$port" >> "$reg"
+}
+
 # daemon_start <smith-home> <cwd> [args…] — run the CLI from <cwd>. Echoes the
 # whole stdout of the CLI; its LAST line is the dashboard URL.
 daemon_start() {
     local home="$1" where="$2"; shift 2
-    ( cd "$where" && SMITH_HOME="$home" "$ACTIVITY_CLI" "$@" 2>&1 )
+    local out
+    out=$( cd "$where" && SMITH_HOME="$home" "$ACTIVITY_CLI" "$@" 2>&1 )
+    _remember_daemon_port "$home"
+    printf '%s\n' "$out"
 }
 
 daemon_stop() {
     SMITH_HOME="$1" "$ACTIVITY_CLI" stop >/dev/null 2>&1
 }
 
-# daemon_count — how many activity daemons are running, whatever their home.
-daemon_count() { pgrep -f 'activity/server.py' 2>/dev/null | wc -l | tr -d ' '; }
+# _daemon_running_on_port <port> — 0 when a server.py is serving exactly that
+# port. `smith-activity.sh` always invokes `python3 <server.py> --port <port>`
+# with the port LAST, so an exact suffix match cannot confuse 878 with 8787.
+_daemon_running_on_port() {
+    local port="$1" pid cmd
+    for pid in $(pgrep -f 'activity/server\.py' 2>/dev/null); do
+        cmd=$(ps -ww -o command= -p "$pid" 2>/dev/null)
+        case "$cmd" in
+            *"activity/server.py --port $port") return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# daemon_count [smith-home] — how many of THIS SUITE's daemons are running.
+# With a home, only that home's; with none, every home the suite has started,
+# which is what the end-of-run "every test daemon is stopped" sweep means.
+# A daemon belonging to the operator is never counted (see the note above).
+daemon_count() {
+    local reg n=0 port
+    set -- ${1:+"$DAEMON_PORT_REGISTRY/$(_home_slug "$1")"}
+    if [ "$#" -eq 0 ]; then
+        set -- "$DAEMON_PORT_REGISTRY"/*
+    fi
+    for reg in "$@"; do
+        [ -f "$reg" ] || continue
+        while IFS= read -r port; do
+            [ -n "$port" ] || continue
+            _daemon_running_on_port "$port" && n=$((n+1))
+        done < "$reg"
+    done
+    printf '%s' "$n"
+}
 
 # http_code <url> — the status alone.
 http_code() {
@@ -385,3 +454,7 @@ vault_fingerprint() {
 # file still sources exactly one helper.
 # shellcheck source=tests/lib/activity-statusline.sh
 . "$REPO_ROOT/tests/lib/activity-statusline.sh"
+
+# The T076 degraded-worktree fixture builder, split off for the same reason.
+# shellcheck source=tests/lib/activity-worktrees.sh
+. "$REPO_ROOT/tests/lib/activity-worktrees.sh"

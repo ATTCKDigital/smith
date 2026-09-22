@@ -13,9 +13,8 @@ project's ``.smith/vault/`` for writing, and nothing anywhere under
 Python 3.8, stdlib only.
 """
 
-import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import absence
 import findings as findings_mod
@@ -27,8 +26,16 @@ import state as state_mod
 import usage as usage_mod
 import worktrees as worktrees_mod
 
-#: The `worktrees.describe()` TTL. Git is never invoked per SSE frame (FR-31).
-WORKTREE_CACHE_S = 3.0
+# Hook-firing observation, split into hookfiring.py on the 500-line decompose
+# rule. Re-exported because the whole reason that module exists is the size of
+# its blind spot, and a caller that only ever sees `refresh.fired_hooks`
+# should still land on that docstring.
+from hookfiring import (  # noqa: F401
+    events_ingested,
+    fired_hooks,
+    hook_observability_notice,
+    hooks_log_path,
+)
 
 #: A session with no ingest inside this window reads as idle
 #: (``data-model.md`` §2.2). `claude agents --json`'s `status` is present on
@@ -179,81 +186,25 @@ def sessions_from_events(project: str, events) -> List[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Worktrees — cached, because describe() shells out to git per worktree
+# Worktrees — the debounce now lives in worktrees.py (T075)
 # ---------------------------------------------------------------------------
 
 
 def worktrees_for(
-    daemon, project: str, marker_records, sessions
+    daemon, project: str, marker_records, sessions, workflows
 ) -> List[Dict[str, Any]]:
-    cached = daemon.worktree_cache.get(project)
-    now = time.time()
-    if cached and cached[0] > now:
-        return cached[1]
-    records = worktrees_mod.describe(project, markers=marker_records, sessions=sessions)
-    daemon.worktree_cache[project] = (now + WORKTREE_CACHE_S, records)
-    return records
+    """One passthrough, kept as a named seam for the refresh pass to read.
 
-
-# ---------------------------------------------------------------------------
-# Hook firing — the only observable "this hook ran" source (read-only)
-# ---------------------------------------------------------------------------
-
-
-def hooks_log_path() -> str:
-    import paths
-
-    return os.path.join(paths.smith_home(), "logs", "hooks.log")
-
-
-def events_ingested(daemon) -> int:
-    """How many hook events have reached this daemon since it started.
-
-    The `ingested` counter is bumped before project attribution, so an event
-    from an unregistered repo still counts: the question is whether the
-    TRANSPORT works, not whether we could place what it delivered. Read
-    defensively because the counter is daemon-owned state and this module is
-    only its guest.
+    There used to be a 3 s TTL around this whole call. It has moved INSIDE
+    ``worktrees.describe`` and been narrowed to the git calls alone (FR-31),
+    which is strictly better in both directions: git is still never invoked
+    per SSE frame, and the marker/session cross-reference is no longer frozen
+    for three seconds alongside it — a marker that appeared mid-window used
+    to go unrendered for no reason at all.
     """
-    try:
-        return int(daemon.state.counters.get("ingested") or 0)
-    except (AttributeError, TypeError, ValueError):
-        return 0
-
-
-def fired_hooks(daemon) -> Optional[set]:
-    """Basenames seen in ``~/.smith/logs/hooks.log`` since the daemon started.
-
-    ``None`` when the log cannot be read. That ``None`` DISABLES the
-    ``hook_never_fired`` classification rather than substituting an empty set:
-    "nothing fired" and "we cannot see what fired" have the same shape and
-    opposite meanings, and manufacturing a finding out of the second is exactly
-    what ``absence.expected_hook_set``'s contract forbids.
-    """
-    path = hooks_log_path()
-    try:
-        size = os.path.getsize(path)
-    except OSError:
-        return None
-    if daemon.hooks_log_offset is None:
-        daemon.hooks_log_offset = size
-        return set()
-    if size < daemon.hooks_log_offset:  # rotated under us
-        daemon.hooks_log_offset = 0
-    try:
-        with open(path, "rb") as fh:
-            fh.seek(daemon.hooks_log_offset)
-            raw = fh.read()
-    except OSError:
-        return None
-    seen = set(getattr(daemon, "_fired_hooks", set()))
-    for line in raw.decode("utf-8", "replace").splitlines():
-        parts = line.split()
-        if len(parts) >= 2:
-            seen.add(parts[1] if parts[1].endswith(".sh") else parts[1] + ".sh")
-    daemon.hooks_log_offset = size
-    daemon._fired_hooks = seen
-    return seen
+    return worktrees_mod.describe(
+        project, markers=marker_records, sessions=sessions, workflows=workflows
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -273,12 +224,16 @@ def refresh_project(daemon, project: str) -> None:
     )
     workflows = resolved["workflows"]
 
-    if sessions_mod is not None:  # pragma: no cover - lands with T078
+    if sessions_mod is not None:
         sessions = sessions_mod.sessions_for(project, events)
+        subagent_records = sessions_mod.subagents_for(project, events, sessions)
+        session_degraded = sessions_mod.degraded_tokens()
     else:
         sessions = sessions_from_events(project, events)
+        subagent_records = []
+        session_degraded = []
 
-    trees = worktrees_for(daemon, project, marker_records, sessions)
+    trees = worktrees_for(daemon, project, marker_records, sessions, workflows)
 
     settings, settings_error = hookset.read_installed_settings()
     wired = hookset.wired_hooks(settings) if settings is not None else None
@@ -352,19 +307,72 @@ def refresh_project(daemon, project: str) -> None:
             + [findings_mod.DEGRADED_EXPECTED_HOOKS],
         )
 
+    # FR-60. `claude agents --json` being absent, or carrying no `status`, is
+    # a capability gap the operator is TOLD about (static/ui.js already holds
+    # the sentence for each token) rather than a panel that quietly means
+    # less than it looks like it means.
+    if session_degraded:
+        derived = dict(
+            derived,
+            degraded=list(derived["degraded"] or ()) + list(session_degraded),
+        )
+
+    # Defect B disclosure. Only while absence detection is actually ON: with
+    # it off, `blind_reason` above already says the stronger thing, and two
+    # overlapping "we cannot see" banners read as one bug reported twice.
+    if derived["absence_enabled"] and blind_reason is None:
+        partial = hook_observability_notice(
+            absence.expected_hook_set(wired, tools_used=tools_used)
+        )
+        if partial:
+            derived = dict(derived, notices=list(derived["notices"] or ()) + [partial])
+
     _commit(
-        daemon, project, workflows, sessions, trees, project_findings, resolved, derived
+        daemon,
+        project,
+        workflows,
+        sessions,
+        subagent_records,
+        trees,
+        project_findings,
+        resolved,
+        derived,
     )
 
 
+def _subagent_key(record: Dict[str, Any]) -> str:
+    """A stable map key for a subagent, including the sidecar-less tier.
+
+    A third-tier record has no ``agent_id`` yet — the sidecar has not landed —
+    so it is keyed by its dispatch instead. Keying every record on
+    ``agent_id`` would collapse every pending dispatch onto the single key
+    ``None`` and render one row for all of them.
+    """
+    return record.get("agent_id") or "task:%s" % (record.get("tool_use_id") or "?")
+
+
 def _commit(
-    daemon, project, workflows, sessions, trees, project_findings, resolved, derived
+    daemon,
+    project,
+    workflows,
+    sessions,
+    subagent_records,
+    trees,
+    project_findings,
+    resolved,
+    derived,
 ):
     """Push one project's slice into the tree, removing what it no longer owns."""
     st = daemon.state
     with st.lock:
         _sync(st, "workflows", project, {w["key"]: w for w in workflows})
         _sync(st, "sessions", project, {s["session_id"]: s for s in sessions})
+        _sync(
+            st,
+            "subagents",
+            project,
+            {_subagent_key(a): _tag(a, project) for a in subagent_records},
+        )
         _sync(st, "worktrees", project, {t["path"]: _tag(t, project) for t in trees})
         _sync(
             st,
@@ -380,10 +388,23 @@ def _commit(
         st.notices = list(derived["notices"] or ())
         record = st.get("projects", project)
         if record is not None:
+            before = (record.get("worktrees"), record.get("vault"))
             record["worktrees"] = trees
-            if vault_mod is not None:  # pragma: no cover - lands with T100
-                record["vault"] = vault_mod.snapshot(project)
-            st.upsert("projects", project, record)
+            if vault_mod is not None:
+                # FR-38's `poll_state` is the project's own `(mtime, size)`
+                # map; vault.snapshot fills it and reuses the previous
+                # snapshot when the stat sweep finds nothing moved.
+                record["vault"] = vault_mod.snapshot(
+                    project,
+                    poll_state=record.setdefault("poll_state", {}),
+                    start_offset=getattr(daemon, "hooks_log_start", None),
+                )
+            # Only upsert when something actually moved. `_sync` takes the
+            # same care for every other collection and says why: an
+            # unconditional upsert at 1 Hz marks the tree dirty every second
+            # and emits a `delta` per second with nothing in it.
+            if before != (record.get("worktrees"), record.get("vault")):
+                st.upsert("projects", project, record)
 
 
 def _tag(entity: Dict[str, Any], project: str) -> Dict[str, Any]:

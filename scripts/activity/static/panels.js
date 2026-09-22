@@ -432,7 +432,7 @@
           return p.path;
         }),
       )
-      .join(" ");
+      .join("\u0000");
     // Rebuilding the <select> on every render would reset an open dropdown a
     // second after the operator opened it, at the 1 Hz poll rate.
     if (select.dataset.built !== want) {

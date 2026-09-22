@@ -1,16 +1,18 @@
-"""worktrees.py — FR-29 enumeration and cross-reference (T072).
+"""worktrees.py — enumeration, cross-reference and classification (T072/T077).
 
 Real git repos with real linked worktrees in temp dirs, because the whole
-behavior under test is about what git reports and where git puts things.
-
-Scope note: the six-row classification table (FR-30) and FR-31's git debounce
-are T073-T075 and are NOT asserted here. This file covers enumeration, the
-per-worktree fields, and the two ways a marker claims a worktree.
+behavior under test is about what git reports and where git puts things. The
+three degraded states in particular cannot be faked: MISSING is specifically
+"`rm -rf` without `git worktree prune`", and ORPHANED-by-gone-branch is only
+reachable by detaching first, because git refuses to delete a checked-out
+branch.
 
 The recurring assertion shape is ``None is not 0``. Every git-derived field is
 optional, and the difference between "no comparison was possible" and "zero
 commits apart" is the difference between an honest blank and a claim that a
-worktree is in sync with a branch that does not exist.
+worktree is in sync with a branch that does not exist. The classification
+half extends that to three-valued logic: ``branch_merged`` and ``branch_gone``
+are True/False/**None**, and only True may condemn a worktree.
 
 Reached from CI through the flat tests/smith-activity.test.sh wrapper.
 """
@@ -34,6 +36,11 @@ def git(cwd, *args):
 
 class WorktreeBase(unittest.TestCase):
     def setUp(self):
+        # FR-31's per-worktree git cache is module state with a 3 s TTL. Every
+        # test here builds a fresh repo, so nothing CAN be stale across tests
+        # in practice — but a suite that depends on "the paths happen to
+        # differ" is one `mkdtemp` reuse away from a confusing failure.
+        WT.reset_cache()
         self.tmp = tempfile.mkdtemp(prefix="smith-worktrees-")
         self.primary = os.path.join(self.tmp, "primary")
         os.makedirs(self.primary)
@@ -143,6 +150,12 @@ class GitFieldsTest(WorktreeBase):
         for name in ("one.txt", "two.txt"):
             with open(os.path.join(wt, name), "w", encoding="utf-8") as fh:
                 fh.write("x\n")
+        # The second read is INSIDE FR-31's 3 s debounce window, so without
+        # this the cached "clean" answer comes back and the assertion below
+        # fails with 0 != 2. That is the cache working, not a bug: a dirty
+        # count is allowed to be up to GIT_CACHE_S stale on screen. A test
+        # that mutates the repo and re-reads immediately has to say so.
+        WT.reset_cache()
         dirty = self._by_path(WT.describe(self.primary), wt)
         self.assertEqual(dirty["dirty_count"], 2)
 
@@ -259,6 +272,11 @@ class MissingWorktreeTest(WorktreeBase):
         self.assertEqual(record["base_branch_source"], "unresolved")
         # The branch is still known — git's own record survives the directory.
         self.assertEqual(record["branch"], "60-feature")
+
+
+# The SC-8 classification suite lives in test_worktree_states.py, split on
+# the 500-line rule along the same seam as the source (worktrees.py /
+# worktree_states.py). It imports WorktreeBase and git from here.
 
 
 if __name__ == "__main__":

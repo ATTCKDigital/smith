@@ -25,7 +25,6 @@ import json
 import os
 import shutil
 import tempfile
-import time
 import unittest
 
 from tests._harness import *  # noqa: F401,F403 -- puts scripts/activity on sys.path
@@ -155,7 +154,6 @@ class _StubDaemon(object):
         self.state.counters["ingested"] = ingested
         self.log_offsets = {}
         self.log_records = {}
-        self.worktree_cache = {}
         self.hooks_log_offset = None
         self._seq = 0
 
@@ -216,9 +214,12 @@ class RefreshSuppressionTests(unittest.TestCase):
         self._write_settings(include_emitter)
         st = state_mod.ActivityState()
         daemon = _StubDaemon(st, ingested=ingested)
-        # Pre-warm the worktree cache so describe() never shells out to git:
-        # this test is about findings, not about the git plumbing.
-        daemon.worktree_cache[self.project] = (time.time() + 3600, [])
+        # The daemon-side worktree cache this used to pre-warm is gone (T075
+        # moved the FR-31 debounce into worktrees.py). `self.project` is a
+        # plain temp directory and not a git repo, so `describe()` returns []
+        # after one failed `rev-parse` — which is what this test wanted from
+        # the pre-warm in the first place, and it no longer has to reach into
+        # the daemon's internals to get it.
         R.refresh_project(daemon, self.project)
         never_fired = [
             entity
@@ -283,7 +284,6 @@ class RefreshSuppressionTests(unittest.TestCase):
 
         st = state_mod.ActivityState()
         daemon = _StubDaemon(st, ingested=0)
-        daemon.worktree_cache[self.project] = (time.time() + 3600, [])
         R.refresh_project(daemon, self.project)
 
         not_wired = sorted(

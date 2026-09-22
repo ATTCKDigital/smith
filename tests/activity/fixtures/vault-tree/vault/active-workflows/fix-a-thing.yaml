@@ -1,0 +1,6 @@
+workflow: smith-bugfix
+feature: a-thing
+branch: fix/a-thing
+worktree: @FIXTURE@/worktree
+session_log: @FIXTURE@/.smith/vault/sessions/beta_ab1234_2026-09-21_090000.md
+started: 2026-09-21T09:00:00Z

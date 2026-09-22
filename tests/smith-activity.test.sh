@@ -400,6 +400,25 @@ else
     assert "FR-44: no write path under scripts/activity/ touches active-workflows" true
 fi
 
+# --- Test 8b: SC-8 / FR-30 — the degraded worktree states (T076) -----------
+# Real git, real markers, real `rm -rf` without a prune. The detailed
+# per-field assertions are in tests/activity/test_worktrees.py (T077, reached
+# through Test 6 above); this is the flat-suite proof that the three states
+# are reachable from an actual repository rather than only from a dict.
+DEG_REPO=$(make_degraded_repo sc8)
+classify_degraded "$DEG_REPO" > "$TMP/sc8.out" 2>"$TMP/sc8.err"
+for CASE in "held=held" "missing=missing" "orphaned-merged=orphaned" \
+            "orphaned-gone=orphaned" "active=active"; do
+    grep -qx "$CASE" "$TMP/sc8.out" \
+        && assert "SC-8: worktree '${CASE%%=*}' classifies as '${CASE##*=}'" true \
+        || assert "SC-8: worktree '${CASE%%=*}' classifies as '${CASE##*=}' (got: $(grep "^${CASE%%=*}=" "$TMP/sc8.out" || sed -n '1,3p' "$TMP/sc8.err"))" false
+done
+# FR-30's actual prohibition, asserted as a prohibition rather than inferred
+# from the line above: neither orphan may be rendered as an active workflow.
+grep -qE '^orphaned-(merged|gone)=active$' "$TMP/sc8.out" \
+    && assert "FR-30: an orphaned worktree is NEVER rendered as an active workflow" false \
+    || assert "FR-30: an orphaned worktree is NEVER rendered as an active workflow" true
+
 # ===========================================================================
 # Daemon lifecycle (T097 / SC-9 / SC-10 / FR-2 / FR-5 / FR-6 / FR-44).
 #
@@ -425,9 +444,9 @@ URL_A=$(printf '%s' "$OUT_A" | tail -1)
 OUT_B=$(daemon_start "$D_HOME" "$PROJ_B_WT" --no-open)
 URL_B=$(printf '%s' "$OUT_B" | tail -1)
 
-[ "$(daemon_count)" = "1" ] \
+[ "$(daemon_count "$D_HOME")" = "1" ] \
     && assert "SC-9: a second invocation starts exactly one daemon process" true \
-    || assert "SC-9: a second invocation starts exactly one daemon process (got $(daemon_count))" false
+    || assert "SC-9: a second invocation starts exactly one daemon process (got $(daemon_count "$D_HOME"))" false
 
 D_TOKEN=$(daemon_token "$D_HOME")
 D_LIVE=$(daemon_port "$D_HOME")
@@ -555,9 +574,9 @@ kill "$FOREIGN_PID" 2>/dev/null
 wait "$FOREIGN_PID" 2>/dev/null
 
 daemon_stop "$D_HOME"
-[ "$(daemon_count)" = "0" ] \
+[ "$(daemon_count "$D_HOME")" = "0" ] \
     && assert "lifecycle: stop leaves no daemon process behind" true \
-    || assert "lifecycle: stop leaves no daemon process behind" false
+    || assert "lifecycle: stop leaves no daemon process behind ($(daemon_count "$D_HOME") left)" false
 
 # --- Test 14: SC-13 — the statusline is WRAPPED, never clobbered (T106) ----
 # This machine has a pre-existing `statusLine`, so the destructive risk here is

@@ -139,13 +139,16 @@ class Daemon(object):
         self.log_offsets = {}  # type: Dict[str, int]
         #: session-log path -> the seq-stamped records parsed so far.
         self.log_records = {}  # type: Dict[str, List[Dict[str, Any]]]
-        #: project -> (expires_at, records). `worktrees.describe()` shells out
-        #: to git per worktree per call with no cache of its own, so it is
-        #: never allowed onto a per-event path. T075 moves the cache into
-        #: worktrees.py; this one keeps the daemon honest until it does.
-        self.worktree_cache = {}  # type: Dict[str, Any]
-        #: ~/.smith/logs/hooks.log offset at daemon start — the session window.
+        # The worktree cache that used to live here is gone: T075 moved the
+        # FR-31 debounce inside `worktrees.describe()` and narrowed it to the
+        # git calls alone, so the daemon no longer holds worktree state.
+        #: ~/.smith/logs/hooks.log read cursor, advanced by every poll.
         self.hooks_log_offset = None  # type: Optional[int]
+        #: The same offset PINNED at daemon start. This one is the session
+        #: window FR-37's friction counters are filtered to, and it never
+        #: moves — `hooks_log_offset` does, and filtering on a moving cursor
+        #: would count only what arrived since the previous poll.
+        self.hooks_log_start = None  # type: Optional[int]
         self._stop = threading.Event()
         self._refresher = None  # type: Optional[threading.Thread]
 
