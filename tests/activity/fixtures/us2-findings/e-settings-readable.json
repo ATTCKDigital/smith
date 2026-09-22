@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "bash ~/.claude/hooks/security-guard-bash.sh"}]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{"type": "command", "command": "bash ~/.claude/hooks/lint-on-save.sh"}]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [{"type": "command", "command": "bash ~/.claude/hooks/session-start-logger.sh"}]
+      }
+    ]
+  }
+}

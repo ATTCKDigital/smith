@@ -1,0 +1,29 @@
+{
+  "$comment": "Shaped after the 23 real `claude agents --json` records: {pid, cwd, kind, name, sessionId, startedAt, status?}. `waitingFor`, `state` and `id` are absent because they do not exist.",
+  "disagrees": {
+    "sessionId": "046b6482-59f3-46fb-a5c5-d3ec7f3eb6de",
+    "pid": 4411,
+    "cwd": "/private/tmp/smith-activity-dashboard",
+    "kind": "agent",
+    "name": "smith-activity",
+    "startedAt": "2026-09-22T15:18:00Z",
+    "status": "idle"
+  },
+  "agrees": {
+    "sessionId": "1f0e2-agrees",
+    "pid": 4412,
+    "cwd": "/private/tmp/smith-activity-dashboard",
+    "kind": "agent",
+    "name": "smith-activity",
+    "startedAt": "2026-09-22T15:18:00Z",
+    "status": "waiting"
+  },
+  "no_status": {
+    "sessionId": "1f0e2-nostatus",
+    "pid": 4413,
+    "cwd": "/private/tmp/smith-activity-dashboard",
+    "kind": "agent",
+    "name": "smith-activity",
+    "startedAt": "2026-09-22T15:18:00Z"
+  }
+}

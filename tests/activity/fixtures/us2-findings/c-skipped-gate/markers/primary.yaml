@@ -1,0 +1,6 @@
+workflow: smith-new
+feature: activity-dashboard
+branch: 60-activity-dashboard
+worktree: @FIXTURE@/worktree
+session_log: @FIXTURE@/session-log.md
+started: 2026-09-22T15:00:00Z

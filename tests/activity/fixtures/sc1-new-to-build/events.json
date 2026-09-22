@@ -1,0 +1,38 @@
+[
+  {
+    "after": "Phase 3 Spec Generation",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_01spec",
+    "cwd": "@FIXTURE@/worktree",
+    "timestamp": "2026-09-22T15:24:09Z",
+    "tool_input": {
+      "description": "Phase 3 Spec Generation — smith-activity audit dashboard",
+      "subagent_type": "general-purpose"
+    }
+  },
+  {
+    "after": "Phase 4 Plan Generation",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_01plan",
+    "cwd": "@FIXTURE@/worktree",
+    "timestamp": "2026-09-22T15:34:21Z",
+    "tool_input": {
+      "description": "Phase 4 Plan Generation — smith-activity audit dashboard",
+      "subagent_type": "general-purpose"
+    }
+  },
+  {
+    "after": "Phase 3: Testing",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_01test",
+    "cwd": "@FIXTURE@/worktree",
+    "timestamp": "2026-09-22T16:55:01Z",
+    "tool_input": {
+      "description": "Phase 3: Testing — run the flat suite",
+      "subagent_type": "general-purpose"
+    }
+  }
+]

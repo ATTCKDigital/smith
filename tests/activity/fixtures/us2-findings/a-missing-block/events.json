@@ -1,0 +1,26 @@
+[
+  {
+    "after": "Phase 3 Spec Generation",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_logged",
+    "cwd": "@FIXTURE@/worktree",
+    "timestamp": "2026-09-22T15:03:01Z",
+    "tool_input": {
+      "description": "Phase 3 Spec Generation — smith-activity audit dashboard",
+      "subagent_type": "general-purpose"
+    }
+  },
+  {
+    "after": "Phase 3 Spec Generation",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_unlogged",
+    "cwd": "@FIXTURE@/worktree",
+    "timestamp": "2026-09-22T15:04:00Z",
+    "tool_input": {
+      "description": "Phase 4 Plan Generation — smith-activity audit dashboard",
+      "subagent_type": "general-purpose"
+    }
+  }
+]

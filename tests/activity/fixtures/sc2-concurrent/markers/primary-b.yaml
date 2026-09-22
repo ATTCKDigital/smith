@@ -1,0 +1,6 @@
+workflow: smith-new
+feature: deterministic-questions
+branch: 67-deterministic-questions
+worktree: @FIXTURE@/worktree-b
+session_log: @FIXTURE@/session-log.md
+started: 2026-09-22T15:15:01Z
