@@ -20,6 +20,7 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 | security-guard-files | PreToolUse | Write, Edit, NotebookEdit | Block writes to sensitive files |
 | security-guard-mcp-browser | PreToolUse | mcp__playwright__ | Gate Playwright MCP browser interaction tools; block production actions without confirmation |
 | task-router | PreToolUse | Task | Route tasks during workflows |
+| question-gate-guard | PreToolUse | AskUserQuestion | Suppress the interactive question popup in favor of Smith's markdown Q&A contract (config `question_gate.mode`) |
 | subagent-vault-writeback | SubagentStop | * | Persist sub-agent findings |
 | user-prompt-logger | UserPromptSubmit | * | Append each user prompt verbatim to the session log |
 
@@ -128,6 +129,22 @@ To disable any hook, remove its entry from `~/.claude/settings.json`. The script
 - **What it does:** Intercepts task tool calls during active Smith workflows. Checks whether a workflow is currently in progress (by looking for active spec/plan/task files in `.smith/`). If a workflow is active, routes the task according to the current workflow phase (spec, plan, implement). If no workflow is active, the task passes through unmodified.
 - **Files touched:** Reads `.smith/` workflow state files
 - **To disable:** Remove the `PreToolUse` entry for Task referencing this script from `settings.json`.
+
+---
+
+### question-gate-guard.sh
+
+- **Event:** PreToolUse
+- **Matcher:** `AskUserQuestion`
+- **What it does:** Intercepts the harness-native interactive question popup (`AskUserQuestion`) and, by default, suppresses it so questions are presented as markdown per Smith's Q&A contract (Context → Options with pros/cons → Recommended + reasoning, one at a time — see the `smith-question` skill). Any other tool passes through untouched. Behavior is driven by `question_gate.mode` in `.smith/config.json`:
+  - **`deny`** (shipped default) — block the popup; the deny reason redirects the model to present the question as markdown.
+  - **`warn`** — allow the popup but attach a reminder of the Q&A contract.
+  - **`workflow-gated`** — deny only when a Smith workflow marker is active under `.smith/vault/active-workflows/`; otherwise allow (freeform, non-workflow sessions keep the popup).
+  - **`off`** — inert; allow the popup.
+- **Scope caveat:** the hook is registered in `~/.claude/settings.json`, so `deny` mode applies to **every** project on the machine, not only Smith ones. Use `workflow-gated` or a per-project `off` to narrow it.
+- **Fail-open:** a missing/unreadable/unparseable `.smith/config.json`, an **absent** `question_gate` key, or an unrecognized mode all resolve to `off` (allow). This means installing the hook never silently changes an existing project's behavior — a project only gets `deny` once it is (re-)seeded. A fresh `/smith` init ships `deny` (from `templates/config.default.json`); an existing project activates `deny` when you run `/smith-update` there.
+- **Files touched:** Reads `.smith/config.json` and globs `.smith/vault/active-workflows/`.
+- **To disable:** set `question_gate.mode` to `off`, or remove the `PreToolUse` entry for `AskUserQuestion` from `settings.json`.
 
 ---
 

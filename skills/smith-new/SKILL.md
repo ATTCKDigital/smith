@@ -336,42 +336,22 @@ After the plan subagent completes, read ALL plan artifacts from `WORKTREE_PATH` 
    - Aim for 5-10 questions. Fewer if the feature is straightforward.
    - Do NOT ask about things that have clear best practices or obvious defaults
 
-4. **Walk through questions interactively, one at a time.**
+4. **Invoke `smith-question` and walk through the questions one at a time.**
 
-   For each question in the generated questions.md:
+   Invoke the `smith-question` skill now. It is the canonical contract for the
+   presentation format (Context → Options with pros/cons → Recommended +
+   reasoning), the one-question-at-a-time / wait-for-reply pacing, and the
+   response grammar (`yes`/`recommended` → recommended option; an option letter →
+   that option; `skip` → deferred; `done` → mark the rest skipped; anything else →
+   custom answer). Follow that contract — do NOT restate it here, and do NOT use
+   the interactive `AskUserQuestion` popup.
 
-   a. **Present** the question with its full context, all options with pros/cons, and the recommended answer with clear reasoning:
-      ```
-      ## Question [N] of [Total]: [Topic]
-
-      **Context:** [Quote from plan/spec that raises this question]
-
-      **Question:** [Specific implementation decision]
-
-      **Options:**
-      | Option | Description | Implications |
-      |--------|-------------|--------------|
-      | A | [description] | [pros: ..., cons: ...] |
-      | B | [description] | [pros: ..., cons: ...] |
-      | C | [description] | [pros: ..., cons: ...] |
-
-      **Recommended:** [Option letter] — [Reasoning]
-
-      Reply with an option letter, "yes" to accept the recommendation,
-      "skip" to defer, or type a custom answer.
-      ```
-
-   b. **Wait for the user's response**, then:
-      - `"yes"` / `"recommended"` → use the recommended answer
-      - Option letter (`"A"`, `"B"`, etc.) → use that option
-      - `"skip"` → mark as `**Answer:** SKIPPED — needs follow-up`
-      - Anything else → accept as custom answer
-
-   c. **Immediately update questions.md** — fill in the `**Answer:**` field for that question
-
-   d. **Confirm** and move to the next question: `"Saved: Q[N] → [answer]. ([remaining] remaining)"`
-
-   e. If the user says "done" before all questions, mark remaining as SKIPPED
+   Phase-5 specifics on top of the contract:
+   - The persisted file is the `questions.md` generated above in the feature's
+     spec folder. Fill in each `**Answer:**` field immediately as each question is
+     answered (the contract's "record the answer immediately" step), so the flow
+     is resumable.
+   - If the user says "done" before all questions, mark the remaining `SKIPPED`.
 
 5. **After all questions answered:**
 

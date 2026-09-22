@@ -217,7 +217,7 @@ Parse the existing file to extract the **Answer** lines for each question. These
 
 #### 3.4 Interactive Walkthrough
 
-After generating (or loading) the intake document, walk the user through **every question interactively**, one at a time. For each question, present:
+After generating (or loading) the intake document, walk the user through **every question interactively**, one at a time. Invoke the `smith-question` skill for the canonical presentation contract (Context → Options with pros/cons → Recommended + reasoning, one at a time, wait for reply) and never use the interactive `AskUserQuestion` popup — the intake walk is markdown. The intake adds two init-specific elements on top of that contract (a **Current answer** line and `back` navigation). For each question, present:
 
 1. **Question number and text** (e.g., "Q5. Frontend framework")
 2. **Context** — why this decision matters for the project
@@ -225,7 +225,7 @@ After generating (or loading) the intake document, walk the user through **every
 4. **Recommended answer** — your recommendation with reasoning based on codebase detection and project context
 5. **Current answer** — what is currently recorded in the intake file
 
-Then wait for the user's response. Accepted responses:
+Then wait for the user's response. Accepted responses (this intake walk's own grammar, a superset of `smith-question`'s with `back`):
 - A specific choice → update the Answer line in `specs/init-intake.md` immediately
 - "ok" / "yes" / pressing enter with no input / confirming the recommendation → keep the current answer, move to next question
 - A question or comment → answer it, then re-present the same question
@@ -421,6 +421,31 @@ if isinstance(config, dict) and "scheduled_audits" not in config:
         "subsets": ["requirements", "codequality", "security", "dependencies", "workflow"],
         "systems": "--all",
         "skip_pdf": True
+    }
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+fi
+```
+
+Seed the `question_gate` key in `.smith/config.json` (spec FR-15/FR-16 of the `67-deterministic-questions` feature) so an already-existing `.smith/config.json` also receives it. A brand-new `.smith/config.json` already gets this key for free from `hooks/session-start-logger.sh`'s whole-file copy of `templates/config.default.json`, which now includes `question_gate` — but that whole-file-copy-if-absent logic never touches a file that already exists. Same non-destructive merge idiom as `/smith-update`'s §5.1g sibling (`skills/smith-update/SKILL.md`): a bash-level existence gate plus a python-level `isinstance(config, dict)` check, so an absent or malformed file is left alone rather than (re)created with only this key. Merge the key only when `question_gate` isn't already present at all, preserving every other existing key untouched. If `.smith/config.json` does not exist at all, leave it absent — the `question-gate-guard.sh` hook treats an absent key as `off` (fail-open) until the project is re-seeded, so a fresh project gets `deny` from the template copy while an un-migrated one is never silently changed. bash+zsh-safe read-modify-write via `python3`:
+
+```bash
+if [ -f "$PWD/.smith/config.json" ]; then
+    python3 - "$PWD/.smith/config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict) and "question_gate" not in config:
+    config["question_gate"] = {
+        "mode": "deny"
     }
     with open(path, "w") as f:
         json.dump(config, f, indent=2)

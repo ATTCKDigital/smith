@@ -460,6 +460,37 @@ PYEOF
 fi
 ```
 
+### 5.1g Seed `question_gate` in `.smith/config.json`
+
+Same non-destructive merge idiom as `/smith` init's scaffold step (`skills/smith/SKILL.md`), applied here to existing projects refreshed by `/smith-update`, for the `question_gate` config key (spec FR-15/FR-16 of the `67-deterministic-questions` feature). `.smith/config.json` is Smith-owned config, not vault *data*, so it is in scope for this phase's "refresh Smith-owned files" boundary.
+
+- If `.smith/config.json` **exists** and already declares a `question_gate` key (in any shape), this is a no-op.
+- If it **exists** but lacks `question_gate` entirely, merge the key in with `mode: "deny"` (the shape `templates/config.default.json` ships), preserving every other existing key untouched. This is the intended propagation path (feature 67 FR-21): running `/smith-update` on an existing project is what activates `deny` there — before that, `question-gate-guard.sh` treats the absent key as `off` (fail-open), so installing the hook never silently changes an un-migrated project's behavior.
+- If it does **not exist at all**, leave it absent — `hooks/session-start-logger.sh`'s own whole-file seeding path creates it from scratch for a brand-new project (already carrying `question_gate`), not this step.
+
+```bash
+if [ -f "$PROJECT_DIR/.smith/config.json" ]; then
+    python3 - "$PROJECT_DIR/.smith/config.json" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = None
+
+if isinstance(config, dict) and "question_gate" not in config:
+    config["question_gate"] = {
+        "mode": "deny"
+    }
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYEOF
+fi
+```
+
 ### 5.2 Run `/smith-index --migrate-templates`
 
 Non-destructively merge new template sections into `CLAUDE.md` and `constitution.md`. Invoke as a sub-action of this skill.

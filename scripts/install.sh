@@ -132,10 +132,13 @@ fi
 # added (the copy loop below globs every dir under skills/, smith-namespaced
 # or not — e.g. smith-clean-code, to-mermaid).
 SKILL_TOTAL=$(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+# Count shipped hooks dynamically too (the copy loop below globs hooks/*.sh),
+# so this preview never drifts as hooks are added.
+HOOK_TOTAL=$(find "$REPO_ROOT/hooks" -maxdepth 1 -name '*.sh' -type f 2>/dev/null | wc -l | tr -d ' ')
 echo
 info "Smith will:"
 echo "  • Copy $SKILL_TOTAL skills → $CLAUDE_SKILLS_DIR/"
-echo "  • Copy 9 hooks   → $CLAUDE_HOOKS_DIR/"
+echo "  • Copy $HOOK_TOTAL hooks   → $CLAUDE_HOOKS_DIR/"
 echo "  • Copy scheduler → $SMITH_HOME/scheduler/"
 echo "  • Install global CLAUDE.md rubric → $CLAUDE_MD (backup first)"
 echo "  • Merge hook entries into $CLAUDE_SETTINGS (backup first)"
