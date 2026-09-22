@@ -275,6 +275,59 @@ loopback connection costs ~6 ms, measured (`research.md` §Q7) — but it is why
 the emitter, which reads `activity.port` live, remains the shipped fallback
 rather than a legacy path.
 
+#### The SHIPPED form (T054 / `scripts/install-activity-transport.sh`)
+
+`settings/smith-settings-fragment.json` ships **only** the `command` form, on
+all 15 primary events. The native entry is never shipped in the fragment; it is
+produced at install time by rewriting a merged `command` entry in place:
+
+```json
+{
+  "type": "http",
+  "url": "http://127.0.0.1:<activity.port>/ingest",
+  "headers": {"Authorization": "Bearer $SMITH_ACTIVITY_TOKEN"},
+  "allowedEnvVars": ["SMITH_ACTIVITY_TOKEN"],
+  "timeout": 5
+}
+```
+
+`<activity.port>` is the literal port read from
+`$SMITH_HOME/activity/activity.port` at install time. The token is **not**
+baked in — `$SMITH_ACTIVITY_TOKEN` is expanded by Claude Code at fire time
+under `allowedEnvVars`, so rotating the token does not require re-installing,
+and `settings.json` never holds the secret.
+
+**Three preconditions, ALL required. Any doubt → the `command` form.**
+
+| # | Precondition | Probe |
+|---|---|---|
+| 1 | not opted out | `SMITH_ACTIVITY_NO_NATIVE_HTTP` ≠ `1` |
+| 2 | the installed Claude Code advertises the shape | `grep -aqm1 allowedEnvVars "$(realpath "$(command -v claude)")"`, bounded by `subprocess(timeout=10)` |
+| 3 | the daemon is running NOW | `activity.port` numeric **and** `activity.token` non-empty |
+
+Precondition 2's probe is a **compiled-binary** grep, not a bundle read:
+2.1.269 ships `bin/claude.exe` at ~200 MB with no greppable JS. `allowedEnvVars`
+is a field that exists only on an http hook entry, so its presence is positive
+evidence and its absence is treated as absence of support — never as
+permission. The probe costs ~0.8 s, once, at install.
+
+Precondition 3 **fails on a normal first install**, so the `command` form is
+what almost every machine gets. That is the intended outcome. It costs 9.8 ms
+of foreground time per event against a live daemon and 4.4 ms with no daemon
+installed (§6), so the conservative default is very nearly free — while a
+native entry aimed at a port nothing is listening on is a hook that fails on
+every tool call.
+
+The rewrite is **idempotent and reversible**: it strips every existing activity
+`type: "http"` entry before deciding, so a machine that once qualified and no
+longer does falls back cleanly on the next install rather than keeping a dead
+port forever. The `command` entries are re-supplied by the fragment merge that
+runs immediately before it.
+
+`scripts/install.sh` never rewrites a chain, only individual entries in place,
+so `manifest-updater.sh` keeps its LAST position in the `PostToolUse`
+`Write|Edit` chain under both forms — asserted in `tests/smith-activity.test.sh`.
+
 ### `hooks/activity-emitter.sh` — the fallback (FR-40)
 
 Full script in `research.md` §Q7. Its guarantees:
@@ -313,17 +366,34 @@ it is unconditional.
 
 ## §6 — Measured cost
 
+**RE-MEASURED at implementation time (T055, 2026-09-22).** The planning-time
+figures below the rule were wrong in an instructive way and are kept for the
+contrast. Method: median of 25 runs, `time.perf_counter()` around
+`subprocess.run(["bash", "hooks/activity-emitter.sh"])`; `/usr/bin/time -p`
+agrees but resolves only to `real 0.00`/`0.01`. Every run `rc=0`,
+`stdout_bytes=0`.
+
 | Path | Cost |
 |---|---|
 | native `"type": "http"`, daemon up | no process spawn; one loopback POST |
-| emitter, daemon up | **~10 ms** wall (`/usr/bin/time -p` → `real 0.01`, ×3) |
-| emitter, daemon down | **~6.4 ms** — connection refused is immediate on loopback |
-| emitter, daemon hanging, backgrounded | **~1.8 ms** foreground; the bounded `curl` is detached |
+| emitter, daemon up (`204`) | **9.8 ms** |
+| emitter, daemon down (refused) | **9.7 ms** |
+| emitter, daemon hanging, backgrounded | **9.8 ms** |
+| emitter, no port file (daemon never installed) | **4.4 ms** — early bail, no `curl` fork |
+| *floor:* `bash -c 'cat >/dev/null; exit 0'` | 4.0 ms |
 | emitter, daemon hanging, foreground (not shipped) | exactly `--max-time`, `rc=28` |
 
-The sub-500 ms budget (A-2) is met by roughly 50×. The budget is re-measured
-during implementation with the same method
-(`/usr/bin/time -p` around the real emitter against a real daemon, a closed
-port, and a hanging listener), and the numbers go into `quickstart.md`'s
-Scenario 4 so a future change that regresses them is caught by a human running
-one command.
+**The daemon's state does not show through.** Planning predicted 10 / 6.4 / 1.8
+ms across up / down / hanging; the measurement says 9.8 / 9.7 / 9.8. The
+`curl` is detached into a backgrounded subshell on every path, so the hook pays
+one `fork`+`exec` of `curl` (~5.4 ms over the `cat`-plus-exit floor) and
+nothing downstream of it — not the connect, not the refusal, not the wedge.
+
+This is the better guarantee than the one planning assumed, and it changes the
+regression test from a threshold to a shape: **if those three figures ever
+diverge from one another, the detachment broke.** A uniform rise is a slower
+machine.
+
+The sub-500 ms budget (A-2) is met by roughly 50× on the worst path. The
+numbers live in `quickstart.md` Scenario 4 so a future change that regresses
+them is caught by a human running one command.

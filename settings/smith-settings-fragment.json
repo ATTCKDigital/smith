@@ -6,6 +6,12 @@
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/session-start-logger.sh" }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
       }
     ],
     "Stop": [
@@ -27,6 +33,12 @@
         "matcher": "*",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/grade-response.sh" }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
         ]
       }
     ],
@@ -50,6 +62,12 @@
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/metrics-tracker.sh" }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -58,6 +76,12 @@
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/context-loader.sh" },
           { "type": "command", "command": "bash ~/.claude/hooks/user-prompt-logger.sh" }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
         ]
       }
     ],
@@ -93,6 +117,12 @@
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/question-gate-guard.sh" }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
       }
     ],
     "SubagentStop": [
@@ -100,6 +130,84 @@
         "matcher": "*",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/subagent-vault-writeback.sh" }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/activity-emitter.sh", "timeout": 5 }
         ]
       }
     ]

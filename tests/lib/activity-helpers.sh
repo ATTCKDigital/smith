@@ -182,3 +182,206 @@ add_worktree() {
     (cd "$repo" && git worktree add -q -b "$branch" "$wt") >/dev/null 2>&1
     printf '%s' "$wt"
 }
+
+# ===========================================================================
+# Daemon lifecycle harness (T097 / SC-9 / SC-10).
+#
+# Every daemon a test starts runs under an ISOLATED SMITH_HOME beneath $TMP,
+# so a test run never touches the operator's own ~/.smith/activity/ — and in
+# particular never repoints a live hooks.log-wired emitter at a test daemon.
+#
+# Bounds are python3 socket timeouts and curl --max-time. Neither `timeout`
+# nor `gtimeout` exists on a stock macOS, so the TIMEOUT_BIN idiom would
+# impose no bound at all and is not used here.
+# ===========================================================================
+
+ACTIVITY_CLI="$REPO_ROOT/scripts/activity/smith-activity.sh"
+
+# free_port — a port nothing is listening on right now.
+free_port() {
+    python3 - <<'PY'
+import socket
+
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+print(sock.getsockname()[1])
+sock.close()
+PY
+}
+
+daemon_token() { tr -d '[:space:]' < "$1/activity/activity.token" 2>/dev/null; }
+daemon_port()  { tr -d '[:space:]' < "$1/activity/activity.port"  2>/dev/null; }
+daemon_pid()   { tr -d '[:space:]' < "$1/activity/activity.pid"   2>/dev/null; }
+
+# daemon_identity PORT — the /health `service` string, or "". The FR-5 probe.
+daemon_identity() {
+    curl -s --max-time 3 --connect-timeout 1 "http://127.0.0.1:$1/health" 2>/dev/null \
+        | python3 -c '
+import json
+import sys
+
+try:
+    print((json.load(sys.stdin) or {}).get("service", ""))
+except Exception:
+    print("")
+' 2>/dev/null
+}
+
+# daemon_start <smith-home> <cwd> [args…] — run the CLI from <cwd>. Echoes the
+# whole stdout of the CLI; its LAST line is the dashboard URL.
+daemon_start() {
+    local home="$1" where="$2"; shift 2
+    ( cd "$where" && SMITH_HOME="$home" "$ACTIVITY_CLI" "$@" 2>&1 )
+}
+
+daemon_stop() {
+    SMITH_HOME="$1" "$ACTIVITY_CLI" stop >/dev/null 2>&1
+}
+
+# daemon_count — how many activity daemons are running, whatever their home.
+daemon_count() { pgrep -f 'activity/server.py' 2>/dev/null | wc -l | tr -d ' '; }
+
+# http_code <url> — the status alone.
+http_code() {
+    curl -s -o /dev/null -w '%{http_code}' --max-time 5 --connect-timeout 2 "$1" 2>/dev/null
+}
+
+# code_only <file> — a Python source file with its COMMENTS and DOCSTRINGS
+# removed, and every other string literal KEPT.
+#
+# Stripping prose is load-bearing: server.py's docstring explains at length why
+# it does NOT import urllib, and daemon.py's says in words that nothing writes
+# to active-workflows/, so a grep over the raw files fails on the very
+# documentation that states the invariant. The emitter test above strips `#`
+# comments for the same reason; Python docstrings need an AST pass.
+#
+# Keeping ordinary string literals is equally load-bearing, and was learned the
+# hard way: an earlier version stripped ALL strings, and a deliberately
+# sabotaged `open(os.path.join(root, '.smith', 'vault', 'active-workflows',
+# 'x.yaml'), 'w')` sailed through the FR-44 guard untouched, because the path
+# it writes to lives entirely inside string literals. A guard blind to string
+# literals is blind to every filesystem path in the program.
+code_only() {
+    python3 - "$1" <<'PY'
+import ast
+import io
+import sys
+import tokenize
+
+path = sys.argv[1]
+with open(path, "rb") as fh:
+    source = fh.read()
+
+# Docstring line ranges: a bare string expression opening a module, class or
+# function body. Every other string is a value and stays.
+prose = set()
+try:
+    tree = ast.parse(source)
+except (SyntaxError, ValueError):
+    sys.exit(0)          # unparseable: emit nothing rather than a false pass
+for node in ast.walk(tree):
+    body = getattr(node, "body", None)
+    if not isinstance(body, list) or not body:
+        continue
+    if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef)):
+        continue
+    first = body[0]
+    if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+            and isinstance(first.value.value, str):
+        end = getattr(first, "end_lineno", first.lineno) or first.lineno
+        prose.update(range(first.lineno, end + 1))
+
+out = []
+try:
+    for tok in tokenize.tokenize(io.BytesIO(source).readline):
+        if tok.type == tokenize.COMMENT:
+            continue
+        if tok.type == tokenize.STRING and tok.start[0] in prose:
+            continue
+        out.append((tok.start[0], tok.string))
+except (tokenize.TokenError, IndentationError):
+    sys.exit(0)
+
+line, buf = None, []
+for row, text in out:
+    if row != line:
+        if buf:
+            print(" ".join(buf))
+        line, buf = row, []
+    buf.append(text)
+if buf:
+    print(" ".join(buf))
+PY
+}
+
+# net_import_hits <outfile> — every outbound-capable import in the daemon's
+# source (FR-49). `urllib.parse` is deliberately NOT exempted: an exception
+# carved into a guard is a guard nobody trusts, so server.py hand-rolls its
+# query parsing and this pattern stays absolute.
+net_import_hits() {
+    local out="$1" f
+    : > "$out"
+    for f in "$REPO_ROOT"/scripts/activity/*.py; do
+        code_only "$f" \
+            | grep -nE '(^|[^a-zA-Z_.])(urllib|ftplib|smtplib|telnetlib)([^a-zA-Z_]|$)|http[[:space:]]*\.[[:space:]]*client|socket[[:space:]]*\.[[:space:]]*create_connection|requests[[:space:]]*\.[[:space:]]*(get|post)' \
+            | sed "s|^|$(basename "$f"):|" >> "$out"
+    done
+}
+
+# marker_write_hits <outfile> — FR-44, in two layers.
+#
+# LAYER 1 — containment. The on-disk directory name `active-workflows` may
+# appear in the executable code of exactly ONE file under scripts/activity/:
+# paths.py, which defines the read helper `active_workflows_dir()`. Everything
+# else must go through that helper, so the literal anywhere else is a hit on
+# sight, write verb or not.
+#
+# Layer 1 exists because layer 2 alone was RED-CHECKED AND FAILED. A sabotage
+# of the form
+#     target = os.path.join(root, '.smith', 'vault', 'active-workflows', 'x')
+#     with open(target, 'w') as fh: ...
+# splits the path from the write across two lines, and a line-scoped
+# co-occurrence grep sees neither line as dangerous. Real code that writes to a
+# directory almost always looks exactly like that.
+#
+# LAYER 2 — co-occurrence. A write primitive on a line that also names
+# active-workflows, in any of those files AND in the emitter. The `[^-=]` guard
+# in front of the redirect alternative is load-bearing: without it Python's
+# `->` return annotation reads as a shell redirect and the READ helper
+# `def active_workflows_dir(p: str) -> str:` is condemned. That exact false
+# positive was observed, which is why the guard exists.
+#
+# Layer 3 is behavioural and lives in the test file: a running daemon must
+# leave a fixture project's whole .smith/ mtime set unchanged.
+MARKER_LITERAL_OWNER="paths.py"
+MARKER_WRITE_VERB='open[[:space:]]*\(|makedirs|\bmkdir\b|os\.(remove|unlink|rename|replace)|shutil\.|\.write|(^|[^-=])>>?[[:space:]]|\btouch\b|\brm\b|\btee\b'
+marker_write_hits() {
+    local out="$1" f base
+    : > "$out"
+    for f in "$REPO_ROOT"/scripts/activity/*.py; do
+        base=$(basename "$f")
+        if [ "$base" != "$MARKER_LITERAL_OWNER" ]; then
+            code_only "$f" | grep -n 'active-workflows' \
+                | sed "s|^|$base: [layer-1 containment] |" >> "$out"
+        fi
+        code_only "$f" | grep -E 'active[-_]workflow' | grep -nE "$MARKER_WRITE_VERB" \
+            | sed "s|^|$base: [layer-2 write-verb] |" >> "$out"
+    done
+    grep -v '^[[:space:]]*#' "$EMITTER" \
+        | grep -E 'active[-_]workflow' | grep -nE "$MARKER_WRITE_VERB" \
+        | sed 's|^|activity-emitter.sh: [layer-2 write-verb] |' >> "$out"
+}
+
+# vault_fingerprint <repo> — every path under .smith with its mtime and size.
+vault_fingerprint() {
+    find "$1/.smith" -print0 2>/dev/null \
+        | xargs -0 stat -f '%N %m %z' 2>/dev/null | sort
+}
+
+
+# The T104-T109 statusline and redaction machinery, split off at the 500-line
+# decompose threshold. Sourced here rather than from the test file so the test
+# file still sources exactly one helper.
+# shellcheck source=tests/lib/activity-statusline.sh
+. "$REPO_ROOT/tests/lib/activity-statusline.sh"

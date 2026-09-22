@@ -1,5 +1,6 @@
 {
   "$comment": "Per-million-token rates in USD. Verified against https://platform.claude.com/docs/en/docs/about-claude/pricing (see specs/003-accurate-workflow-summary/pricing-verified.md). 5-minute cache TTL assumed. Entries ordered longest-prefix-first; patterns use * (no required separator) so they match both the bare id (claude-opus-4-6), dated suffix (claude-opus-4-6-20250929), and context-window suffix (claude-opus-4-6[1m]) so minor-version-specific families win over the broad family wildcard.",
+  "$ordering_contract": "ARRAY ORDER IS LOAD-BEARING AND IS TESTED. workflow_summary_lib.match_family() returns the FIRST array-order regex match, and a family pattern is a prefix glob, so `claude-opus-5*` matches `claude-opus-5-5-20260901` just as happily as `claude-opus-5`. Whenever one family's pattern is a prefix of another's, the MORE SPECIFIC one must appear first or the broader one silently swallows it and prices it wrong — e.g. Opus 5.5 ($4/$20) billed as Opus 5 ($5/$25), with no error and no log line. tests/activity/test_usage.py asserts this for every prefix pair in the file; do not reorder without running it. Rates are NEVER derived: cache read is 0.1x base input for most families but 0.025x for Fable 5.1 / Mythos 5.1 and 0.05x for Opus 5.5, so a derived table would overprice Fable 5.1 cache reads 4x.",
   "fallback_order": [
     "exact",
     "minor",
@@ -7,6 +8,46 @@
     "tier"
   ],
   "models": [
+    {
+      "family": "claude-opus-5-5*",
+      "input_per_mtok": 4.0,
+      "output_per_mtok": 20.0,
+      "cache_write_5m_per_mtok": 5.0,
+      "cache_read_per_mtok": 0.2,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Opus 5.5. MUST precede claude-opus-5*, which would otherwise match it and overprice it at 5/25. Cache read is 0.05x base input, not the usual 0.1x."
+    },
+    {
+      "family": "claude-opus-5*",
+      "input_per_mtok": 5.0,
+      "output_per_mtok": 25.0,
+      "cache_write_5m_per_mtok": 6.25,
+      "cache_read_per_mtok": 0.5,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Opus 5.0, including the claude-opus-5[1m] context-window suffix. This is the family that matches the currently running model; before this entry existed match_family() returned None for every live session and the Stop-hook summary silently omitted its USD line (FR-62)."
+    },
+    {
+      "family": "claude-opus-4-8*",
+      "input_per_mtok": 5.0,
+      "output_per_mtok": 25.0,
+      "cache_write_5m_per_mtok": 6.25,
+      "cache_read_per_mtok": 0.5,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Opus 4.8. MUST precede claude-opus-4*, whose 15/75 rate would overprice it 3x."
+    },
+    {
+      "family": "claude-opus-4-7*",
+      "input_per_mtok": 5.0,
+      "output_per_mtok": 25.0,
+      "cache_write_5m_per_mtok": 6.25,
+      "cache_read_per_mtok": 0.5,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Opus 4.7. MUST precede claude-opus-4*, whose 15/75 rate would overprice it 3x."
+    },
     {
       "family": "claude-opus-4-6*",
       "input_per_mtok": 5.0,
@@ -48,6 +89,56 @@
       "notes": "Opus 4.0 and catch-all fallback for any Opus 4 minor that shares the original rate."
     },
     {
+      "family": "claude-fable-5-1*",
+      "input_per_mtok": 10.0,
+      "output_per_mtok": 50.0,
+      "cache_write_5m_per_mtok": 12.5,
+      "cache_read_per_mtok": 0.25,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Fable 5.1. Cache read is 0.025x base input, NOT the usual 0.1x — deriving it would price cache reads 4x too high. MUST precede claude-fable-5*."
+    },
+    {
+      "family": "claude-mythos-5-1*",
+      "input_per_mtok": 10.0,
+      "output_per_mtok": 50.0,
+      "cache_write_5m_per_mtok": 12.5,
+      "cache_read_per_mtok": 0.25,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Mythos 5.1. Cache read is 0.025x base input, NOT the usual 0.1x. MUST precede claude-mythos-5*."
+    },
+    {
+      "family": "claude-fable-5*",
+      "input_per_mtok": 10.0,
+      "output_per_mtok": 50.0,
+      "cache_write_5m_per_mtok": 12.5,
+      "cache_read_per_mtok": 1.0,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Fable 5.0. Cache read is the standard 0.1x here; only the 5.1 minor diverges."
+    },
+    {
+      "family": "claude-mythos-5*",
+      "input_per_mtok": 10.0,
+      "output_per_mtok": 50.0,
+      "cache_write_5m_per_mtok": 12.5,
+      "cache_read_per_mtok": 1.0,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Mythos 5.0. Cache read is the standard 0.1x here; only the 5.1 minor diverges."
+    },
+    {
+      "family": "claude-sonnet-5*",
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0,
+      "cache_write_5m_per_mtok": 2.5,
+      "cache_read_per_mtok": 0.2,
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "last_verified": "2026-09-22",
+      "notes": "Sonnet 5. Cheaper than Sonnet 4.x, so a missing entry here would OVERprice rather than fail loudly."
+    },
+    {
       "family": "claude-sonnet-4-6*",
       "input_per_mtok": 3.0,
       "output_per_mtok": 15.0,
@@ -75,7 +166,7 @@
       "cache_read_per_mtok": 0.3,
       "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
       "last_verified": "2026-04-14",
-      "notes": "Sonnet 4.x catch-all."
+      "notes": "Sonnet 4.0 and catch-all fallback for any Sonnet 4 minor."
     },
     {
       "family": "claude-haiku-4-5*",
@@ -95,7 +186,7 @@
       "cache_read_per_mtok": 0.08,
       "source_url": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
       "last_verified": "2026-04-14",
-      "notes": "Haiku 3.5 legacy."
+      "notes": "Haiku 3.5."
     }
   ]
 }

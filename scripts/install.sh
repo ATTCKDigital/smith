@@ -132,13 +132,19 @@ fi
 # added (the copy loop below globs every dir under skills/, smith-namespaced
 # or not — e.g. smith-clean-code, to-mermaid).
 SKILL_TOTAL=$(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
-# Count shipped hooks dynamically too (the copy loop below globs hooks/*.sh),
-# so this preview never drifts as hooks are added.
-HOOK_TOTAL=$(find "$REPO_ROOT/hooks" -maxdepth 1 -name '*.sh' -type f 2>/dev/null | wc -l | tr -d ' ')
+# Counted the same way the copy loops below glob, for the same reason the skill
+# count is: the hardcoded "9" this replaced had drifted to less than half the
+# real number (FR-63). `-maxdepth 1 -type f` mirrors `hooks/*.sh` exactly.
+# Feature 67 fixed the same defect independently; this supersedes it by also
+# counting the Python helpers and the *.json data files (pricing.json was never
+# being installed at all — see the hooks/*.json copy loop below).
+HOOK_TOTAL=$(find "$REPO_ROOT/hooks" -maxdepth 1 -type f -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')
+HELPER_TOTAL=$(find "$REPO_ROOT/hooks" -maxdepth 1 -type f -name '*.py' 2>/dev/null | wc -l | tr -d ' ')
+HOOKDATA_TOTAL=$(find "$REPO_ROOT/hooks" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
 echo
 info "Smith will:"
 echo "  • Copy $SKILL_TOTAL skills → $CLAUDE_SKILLS_DIR/"
-echo "  • Copy $HOOK_TOTAL hooks   → $CLAUDE_HOOKS_DIR/"
+echo "  • Copy $HOOK_TOTAL hooks (+ $HELPER_TOTAL Python helpers, $HOOKDATA_TOTAL data files) → $CLAUDE_HOOKS_DIR/"
 echo "  • Copy scheduler → $SMITH_HOME/scheduler/"
 echo "  • Install global CLAUDE.md rubric → $CLAUDE_MD (backup first)"
 echo "  • Merge hook entries into $CLAUDE_SETTINGS (backup first)"
@@ -209,7 +215,21 @@ for helper_src in "$REPO_ROOT"/hooks/*.py; do
     cp "$helper_src" "$CLAUDE_HOOKS_DIR/$helper_name"
     chmod +x "$CLAUDE_HOOKS_DIR/$helper_name"
 done
-ok "Installed $HOOK_COUNT hooks (plus Python helpers)"
+# Copy the hooks' DATA files (FR-62). A glob, deliberately, not `cp
+# hooks/pricing.json`: the two loops above are already two separate stale
+# enumerations, and hooks/pricing.json is the proof of what a third one costs.
+# It has never been installed by this script, so workflow_summary_lib's
+# load_pricing() has always returned None at the install location and every
+# Stop-hook summary has silently omitted its USD figure — not as an error, as
+# a missing line. Not executable: these are read, never run.
+HOOKDATA_COUNT=0
+for data_src in "$REPO_ROOT"/hooks/*.json; do
+    [ -f "$data_src" ] || continue
+    data_name="$(basename "$data_src")"
+    cp "$data_src" "$CLAUDE_HOOKS_DIR/$data_name"
+    HOOKDATA_COUNT=$((HOOKDATA_COUNT + 1))
+done
+ok "Installed $HOOK_COUNT hooks (plus Python helpers and $HOOKDATA_COUNT data files)"
 
 # ---------- install manifest-system parsers ----------
 if [ "$NO_PARSERS" != "1" ]; then
@@ -320,6 +340,32 @@ else
     [ -n "${BACKUP:-}" ] && info "A backup is available at $BACKUP"
 fi
 
+# ---------- /smith-activity transport: prefer native "type": "http" (FR-42) --
+# The fragment merged above wires hooks/activity-emitter.sh on 15 events. This
+# step UPGRADES them to native `{"type":"http", …}` entries when — and only
+# when — every precondition is positively confirmed, and falls back to the
+# emitter on any doubt. The detection rationale lives in the script's header.
+CLAUDE_SETTINGS="$CLAUDE_SETTINGS" SMITH_HOME="$SMITH_HOME" \
+    bash "$REPO_ROOT/scripts/install-activity-transport.sh" \
+        --settings "$CLAUDE_SETTINGS" \
+    || warn "/smith-activity transport selection reported errors"
+
+# ---------- /smith-activity statusline: WRAP, never clobber (FR-45/T105) ----
+# The statusline payload is the ONLY source of the FR-35 rolling quota windows
+# — no API, no file and no CLI reports them — so /smith-activity has to sit on
+# `statusLine`. It does so by WRAPPING: the operator's existing command is
+# captured to a sidecar first, and statusline-tee.sh delegates to it with the
+# payload unchanged. SC-13 diffs the wrapped output against the unwrapped one
+# and requires them byte-for-byte identical.
+#
+# Delegated to its own script for the same reason the transport step above is:
+# SC-13 must be able to run this against a fixture settings.json without
+# running the whole installer.
+info "Wrapping statusLine for /smith-activity (previous command preserved)"
+CLAUDE_SETTINGS="$CLAUDE_SETTINGS" SMITH_HOME="$SMITH_HOME" \
+    bash "$REPO_ROOT/scripts/install-statusline.sh" \
+        --settings "$CLAUDE_SETTINGS" \
+    || warn "statusLine wrapping reported errors — the previous statusline is unchanged"
 # ---------- install manifest-system hooks (auto-register per Q4) ----------
 if [ "$NO_HOOKS" != "1" ]; then
     info "Registering manifest-system hooks in $CLAUDE_SETTINGS"

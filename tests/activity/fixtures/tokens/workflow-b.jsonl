@@ -1,0 +1,1 @@
+{"type":"assistant","isSidechain":false,"cwd":"@FIXTURE@/worktree-b","timestamp":"2026-09-22T15:15:10.000Z","message":{"model":"claude-sonnet-5","usage":{"input_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":3000}}}

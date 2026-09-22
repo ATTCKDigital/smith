@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>smith-activity</title>
+    <!-- An EMPTY data: URI, which suppresses the browser's automatic
+         /favicon.ico request without introducing any origin at all. An inline
+         SVG favicon would work equally well off-box, but its required
+         `xmlns="http://www.w3.org/2000/svg"` puts the literal string `http`
+         inside an href, and SC-15/FR-49's whole value is that its grep can
+         stay blunt. A guard with a carve-out is a guard nobody trusts. -->
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>smith-activity</h1>
+      <label class="filter"
+        >project
+        <select id="project-filter">
+          <option value="">all projects</option>
+        </select>
+      </label>
+      <span class="spacer"></span>
+      <span id="unattributed" class="counter" hidden></span>
+      <span id="generation" class="counter" title="state generation"
+        >gen —</span
+      >
+      <span id="link-state" class="link-state link-connecting">connecting</span>
+    </header>
+
+    <!-- Banners. Everything the operator must be told before they read a number:
+     daemon restart, prompt capture, degraded capabilities, notices. Rendered
+     as text, never hidden (A-9). -->
+    <div id="banners" class="banners"></div>
+
+    <main class="grid">
+      <section class="panel panel-wide" id="panel-workflows">
+        <h2>
+          Workflows
+          <span class="hint"
+            >phase, provenance, and what is waiting on you</span
+          >
+        </h2>
+        <div id="workflows" class="panel-body"></div>
+      </section>
+
+      <section class="panel panel-wide" id="panel-findings">
+        <h2>
+          Findings
+          <span class="hint"
+            >what Smith reported vs. what the hooks observed</span
+          >
+        </h2>
+        <div id="findings" class="panel-body"></div>
+      </section>
+
+      <section class="panel" id="panel-sessions">
+        <h2>Sessions</h2>
+        <div id="sessions" class="panel-body"></div>
+      </section>
+
+      <section class="panel" id="panel-subagents">
+        <h2>Subagents</h2>
+        <div id="subagents" class="panel-body"></div>
+      </section>
+
+      <section class="panel" id="panel-worktrees">
+        <h2>Worktrees</h2>
+        <div id="worktrees" class="panel-body"></div>
+      </section>
+
+      <section class="panel" id="panel-usage">
+        <h2>Tokens &amp; quota</h2>
+        <div id="quota" class="panel-body"></div>
+        <div id="usage" class="panel-body"></div>
+      </section>
+
+      <section class="panel" id="panel-vault">
+        <h2>Vault</h2>
+        <div id="vault" class="panel-body"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="retention"
+        >retention: ephemeral — history resets when the daemon restarts</span
+      >
+    </footer>
+
+    <!-- ====================== templates (no logic here) ====================== -->
+
+    <template id="tpl-workflow">
+      <article class="card workflow">
+        <div class="card-head">
+          <span class="wf-nesting"></span>
+          <span class="wf-activity badge"></span>
+        </div>
+        <div class="wf-meta muted"></div>
+        <div class="wf-unknown unknown" hidden></div>
+        <ol class="stepper"></ol>
+        <div class="wf-notes muted"></div>
+      </article>
+    </template>
+
+    <template id="tpl-phase">
+      <li class="phase">
+        <span class="phase-marker" aria-hidden="true"></span>
+        <span class="phase-num"></span>
+        <span class="phase-title"></span>
+        <span class="phase-stop badge badge-stop" hidden
+          >MANDATORY STOP — waiting on you</span
+        >
+        <span class="phase-state badge"></span>
+        <span class="phase-prov badge badge-prov" hidden></span>
+        <span class="phase-at muted"></span>
+      </li>
+    </template>
+
+    <template id="tpl-finding">
+      <article class="card finding">
+        <div class="card-head">
+          <span class="fi-class"></span>
+          <span class="fi-kind badge"></span>
+          <span class="fi-sev badge"></span>
+          <span class="fi-settled badge badge-settled" hidden
+            >SETTLED — retracted, kept on screen</span
+          >
+        </div>
+        <dl class="sides">
+          <dt>observed (hooks)</dt>
+          <dd class="fi-observed"></dd>
+          <dt>self-reported (Smith)</dt>
+          <dd class="fi-self"></dd>
+        </dl>
+        <div class="fi-evidence muted"></div>
+        <div class="fi-where muted"></div>
+      </article>
+    </template>
+
+    <template id="tpl-row">
+      <div class="row">
+        <div class="row-head">
+          <span class="row-title"></span
+          ><span class="row-badge badge" hidden></span>
+        </div>
+        <div class="row-detail muted"></div>
+      </div>
+    </template>
+
+    <template id="tpl-quota">
+      <div class="quota-window">
+        <div class="quota-head">
+          <span class="quota-name"></span><span class="quota-pct"></span>
+        </div>
+        <div class="meter"><span class="meter-fill"></span></div>
+        <div class="quota-reset muted"></div>
+      </div>
+    </template>
+
+    <!-- Plain <script defer> in dependency order, no module system and no
+         bundler: ui.js defines the shared DOM helpers, stepper.js and
+         panels.js define the renderers, app.js opens the stream last. `defer`
+         guarantees this order and that the DOM is parsed first. -->
+    <script src="/static/ui.js" defer></script>
+    <script src="/static/stepper.js" defer></script>
+    <script src="/static/panels.js" defer></script>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

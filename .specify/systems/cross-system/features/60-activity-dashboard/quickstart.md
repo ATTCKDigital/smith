@@ -216,14 +216,38 @@ point `activity.port` at it, re-run the emitter: still `exit=0`, still zero
 bytes, still bounded — because the `curl` is detached in a subshell and carries
 `--max-time 2 --connect-timeout 1`.
 
-**Reference figures measured on this machine** (`research.md` §Q7). Re-measure
-here; a large regression means the fire-and-forget detachment broke:
+**Reference figures RE-MEASURED on this machine during implementation (T055,
+2026-09-22)**, superseding `research.md` §Q7's planning-time table. Method:
+`/usr/bin/time -p` around `bash hooks/activity-emitter.sh` confirms `real 0.00`
+/ `0.01` on every path (its 10 ms resolution is too coarse to separate them),
+so the figures below are the median of **25 runs** timed with
+`time.perf_counter()` around `subprocess.run(["bash", "hooks/activity-emitter.sh"])`.
+Every run: `rc=0`, `stdout_bytes=0`.
 
-| Path | Expected |
-|---|---|
-| daemon up | ~10 ms |
-| daemon down | ~6 ms |
-| daemon hanging, backgrounded | ~2 ms foreground |
+| Path | Median foreground | Note |
+|---|---|---|
+| daemon up (`204`) | **9.8 ms** | |
+| daemon hanging (accepts, never replies) | **9.8 ms** | |
+| daemon down (connection refused) | **9.7 ms** | |
+| **no port file at all** (daemon never installed) | **4.4 ms** | the early bail — no `curl` fork |
+| *floor:* `bash -c 'exit 0'` | 2.7 ms | |
+| *floor:* `bash -c 'cat >/dev/null; exit 0'` | 4.0 ms | |
+
+**The three network paths are indistinguishable, and that is the result worth
+reading.** `contracts/hook-envelope.md` §6 predicted 10 / 6.4 / 1.8 ms, i.e.
+that the daemon's state would show through. It does not: the `curl` is
+detached into a backgrounded subshell, so what the hook actually pays is one
+`fork`+`exec` of `curl` and nothing downstream of it. Daemon up, daemon down
+and daemon wedged all cost the same ~5.4 ms above the `cat`-plus-exit floor.
+
+That makes the regression test a shape check, not a threshold check: **if these
+three figures ever diverge from each other, the detachment broke** and the hook
+has started waiting on the network. A uniform rise across all four rows is just
+a slower machine.
+
+The whole range is ~50× inside A-2's 500 ms budget, and the worst case is the
+path where the daemon is *running* — the uninstalled case, which is every
+machine that never runs `/smith-activity`, is the cheapest at 4.4 ms.
 
 **Finally, the negative control that matters most:** with the daemon still
 down, use Claude Code normally for a few minutes. No error notice, no blocked

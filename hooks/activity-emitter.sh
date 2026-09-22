@@ -8,6 +8,17 @@
 #          existing chain, so manifest-updater.sh stays LAST in the
 #          PostToolUse Write|Edit chain; see scripts/install-hooks.sh:6-7)
 # Scope: Universal (main session + sub-agents)
+# Timeout: 5 (declared per settings entry — Claude Code's default for a
+#          `command` hook is 600 s, which an emitter must never inherit)
+#
+# Purpose: Forward hook events to the local /smith-activity daemon; silent
+#          no-op when the daemon is down.
+#          ^ This one line is the docs/hooks.md "Hook Summary" table cell.
+#            Everything below is the "Detailed Reference" entry: Event,
+#            Matcher, What it does, Exit contract, Files touched, Network,
+#            Privacy note, To disable — the same field order and the same
+#            names docs/hooks.md:124-154 uses, so the doc is transcribed from
+#            this block rather than re-derived from the code.
 #
 # What it does: forwards the hook payload on stdin BYTE-FOR-BYTE to the local
 # /smith-activity daemon at POST http://127.0.0.1:<port>/ingest. It parses
