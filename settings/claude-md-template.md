@@ -79,6 +79,12 @@ When skill instructions specify a process, follow it literally.
       (e.g. one-question-at-a-time Q&A gates), no skipping of artifact-creation
       order (e.g. creating the tracking file BEFORE the interactive flow),
       no invoking review gates out of order.
+- [ ] Decision questions put to the user (offering options to choose among)
+      are presented as markdown per the Q&A contract — Context, Options with
+      pros/cons, a Recommended option with reasoning, one question at a time —
+      and the interactive `AskUserQuestion` tool is NOT used. See `/smith-question`
+      for the full contract. (The `question-gate-guard.sh` hook enforces this at
+      the tool level; this criterion is the graded backstop.)
 
 ### Trigger phrase lists
 
@@ -115,6 +121,8 @@ architecture), generate a structured question file.
       skill-specified questions artifact location) BEFORE implementation begins.
 - [ ] The question file format includes, per question: question text, answer
       options, recommended answer with reasoning, and a blank `**Answer:**` field.
+      (`/smith-question` holds the canonical questions.md shape — follow it rather
+      than re-deriving the format here.)
 - [ ] Implementation does NOT begin until all questions have answers recorded
       (or are explicitly marked SKIPPED).
 - [ ] The question file links to relevant spec files, code files, or prior decisions.

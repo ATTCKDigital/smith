@@ -56,6 +56,10 @@
     "systems": "--all",
     "skip_pdf": true
   },
+  "question_gate": {
+    "_comment": "question-gate-guard.sh suppresses the interactive AskUserQuestion popup in favor of Smith's markdown Q&A contract (see the smith-question skill). mode: deny (block the popup, redirect to markdown) | warn (allow + remind) | workflow-gated (deny only during an active Smith workflow) | off (inert). Absent key on a pre-existing project is treated as off (fail-open) until re-seeded.",
+    "mode": "deny"
+  },
   "context_budget": {
     "_comment": "context-budget-guard.sh warns (never blocks) when an edited file exceeds max_file_kb. @-referenced files (loaded in full every session) are flagged extra-loudly. Set max_file_kb to 0 to disable.",
     "max_file_kb": 50

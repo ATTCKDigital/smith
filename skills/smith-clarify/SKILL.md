@@ -72,34 +72,18 @@ Execution steps:
 
    **A. Parse questions.md** — extract all question blocks. Each block has: question number, topic, context, question text, options table, recommended answer, and current answer status.
 
-   **B. For each unanswered question, present it one at a time:**
+   **B. Invoke `smith-question` and present each unanswered question one at a time.**
 
-   Display in this format:
-   ```
-   ## Question [N] of [Total]: [Topic]
+   Invoke the `smith-question` skill — it is the canonical contract for the
+   presentation format (Context → Options with pros/cons → Recommended +
+   reasoning) and the one-at-a-time / wait-for-reply pacing. Follow that contract;
+   do NOT restate the format here, and do NOT use the interactive `AskUserQuestion`
+   popup.
 
-   **Context:** [Quote from plan/spec that raises this question]
-
-   **Question:** [The specific implementation decision]
-
-   **Options:**
-   | Option | Description | Implications |
-   |--------|-------------|--------------|
-   | A | [description] | [pros: ..., cons: ...] |
-   | B | [description] | [pros: ..., cons: ...] |
-   | C | [description] | [pros: ..., cons: ...] |
-
-   **Recommended:** [Option letter] — [Clear reasoning for why this is the best choice]
-
-   Reply with an option letter (e.g., "A"), say "yes" to accept the recommendation,
-   type "skip" to defer this question, or provide your own custom answer.
-   ```
-
-   **C. Process the user's response:**
-   - `"yes"`, `"recommended"`, or `"rec"` → use the recommended answer
-   - An option letter (`"A"`, `"B"`, `"C"`) → use that option's description as the answer
-   - `"skip"` → mark as `**Answer:** SKIPPED — needs follow-up`
-   - Anything else → accept as a custom answer verbatim
+   **C. Process the user's response** per `smith-question`'s response grammar
+   (`yes`/`recommended`/`rec` → recommended answer; an option letter → that
+   option's description; `skip` → `**Answer:** SKIPPED — needs follow-up`; anything
+   else → custom answer verbatim).
 
    **D. After each answer, immediately:**
    1. Update `questions.md` — replace the `**Answer**: ___` line for that question with `**Answer:** [chosen answer]`
@@ -204,6 +188,12 @@ Execution steps:
     - If more than 5 categories remain unresolved, select the top 5 by (Impact * Uncertainty) heuristic.
 
 4. Sequential questioning loop (interactive):
+    - Invoke the `smith-question` skill for the canonical presentation contract
+      and response grammar; the multiple-choice format below follows it. Never use
+      the interactive `AskUserQuestion` popup — questions are presented as markdown.
+      (The short-answer style and the ≤5-word constraint below are clarify-specific
+      additions on top of that contract; spec-ambiguity answers integrate into
+      spec.md rather than a `questions.md`.)
     - Present EXACTLY ONE question at a time.
     - For multiple‑choice questions:
        - **Analyze all options** and determine the **most suitable option** based on:

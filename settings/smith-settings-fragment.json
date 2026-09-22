@@ -87,6 +87,12 @@
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/task-router.sh" }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/question-gate-guard.sh" }
+        ]
       }
     ],
     "SubagentStop": [
