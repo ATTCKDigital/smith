@@ -71,6 +71,14 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 
+# ---------- backup retention ----------
+# Keep only the N newest timestamped backups per file. Sourced after REPO_ROOT is
+# resolved so the curl-pipe bootstrap above (which re-execs with a real path) is
+# unaffected.
+BACKUP_KEEP="${SMITH_BACKUP_KEEP:-3}"
+# shellcheck source=lib/prune-backups.sh
+. "$REPO_ROOT/scripts/lib/prune-backups.sh"
+
 # ---------- banner ----------
 cat <<'EOF'
    _____ __  __ _____ _______ _    _
@@ -144,6 +152,7 @@ mkdir -p "$CLAUDE_SKILLS_DIR" "$CLAUDE_HOOKS_DIR" "$SMITH_HOME/scheduler"
 if [ -f "$CLAUDE_SETTINGS" ]; then
     BACKUP="$CLAUDE_SETTINGS.bak-$(date +%Y%m%d-%H%M%S)"
     cp "$CLAUDE_SETTINGS" "$BACKUP"
+    prune_backups "$CLAUDE_SETTINGS.bak-*" "$BACKUP_KEEP"
     ok "Backed up existing settings → $BACKUP"
 else
     echo '{}' > "$CLAUDE_SETTINGS"
@@ -266,6 +275,7 @@ CLAUDE_MD_TEMPLATE="$REPO_ROOT/settings/claude-md-template.md"
 if [ -f "$CLAUDE_MD" ]; then
     CLAUDE_MD_BACKUP="$CLAUDE_MD.bak-$(date +%Y%m%d-%H%M%S)"
     cp "$CLAUDE_MD" "$CLAUDE_MD_BACKUP"
+    prune_backups "$CLAUDE_MD.bak-*" "$BACKUP_KEEP"
     ok "Backed up existing CLAUDE.md → $CLAUDE_MD_BACKUP"
 fi
 cp "$CLAUDE_MD_TEMPLATE" "$CLAUDE_MD"

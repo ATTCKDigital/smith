@@ -18,6 +18,11 @@
 
 set -euo pipefail
 
+# Keep only the N newest timestamped backups (see scripts/lib/prune-backups.sh).
+BACKUP_KEEP="${SMITH_BACKUP_KEEP:-3}"
+# shellcheck source=lib/prune-backups.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/prune-backups.sh"
+
 # Allow override for test fixtures.
 CLAUDE_SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 DRY_RUN=false
@@ -78,6 +83,7 @@ fi
 if ! $DRY_RUN; then
     BACKUP="${CLAUDE_SETTINGS}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
     cp "$CLAUDE_SETTINGS" "$BACKUP"
+    prune_backups "${CLAUDE_SETTINGS}.bak.*" "$BACKUP_KEEP"
     ok "Backed up: $BACKUP"
 fi
 
