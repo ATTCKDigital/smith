@@ -100,7 +100,8 @@ SMITH_HOOKS=(
     active-workflow-janitor.sh activity-emitter.sh
     context-budget-guard.sh context-loader.sh
     file-change-logger.sh grade-response.sh lint-on-save.sh
-    manifest-updater.sh metrics-tracker.sh security-guard-bash.sh
+    manifest-updater.sh metrics-tracker.sh question-gate-guard.sh
+    security-guard-bash.sh
     security-guard-files.sh security-guard-mcp-browser.sh
     session-end-review.sh session-start-logger.sh
     stamp-response.sh subagent-vault-writeback.sh task-router.sh
