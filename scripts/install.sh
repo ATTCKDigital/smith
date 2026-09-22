@@ -146,6 +146,7 @@ info "Smith will:"
 echo "  • Copy $SKILL_TOTAL skills → $CLAUDE_SKILLS_DIR/"
 echo "  • Copy $HOOK_TOTAL hooks (+ $HELPER_TOTAL Python helpers, $HOOKDATA_TOTAL data files) → $CLAUDE_HOOKS_DIR/"
 echo "  • Copy scheduler → $SMITH_HOME/scheduler/"
+echo "  • Stage the /smith-activity dashboard runtime → $SMITH_HOME/scripts/activity/"
 echo "  • Install global CLAUDE.md rubric → $CLAUDE_MD (backup first)"
 echo "  • Merge hook entries into $CLAUDE_SETTINGS (backup first)"
 if [ "$IS_MACOS" = "1" ] && [ "${SMITH_SKIP_SCHEDULER:-0}" != "1" ]; then
@@ -339,6 +340,15 @@ else
     err "Settings merge produced invalid JSON — left $CLAUDE_SETTINGS unchanged"
     [ -n "${BACKUP:-}" ] && info "A backup is available at $BACKUP"
 fi
+
+# ---------- /smith-activity runtime staging (FR-51/FR-61, T116/T118) --------
+# Must run BEFORE the two steps below: the transport step probes
+# $SMITH_HOME/activity/ and the statusline step points `statusLine` at a script
+# inside the tree this stages. Delegated to its own file for the same reason
+# they are — it has to be runnable against a fixture SMITH_HOME on its own.
+info "Staging the /smith-activity runtime"
+SMITH_HOME="$SMITH_HOME" bash "$REPO_ROOT/scripts/install-activity.sh" \
+    || warn "/smith-activity staging reported errors"
 
 # ---------- /smith-activity transport: prefer native "type": "http" (FR-42) --
 # The fragment merged above wires hooks/activity-emitter.sh on 15 events. This

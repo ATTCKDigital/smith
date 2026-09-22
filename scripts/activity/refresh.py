@@ -206,6 +206,21 @@ def hooks_log_path() -> str:
     return os.path.join(paths.smith_home(), "logs", "hooks.log")
 
 
+def events_ingested(daemon) -> int:
+    """How many hook events have reached this daemon since it started.
+
+    The `ingested` counter is bumped before project attribution, so an event
+    from an unregistered repo still counts: the question is whether the
+    TRANSPORT works, not whether we could place what it delivered. Read
+    defensively because the counter is daemon-owned state and this module is
+    only its guest.
+    """
+    try:
+        return int(daemon.state.counters.get("ingested") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
 def fired_hooks(daemon) -> Optional[set]:
     """Basenames seen in ``~/.smith/logs/hooks.log`` since the daemon started.
 
@@ -271,19 +286,28 @@ def refresh_project(daemon, project: str) -> None:
     fired = fired_hooks(daemon)
     tools_used = {e.get("tool_name") for e in events if e.get("tool_name")}
 
-    extra = []
-    if fired is None and wired is not None:
-        # Keep shipped-not-wired (it needs `wired`, not `fired`) but disable
-        # hook_never_fired by handing derive_findings a `None` wired set.
-        extra = list(
-            absence.shipped_not_wired_findings(
-                shipped, wired, timestamp=state_mod.utcnow()
+    # Two ways the daemon can be blind to hook firing, handled identically
+    # because they mean the same thing to the operator: the finding would be a
+    # statement about our own instrumentation wearing the costume of a
+    # statement about their workflow.
+    #
+    #   1. ~/.smith/logs/hooks.log cannot be read.
+    #   2. No event source is installed at all and nothing has arrived
+    #      (FR-23 applied to the transport instead of the settings).
+    #
+    # In both, `hook_never_fired` is suppressed and the REASON is put on
+    # screen, because "absence detection is off" with no explanation reads as a
+    # missing feature rather than as a deliberate refusal to guess.
+    blind_reason = None
+    if wired is not None:
+        if fired is None:
+            blind_reason = (
+                "%s is unreadable, so hook firing cannot be observed" % hooks_log_path()
             )
-        )
-        settings_error = (
-            "%s is unreadable, so hook firing cannot be observed" % hooks_log_path()
-        )
-        wired = None
+        elif absence.event_source_missing(
+            hookset.emitter_wired(settings), events_ingested(daemon)
+        ):
+            blind_reason = absence.EVENT_SOURCE_MISSING_NOTICE
 
     derived = findings_mod.derive_findings(
         workflows=workflows,
@@ -296,7 +320,37 @@ def refresh_project(daemon, project: str) -> None:
         shipped=shipped,
         settings_error=settings_error,
     )
-    project_findings = list(derived["findings"]) + extra
+    project_findings = list(derived["findings"])
+
+    if blind_reason is not None:
+        # derive_findings runs with the REAL `wired`, and hook_never_fired is
+        # dropped from its OUTPUT rather than disabled at its input.
+        #
+        # Nulling `wired` on the way in was the obvious move and it was wrong:
+        # derive_findings uses that same argument for shipped_not_wired, where
+        # `None` means "nothing is wired" rather than "we are not asking". With
+        # a staged manifest in place (T118) that turned one honest silence into
+        # twenty false "Smith ships this, your settings don't wire it" findings
+        # about hooks the settings demonstrably DO wire -- the same
+        # confidently-wrong shape as the nine warnings this whole guard exists
+        # to stop, re-emitted by the guard itself.
+        #
+        # shipped_not_wired needs `wired`, not `fired`, so it stays VALID while
+        # absence detection is off and is deliberately kept: suppressing it too
+        # would hide a real, answerable question behind an unrelated blindness.
+        project_findings = [
+            f
+            for f in project_findings
+            if f.get("classification") != findings_mod.CLASS_HOOK_NEVER_FIRED
+        ]
+        derived = dict(
+            derived,
+            absence_enabled=False,
+            notices=[absence.ABSENCE_OFF_NOTICE % blind_reason]
+            + list(derived["notices"] or ()),
+            degraded=list(derived["degraded"] or ())
+            + [findings_mod.DEGRADED_EXPECTED_HOOKS],
+        )
 
     _commit(
         daemon, project, workflows, sessions, trees, project_findings, resolved, derived

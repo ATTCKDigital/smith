@@ -22,7 +22,7 @@ Python 3.8, stdlib only.
 
 import json
 import os
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Dict, Set, Tuple
 
 import paths
 
@@ -72,6 +72,46 @@ def wired_hooks(settings_obj):
                 if basename:
                     wired.setdefault(basename, set()).add((event, matcher))
     return wired
+
+
+#: Substrings that identify the /smith-activity transport in a settings entry.
+#: Two spellings, because install-activity-transport.sh may UPGRADE the shell
+#: emitter to a native ``{"type": "http", "url": ".../ingest"}`` entry, and a
+#: native entry carries no ``command`` at all -- so it is invisible to
+#: ``wired_hooks()``, which keys on command basenames. Checking only for
+#: ``activity-emitter.sh`` would therefore report "no event source" on exactly
+#: the machines where the FASTER source is installed.
+EMITTER_COMMAND_MARK = "activity-emitter.sh"
+EMITTER_URL_MARK = "/ingest"
+
+
+def emitter_wired(settings_obj):
+    """Is an event source wired at all? ``None`` when settings are unreadable.
+
+    The daemon learns that a hook fired from events the transport delivers. If
+    nothing delivers events, the daemon is not observing an absence of hook
+    activity -- it is observing nothing, which has the same shape and the
+    opposite meaning. ``absence.event_source_missing`` turns this into the
+    suppression that keeps that distinction honest.
+
+    ``None`` (not ``False``) for unreadable settings: "no emitter" and "cannot
+    tell" are different answers, and only the caller knows which notice each
+    one deserves.
+    """
+    if settings_obj is None:
+        return None
+    for _event, entries in (settings_obj.get("hooks") or {}).items():
+        for entry in entries or []:
+            for hook in (entry or {}).get("hooks") or []:
+                if not isinstance(hook, dict):
+                    continue
+                if EMITTER_COMMAND_MARK in (hook.get("command") or ""):
+                    return True
+                if hook.get("type") == "http" and EMITTER_URL_MARK in (
+                    hook.get("url") or ""
+                ):
+                    return True
+    return False
 
 
 def shipped_manifest_path(smith_home=None):

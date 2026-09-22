@@ -22,8 +22,6 @@ would accuse the operator's own deliberate choice.
 Python 3.8, stdlib only.
 """
 
-from typing import Any, Dict, List, Optional, Sequence, Set
-
 import findings as F
 import phases as P
 
@@ -52,6 +50,67 @@ HOOK_APPLICABILITY = {
     "stamp-response.sh": ("Stop", ()),
     "grade-response.sh": ("Stop", ()),
 }
+
+
+# FR-23's "if settings are unreadable, absence detection is disabled with a
+# visible notice, never guessed", applied one layer down -- to the case where
+# the settings are perfectly readable but the TRANSPORT that would carry hook
+# events to the daemon was never installed.
+#
+# The bug this exists to stop was live. Run against a real project with no
+# emitter wired, the daemon emitted nine `hook_never_fired` warnings --
+# active-workflow-janitor, grade-response, metrics-tracker, session-end-review,
+# session-start-logger, stamp-response, subagent-vault-writeback,
+# user-prompt-logger, workflow-summary. Every one of them was technically true
+# and every one was noise: with no event source, "this hook never fired" is not
+# an observation about the hook, it is the daemon describing its own blindness
+# in the grammar of a finding about somebody else. Nine warnings that all
+# reduce to "I cannot see" is confidently-wrong output, and for a tool whose
+# whole thesis is that absence should be visible and HONEST it is the worst
+# available failure -- it looks exactly like nine real regressions.
+#
+# So the classification is suppressed ENTIRELY and replaced with one notice
+# naming the missing transport, mirroring how the absent shipped-hook manifest
+# is already handled ("...shipped-but-not-wired detection is unavailable").
+# One honest "I have no event source" beats nine confident accusations.
+#: The sentence FR-60 puts on screen when absence detection is off, with the
+#: reason interpolated. ``findings.derive_findings`` builds the same sentence
+#: inline for the "settings unreadable" case; it is named here so ``refresh``
+#: can word the transport case IDENTICALLY. One operator-visible phrasing for
+#: one operator-visible state -- if you change one, change both.
+ABSENCE_OFF_NOTICE = "Absence detection is OFF: %s. Hook expectation is never guessed."
+
+EVENT_SOURCE_MISSING_NOTICE = (
+    "no /smith-activity event source is installed (neither "
+    'hooks/activity-emitter.sh nor a native "type": "http" /ingest entry is '
+    "wired in ~/.claude/settings.json) and no hook event has reached the daemon "
+    "since it started, so hook firing cannot be observed"
+)
+
+
+def event_source_missing(emitter_wired, events_ingested):
+    """Is the daemon blind -- no transport installed AND nothing received?
+
+    Both halves are required, and each one alone would be wrong:
+
+    * **Emitter absent but events arriving** is a real, supported state. A
+      native ``"type": "http"`` entry a future Claude Code spells differently,
+      an operator's own forwarder, or a test harness posting to ``/ingest``
+      all deliver events with no emitter in sight. Events in hand prove a
+      source exists, whatever it is, so detection stays ON.
+    * **Emitter present but nothing received yet** is the first second of every
+      install. Suppressing there would hide real findings for as long as a
+      session happened to be quiet, which is precisely when an absence finding
+      matters most.
+
+    ``emitter_wired is None`` (settings unreadable) returns False: that case is
+    already handled upstream by FR-60, which disables absence detection with
+    its own notice, and claiming this reason too would put two notices on
+    screen for one cause.
+    """
+    if emitter_wired is None:
+        return False
+    return not emitter_wired and not events_ingested
 
 
 def expected_hook_set(wired, tools_used=None):
@@ -142,8 +201,7 @@ def shipped_not_wired_findings(shipped, wired, workflow_key=None, timestamp=None
                 name,
                 F.SEVERITY_WARN,
                 workflow_key=workflow_key,
-                observed="%s is in the installer-staged shipped-hook manifest"
-                % name,
+                observed="%s is in the installer-staged shipped-hook manifest" % name,
                 self_reported=None,
                 timestamp=timestamp,
                 evidence="the installed ~/.claude/settings.json wires no entry "
@@ -185,8 +243,9 @@ def phase_absence_findings(workflow, ended=False):
                     evidence="MANDATORY STOP gate %s was %s"
                     % (
                         state.get("id"),
-                        "advanced past" if skipped else "never reached before the "
-                        "workflow ended",
+                        "advanced past"
+                        if skipped
+                        else "never reached before the workflow ended",
                     ),
                 )
             )
