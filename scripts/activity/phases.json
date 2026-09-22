@@ -1,0 +1,351 @@
+{
+  "$comment": "Ordered phase chains per Smith workflow. Data, not code (FR-15). Kept in sync with each SKILL.md by tests/smith-activity.test.sh via tests/activity/test_phases.py (FR-16/SC-3). 'title' is the NORMALIZED heading title — see contracts/phases-json.md §3. 'number' is a STRING compared as a decimal; four of the five chains contain fractional phases. 'match' is an ordered list of case-insensitive substrings tried against signal text, first hit wins, and no two phases in DIFFERENT chains may share an identical pattern. 'handoff' is optional and absent means [].",
+  "version": 1,
+  "workflows": {
+    "smith-new": {
+      "source": "skills/smith-new/SKILL.md",
+      "heading_level": 2,
+      "heading_keyword": "Phase",
+      "phases": [
+        {
+          "id": "smith-new:0",
+          "number": "0",
+          "title": "Pre-Change Exploration",
+          "match": ["Pre-Change Exploration", "smith-explore"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-new:1",
+          "number": "1",
+          "title": "Worktree Creation & Setup",
+          "match": ["Worktree Creation & Setup", "Worktree Creation"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-new:2",
+          "number": "2",
+          "title": "Requirements Conversation",
+          "match": ["Requirements Conversation"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-new:3",
+          "number": "3",
+          "title": "Spec Generation",
+          "match": ["Spec Generation"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-new:4",
+          "number": "4",
+          "title": "Plan Generation",
+          "match": ["Plan Generation"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-new:5",
+          "number": "5",
+          "title": "Questions Gate",
+          "match": ["Questions Gate"],
+          "mandatory_stop": true
+        },
+        {
+          "id": "smith-new:6",
+          "number": "6",
+          "title": "Update Plan, Then Build or Queue",
+          "match": ["Update Plan, Then Build or Queue", "Build or Queue"],
+          "mandatory_stop": false,
+          "handoff": ["smith-build"]
+        }
+      ]
+    },
+    "smith-bugfix": {
+      "source": "skills/smith-bugfix/SKILL.md",
+      "heading_level": 2,
+      "heading_keyword": "Phase",
+      "phases": [
+        {
+          "id": "smith-bugfix:1",
+          "number": "1",
+          "title": "Worktree Setup",
+          "match": ["Worktree Setup"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:2",
+          "number": "2",
+          "title": "Spec Cross-Reference",
+          "match": ["Spec Cross-Reference"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:3",
+          "number": "3",
+          "title": "Implement the Fix",
+          "match": ["Implement the Fix"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:3.5",
+          "number": "3.5",
+          "title": "Update .meta Descriptions for Touched Methods",
+          "match": ["bugfix .meta", "Phase 3.5"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:4",
+          "number": "4",
+          "title": "Docker Rebuild",
+          "match": ["Docker Rebuild"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:5",
+          "number": "5",
+          "title": "Run Tests",
+          "match": ["Run Tests"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:6",
+          "number": "6",
+          "title": "Update Specs & Changelog",
+          "match": ["Update Specs & Changelog"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:7",
+          "number": "7",
+          "title": "Commit, Push & Merge",
+          "match": ["Phase 7: Commit, Push & Merge", "bugfix commit and merge"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-bugfix:8",
+          "number": "8",
+          "title": "Post-Merge Rebuild & Summary",
+          "match": ["Post-Merge Rebuild & Summary"],
+          "mandatory_stop": false
+        }
+      ]
+    },
+    "smith-debug": {
+      "source": "skills/smith-debug/SKILL.md",
+      "heading_level": 2,
+      "heading_keyword": "Phase",
+      "phases": [
+        {
+          "id": "smith-debug:0",
+          "number": "0",
+          "title": "Activate Workflow Tracking",
+          "match": ["Phase 0: Activate Workflow Tracking", "debug workflow tracking"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-debug:1",
+          "number": "1",
+          "title": "Symptom Capture",
+          "match": ["Symptom Capture"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-debug:2",
+          "number": "2",
+          "title": "System Detection",
+          "match": ["System Detection"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-debug:3",
+          "number": "3",
+          "title": "Automated Triage",
+          "match": ["Automated Triage"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-debug:4",
+          "number": "4",
+          "title": "Diagnosis Synthesis",
+          "match": ["Diagnosis Synthesis"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-debug:5",
+          "number": "5",
+          "title": "Write Debug Report",
+          "match": ["Write Debug Report"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-debug:5.5",
+          "number": "5.5",
+          "title": "Update .meta Descriptions for Touched Methods",
+          "match": ["debug .meta", "Phase 5.5"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-debug:6",
+          "number": "6",
+          "title": "Decision Gate",
+          "match": ["Decision Gate"],
+          "mandatory_stop": true,
+          "handoff": ["smith-bugfix"]
+        }
+      ]
+    },
+    "smith-build": {
+      "source": "skills/smith-build/SKILL.md",
+      "heading_level": 2,
+      "heading_keyword": "Phase",
+      "phases": [
+        {
+          "id": "smith-build:0",
+          "number": "0",
+          "title": "Context Discovery",
+          "match": ["Context Discovery"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:1",
+          "number": "1",
+          "title": "Task Generation",
+          "match": ["Task Generation"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:2",
+          "number": "2",
+          "title": "Implementation",
+          "match": ["Phase 2: Implementation", "Implementation (Subagent per Phase)"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:3",
+          "number": "3",
+          "title": "Testing",
+          "match": ["Phase 3: Testing", "Testing (Subagent)"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:3.5",
+          "number": "3.5",
+          "title": "Clean Code Review Pass",
+          "match": ["Clean Code Review Pass"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:3.6",
+          "number": "3.6",
+          "title": "Security Review Pass",
+          "match": ["Security Review Pass"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:3.7",
+          "number": "3.7",
+          "title": "Supply-Chain Review Pass",
+          "match": ["Supply-Chain Review Pass"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:4",
+          "number": "4",
+          "title": "Spec Updates",
+          "match": ["Phase 4: Spec Updates", "Spec Updates (Subagent)"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:5",
+          "number": "5",
+          "title": "Commit, Push & Merge",
+          "match": ["Phase 5: Commit, Push & Merge", "build commit and merge"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:6",
+          "number": "6",
+          "title": "Service Rebuild",
+          "match": ["Service Rebuild"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-build:7",
+          "number": "7",
+          "title": "Release Notes & Summary",
+          "match": ["Release Notes & Summary"],
+          "mandatory_stop": false
+        }
+      ]
+    },
+    "smith-finish": {
+      "source": "skills/smith-finish/SKILL.md",
+      "heading_level": 3,
+      "heading_keyword": "Step",
+      "phases": [
+        {
+          "id": "smith-finish:1",
+          "number": "1",
+          "title": "Inventory",
+          "match": ["Step 1: Inventory", "Inventory — Assess Current State"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:1.5",
+          "number": "1.5",
+          "title": "Activate Workflow Tracking",
+          "match": ["Step 1.5: Activate Workflow Tracking", "smith-finish workflow tracking"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:2",
+          "number": "2",
+          "title": "Commit",
+          "match": ["Step 2", "smith-finish commit"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:3",
+          "number": "3",
+          "title": "Push",
+          "match": ["Step 3", "smith-finish push"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:4",
+          "number": "4",
+          "title": "Spec Updates",
+          "match": ["Step 4: Spec Updates", "smith-finish spec updates"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:5",
+          "number": "5",
+          "title": "PR & Merge",
+          "match": ["Step 5: PR & Merge", "PR & Merge"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:6",
+          "number": "6",
+          "title": "Verify Clean State",
+          "match": ["Verify Clean State"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:6.5",
+          "number": "6.5",
+          "title": "Clear Workflow Tracking",
+          "match": ["Clear Workflow Tracking"],
+          "mandatory_stop": false
+        },
+        {
+          "id": "smith-finish:7",
+          "number": "7",
+          "title": "Final Report",
+          "match": ["Step 7: Final Report", "Final Report"],
+          "mandatory_stop": false
+        }
+      ]
+    }
+  }
+}

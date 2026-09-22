@@ -1,0 +1,6 @@
+workflow: smith-bugfix
+feature: log-rotation
+branch: fix-log-rotation
+worktree: @FIXTURE@/worktree
+session_log: @FIXTURE@/session-log.md
+started: 2026-09-22T09:00:00Z

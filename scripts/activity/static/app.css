@@ -1,0 +1,430 @@
+/* app.css — T111. All styling for the /smith-activity dashboard.
+ *
+ * No web font, no @import, no external origin of any kind (FR-49).
+ *
+ * This is an AUDIT surface, not a status monitor, and two rules follow:
+ *  1. Every state that matters is distinguishable WITHOUT colour. The four
+ *     phase states each carry a text badge and a distinct marker glyph;
+ *     mandatory-stop and settled-retraction carry spelled-out labels. Colour
+ *     corroborates, it is never the only channel.
+ *  2. Nothing is hidden to make the page look calm. `[hidden]` appears only
+ *     where the underlying datum genuinely does not exist.
+ */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --panel: #fff;
+  --fg: #16181d;
+  --muted: #5b6270;
+  --border: #d9dde5;
+  --accent: #1a56cc;
+  /* The four phase states (FR-23a), all distinct. */
+  --st-completed: #1f7a4d;
+  --st-current: #1a56cc;
+  --st-remaining: #8a92a3;
+  --st-skipped: #a8580a;
+  /* "Waiting on you" is NOT "working" (FR-18). */
+  --st-stop: #b3261e;
+  --sev-warn: #a8580a;
+  --sev-info: #1a56cc;
+  --stop-wash: #fdf0ef;
+  --skip-wash: #fdf5ec;
+  --settled-wash: #f0f1f4;
+  --banner-wash: #eef3fd;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f25;
+    --fg: #e8eaf0;
+    --muted: #99a1b3;
+    --border: #2e333d;
+    --accent: #7fa6ff;
+    --st-completed: #52c08a;
+    --st-current: #7fa6ff;
+    --st-remaining: #767e8f;
+    --st-skipped: #e0a253;
+    --st-stop: #ff8d84;
+    --sev-warn: #e0a253;
+    --sev-info: #7fa6ff;
+    --stop-wash: #2c1d1c;
+    --skip-wash: #2a2117;
+    --settled-wash: #23262d;
+    --banner-wash: #1b2333;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    14px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+}
+.wf-meta,
+.fi-observed,
+.fi-self,
+.fi-evidence,
+.fi-where,
+.row-detail {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* --- top bar ------------------------------------------------------------ */
+.topbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.topbar h1 {
+  font-size: 15px;
+  margin: 0;
+}
+.spacer {
+  flex: 1;
+}
+.filter,
+.counter {
+  font-size: 12px;
+  color: var(--muted);
+}
+.filter select {
+  font: inherit;
+  margin-left: 6px;
+  max-width: 44vw;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+/* `unattributed_events` is an audit signal in its own right (sse-frames §4.2):
+   events the resolver DECLINED to place. A rising count means the page is
+   seeing less than is happening, so it sits in the top bar, not a footnote. */
+#unattributed {
+  color: var(--sev-warn);
+  font-weight: 600;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  padding: 1px 7px;
+}
+.link-state {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 2px 9px;
+  border: 1px solid currentColor;
+}
+.link-live {
+  color: var(--st-completed);
+}
+.link-connecting {
+  color: var(--st-skipped);
+}
+.link-down {
+  color: var(--st-stop);
+}
+
+/* --- banners ------------------------------------------------------------ */
+.banners {
+  display: grid;
+  gap: 6px;
+  padding: 10px 16px 0;
+}
+.banner {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  background: var(--banner-wash);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.banner-alarm {
+  border-left-color: var(--st-stop);
+  background: var(--stop-wash);
+}
+.banner-warn {
+  border-left-color: var(--st-skipped);
+  background: var(--skip-wash);
+}
+.banner b {
+  display: block;
+}
+.banner ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* --- layout ------------------------------------------------------------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 12px;
+  padding: 12px 16px;
+  align-items: start;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+.panel-wide {
+  grid-column: 1 / -1;
+}
+.panel h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.hint {
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+}
+.panel-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.muted {
+  color: var(--muted);
+}
+.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* --- cards and rows ----------------------------------------------------- */
+.card,
+.row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 11px;
+  min-width: 0;
+}
+.card-head,
+.row-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.wf-nesting,
+.fi-class,
+.row-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.badge {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.badge-prov {
+  color: var(--muted);
+  font-style: italic;
+}
+.badge-stop {
+  color: var(--st-stop);
+  font-weight: 700;
+}
+.badge-settled {
+  color: var(--muted);
+}
+
+/* --- the stepper -------------------------------------------------------- */
+.stepper {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.phase {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 3px 6px;
+  border-radius: 4px;
+  min-width: 0;
+}
+.phase-marker {
+  width: 1.1em;
+  text-align: center;
+  font-weight: 700;
+}
+.phase-num {
+  color: var(--muted);
+  min-width: 3.2em;
+  font-variant-numeric: tabular-nums;
+}
+.phase-title {
+  overflow-wrap: anywhere;
+}
+.phase-at {
+  font-size: 11px;
+}
+.phase-completed .phase-marker,
+.phase-completed .phase-state {
+  color: var(--st-completed);
+}
+.phase-current {
+  outline: 1px solid var(--st-current);
+}
+.phase-current .phase-marker,
+.phase-current .phase-state {
+  color: var(--st-current);
+}
+.phase-current .phase-title {
+  font-weight: 700;
+}
+.phase-remaining {
+  opacity: 0.62;
+}
+.phase-remaining .phase-marker,
+.phase-remaining .phase-state {
+  color: var(--st-remaining);
+}
+/* SKIPPED is neither completed nor remaining (FR-23a): its own wash and a
+   dashed outline, so it cannot be mistaken for either at a glance. */
+.phase-skipped {
+  background: var(--skip-wash);
+  outline: 1px dashed var(--st-skipped);
+}
+.phase-skipped .phase-marker,
+.phase-skipped .phase-state {
+  color: var(--st-skipped);
+}
+/* MANDATORY STOP overrides the "current" treatment entirely: waiting on the
+   operator is a different state from working and must never read as progress
+   (FR-18). */
+.phase.is-stop {
+  background: var(--stop-wash);
+  outline: 2px solid var(--st-stop);
+}
+.phase.is-stop .phase-marker,
+.phase.is-stop .phase-title {
+  color: var(--st-stop);
+}
+
+/* --- the honest unknown (FR-20) ----------------------------------------- */
+.unknown {
+  border: 1px dashed var(--st-skipped);
+  background: var(--skip-wash);
+  color: var(--st-skipped);
+  border-radius: 5px;
+  padding: 6px 9px;
+  font-size: 12.5px;
+}
+
+/* --- findings ----------------------------------------------------------- */
+.finding-divergence {
+  border-left: 4px solid var(--sev-warn);
+}
+.finding-absence {
+  border-left: 4px dashed var(--sev-info);
+}
+/* A retracted finding RESOLVES on screen and stays there (FR-59). It never
+   disappears: a card that silently vanishes reads as a rendering glitch and
+   destroys trust in the one panel that is this feature's product. */
+.finding-settled {
+  background: var(--settled-wash);
+  border-left-style: dotted;
+}
+.finding-settled .fi-class {
+  text-decoration: line-through;
+}
+.sev-warn {
+  color: var(--sev-warn);
+}
+.sev-info {
+  color: var(--sev-info);
+}
+.sides {
+  display: grid;
+  grid-template-columns: minmax(8em, auto) 1fr;
+  gap: 2px 10px;
+  margin: 6px 0 4px;
+  font-size: 12px;
+}
+.sides dt {
+  color: var(--muted);
+}
+.sides dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.side-null {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* --- quota -------------------------------------------------------------- */
+.quota-window {
+  margin-bottom: 8px;
+}
+.quota-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.quota-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+  margin: 3px 0 2px;
+}
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.meter-fill.hot {
+  background: var(--st-stop);
+}
+.quota-reset {
+  font-size: 11px;
+}
+.footer {
+  padding: 4px 16px 20px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .grid,
+  .sides {
+    grid-template-columns: 1fr;
+  }
+}

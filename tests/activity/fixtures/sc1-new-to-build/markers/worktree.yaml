@@ -1,0 +1,6 @@
+workflow: smith-build
+feature: activity-dashboard
+branch: 60-activity-dashboard
+worktree: @FIXTURE@/worktree
+session_log:
+started: 2026-09-22T16:29:58Z

@@ -170,6 +170,38 @@ restore_snapshot() {
 }
 ```
 
+## Phase 3.5: Stop a Running Activity Daemon
+
+`scripts/install.sh` refreshes `~/.smith/scripts/activity/` in place. A daemon started by `/smith-activity` has already imported the **old** `server.py`, `state.py` and friends into a long-lived Python process; rewriting the files underneath it leaves a process running code that no longer exists on disk, and any module it imports lazily afterwards comes from the new tree. That mix is worse than either version alone, and it survives until something happens to restart it.
+
+So: stop it before Phase 4, and **do not restart it afterwards**. An update silently bringing a background listener back up is exactly the surprise OOS-4 rules out — the operator started that daemon deliberately and is the one who decides it comes back.
+
+```bash
+# Was a daemon running before we touched anything? Record it for the summary.
+ACTIVITY_WAS_RUNNING=0
+ACTIVITY_CLI="$SMITH_HOME/scripts/activity/smith-activity.sh"
+ACTIVITY_PIDFILE="$SMITH_HOME/activity/activity.pid"
+
+if [ -f "$ACTIVITY_PIDFILE" ]; then
+    ACTIVITY_PID=$(cat "$ACTIVITY_PIDFILE" 2>/dev/null)
+    if [ -n "$ACTIVITY_PID" ] && kill -0 "$ACTIVITY_PID" 2>/dev/null; then
+        ACTIVITY_WAS_RUNNING=1
+        echo "Stopping /smith-activity daemon (pid $ACTIVITY_PID) before refreshing its code..."
+        # Use the CLI so the pidfile, port file and token are cleaned up the
+        # same way a normal stop cleans them. Fall back to the signal only if
+        # the CLI is missing — a half-installed tree is exactly when this
+        # matters most.
+        if [ -x "$ACTIVITY_CLI" ]; then
+            "$ACTIVITY_CLI" stop >/dev/null 2>&1 || kill "$ACTIVITY_PID" 2>/dev/null || true
+        else
+            kill "$ACTIVITY_PID" 2>/dev/null || true
+        fi
+    fi
+fi
+```
+
+With the daemon down, `hooks/activity-emitter.sh` is an unconditional no-op — no port file means it exits 0 before any network call — so nothing else in the update needs to know about it.
+
 ## Phase 4: Global Update
 
 Clone smith-repo to a temp dir (or reuse the one from Phase 2's fallback), run installer, write version file.
@@ -693,6 +725,13 @@ echo "  Scheduler:    refreshed in ~/.smith/scheduler/"
 [ -d "$PROJECT_DIR/.smith" ] && echo "  Per-project:  .specify/scripts and .claude/commands/smith.* refreshed"
 [ -d "$PROJECT_DIR/.smith" ] && echo "  Git policy:   .gitignore/.gitattributes Smith policy block refreshed"
 echo "  Snapshot:     $BACKUP_DIR (delete after confirming the update works)"
+
+# The daemon we stopped in Phase 3.5 is deliberately NOT restarted here.
+if [ "${ACTIVITY_WAS_RUNNING:-0}" = "1" ]; then
+    echo ""
+    echo "  The /smith-activity daemon was stopped so its code could be refreshed."
+    echo "  It was NOT restarted automatically. Run /smith-activity when you want it back."
+fi
 ```
 
 ---
@@ -714,4 +753,5 @@ When the parent assistant runs `/smith-update`, it should treat the bash blocks 
 - **Snapshot before destructive work** — if `install.sh` fails partway, restore from snapshot
 - **Default-defer on LLM-heavy paths** — Phase 5.4's bootstrap prompt defaults to (3); the schema-regen prompt in 5.3 defaults to (n)
 - **Settings.json dedupe touches only Smith-owned hook entries** — never modify user-added entries (Q1-D)
+- **Stop the activity daemon, never restart it** — Phase 3.5 stops a running `/smith-activity` daemon so `install.sh` is not rewriting modules out from under a live process. Restarting a background listener on the operator's behalf is the surprise OOS-4 exists to prevent; the summary tells them to run `/smith-activity` instead.
 - **`python3` not `python`** (Smith convention, per Rule 6 in `~/.claude/CLAUDE.md`)

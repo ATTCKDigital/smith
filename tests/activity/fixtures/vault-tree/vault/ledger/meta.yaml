@@ -1,0 +1,12 @@
+last_updated: 2026-09-14
+total_reflections: 7
+entries:
+  patterns: 4
+  antipatterns: 2
+  tool_preferences: 3
+  edge_cases: 5
+  project_quirks: 1
+confidence_distribution:
+  high: 9
+  medium: 4
+  low: 2

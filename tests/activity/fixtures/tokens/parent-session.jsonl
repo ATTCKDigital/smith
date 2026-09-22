@@ -1,0 +1,7 @@
+{"type":"user","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","cwd":"/private/tmp/smith-activity-dashboard","timestamp":"2026-09-22T15:00:00.000Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","isSidechain":false,"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","cwd":"/private/tmp/smith-activity-dashboard","gitBranch":"main","timestamp":"2026-09-22T15:01:00.000Z","message":{"model":"claude-opus-5","usage":{"input_tokens":4,"cache_creation_input_tokens":12000,"cache_read_input_tokens":30000,"output_tokens":600,"service_tier":"standard"}}}
+{"type":"assistant","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-09-22T15:02:00.000Z","message":{"model":"claude-opus-5","content":"no usage key at all"}}
+{"type":"assistant","isSidechain":true,"agentId":"a4e8cbb1161fec729","sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-09-22T15:03:00.000Z","message":{"model":"claude-opus-5","usage":{"input_tokens":999999,"cache_creation_input_tokens":999999,"cache_read_input_tokens":999999,"output_tokens":999999}}}
+{"type":"assistant","isSidechain":false,"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-09-22T15:04:00.000Z","message":{"model":"claude-opus-5","usage":{"input_tokens":6,"cache_creation_input_tokens":2000,"cache_read_input_tokens":45000,"output_tokens":1400,"service_tier":"standard"}}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-09-22T15:05:00.000Z","message":{"model":"claude-opus-5","usage":{"input_tokens":7,
+{"type":"summary","summary":"not an assistant row"}

@@ -1,0 +1,1 @@
+@FIXTURE@/.smith/vault/sessions/beta_ab1234_2026-09-21_090000.md

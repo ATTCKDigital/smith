@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "version": 1,
+    "tier_label": "fixture"
+  },
+  "_default": {
+    "vault": {
+      "sessions": 3,
+      "ledger": "top-20",
+      "bank": "recent",
+      "queue": "pending",
+      "agents": "recent"
+    },
+    "navigator": false,
+    "system_specs": "none"
+  }
+}

@@ -8,7 +8,9 @@ Smith is designed with a local-first, deny-by-default security posture. This doc
 
 Smith runs entirely on your machine. There is no telemetry, no phone-home, no analytics, and no external API calls made by Smith itself. All vault data, session logs, and scheduler output stay in your local filesystem.
 
-The only network activity comes from Claude Code itself (communicating with the Anthropic API), which is governed by your Claude Code configuration and authentication, not by Smith.
+The only *outbound* network activity comes from Claude Code itself (communicating with the Anthropic API), which is governed by your Claude Code configuration and authentication, not by Smith.
+
+**One local socket, since the activity dashboard.** "No external API calls" remains true and is not a hedge — but `/smith-activity` runs a daemon that **listens**, which is a genuinely new kind of surface for Smith and is called out here rather than buried. It binds `127.0.0.1` as a hardcoded module constant with no flag, argument or config key that can change it; it makes no outbound request of any kind; and the only thing that ever connects to it is a hook on the same machine posting to loopback. It is off until you run `/smith-activity`, and `/smith-activity stop` ends it. The full surface is in [Activity Daemon Security](#activity-daemon-security) below.
 
 ---
 
@@ -162,6 +164,68 @@ The scheduler's audits step (see [Scheduler](scheduler.md)'s "Audits Step" secti
 - **Read-only sub-audits** -- Every sub-audit `/smith-audit` runs in `--scheduled` mode is read-only; per `smith-audit/SKILL.md`'s own "Key Rules," an audit never modifies code, only produces report files. A scheduled dispatch inherits this unchanged.
 - **`enabled: false` shipped default** -- No project gets unattended dispatch, report-writing, or marker-bootstrapping behavior until `scheduled_audits.enabled` is explicitly set to `true` in that project's `.smith/config.json`.
 - **Git-worktree-free** -- Unlike the queue step's per-task worktree isolation above, `/smith-audit` never creates or checks out a branch for a scheduled run. Its workflow-gate marker (a `maintenance`-type active-workflow marker, bootstrapped via the same helper `/smith-update` already uses) carries a synthetic `--branch` label that names no real git ref -- it exists only to satisfy the marker file's required fields, not to create or track an actual branch.
+
+---
+
+## Activity Daemon Security
+
+`/smith-activity` starts a background daemon that renders a live audit of Smith's own workflows in a browser. It introduces four things Smith had never done before, and each is stated here rather than left to be discovered by reading `server.py`.
+
+It runs only when you start it. Nothing in Smith starts it for you, `scripts/install.sh` does not launch it, and `/smith-activity stop` ends it. Until it has run once, `hooks/activity-emitter.sh` is an unconditional no-op.
+
+### 1. A listening socket, loopback-only and not configurable
+
+The daemon binds `127.0.0.1` as a **hardcoded module constant**. It is not a parameter, not a flag, not a config key, and not an environment variable — there is no supported or unsupported way to make it listen on `0.0.0.0`, a LAN address, or a non-loopback IPv6 address. `--port` chooses the port; nothing chooses the interface. Two tests enforce this: one inspects the live socket, the other greps `scripts/activity/*.py` for `urllib`, `http.client`, `ftplib`, `smtplib` and `socket.create_connection` and asserts zero hits outside the local port probe.
+
+The daemon makes **no outbound requests at all**. The served dashboard has no external origin either — no `<script src="http…">`, no remote stylesheet, no web font, no CDN. Every asset is served from `scripts/activity/static/`, and a test greps the served HTML for `src`/`href` values beginning `http` or `//` and asserts zero.
+
+### 2. A hook that makes a network call -- a first for this repo
+
+`hooks/activity-emitter.sh` posts each hook payload to `http://127.0.0.1:<port>/ingest`. No other Smith hook has ever opened a socket, so the constraints are worth being explicit about:
+
+- **The destination is loopback and literal.** The port comes from `~/.smith/activity/activity.port` and is rejected unless it is entirely digits — a truncated or half-written port file must never become part of a URL.
+- **It exits 0 on every path and writes zero bytes to stdout.** An emitter that can fail visibly is an emitter that can break the session it is auditing.
+- **It is bounded and detached** — `curl --max-time 2 --connect-timeout 1`, backgrounded — so a hung receiver costs a fork, not a stalled tool call.
+- **It bails before the network call** when the port or token file is absent, which is the state of every machine that has not run `/smith-activity`.
+
+### 3. A token gate on everything that reads state
+
+A `secrets.token_urlsafe(32)` token is generated at first daemon start and written to `"${SMITH_HOME:-$HOME/.smith}"/activity/activity.token` with mode **0600**, inside a directory created **0700**.
+
+| Route | Gate |
+|-------|------|
+| `GET /events`, `GET /api/*` | `token` query parameter, required |
+| `POST /ingest`, `POST /statusline` | `Authorization: Bearer`, required |
+| `GET /health`, `GET /`, `GET /static/*` | un-gated (identity probe and static assets only — they carry no captured state) |
+
+Comparison uses `hmac.compare_digest`, never `==`. A missing token and a wrong token produce an **identical** `403 {"error":"forbidden"}` so the endpoint cannot be used as an oracle. `/static/<name>` is `os.path.basename()`-ed and resolved through an explicit allowlist dict, never joined against caller-supplied input. `POST /ingest` caps a body at 256 KiB and answers `204` to everything — including malformed and oversize payloads — because a 4xx would be a failure signal the emitter might act on, and the emitter's whole contract is that it acts on nothing.
+
+This token protects against other **local** processes and other users on the machine reading the stream. It is not a defense against an attacker who already has your user account, and it is not claimed to be.
+
+### 4. Prompts and tool inputs are redacted by default
+
+This is the inverse of `user-prompt-logger.sh`'s deliberate verbatim-capture trade-off, and the two should not be confused.
+
+With `SMITH_ACTIVITY_CAPTURE_PROMPTS` **unset** — the shipped default — `scripts/activity/ingest.py` rewrites the payload **before it reaches the state tree**, not at render time:
+
+| Field | Becomes |
+|-------|---------|
+| `prompt` | `"<redacted:N chars>"` |
+| `tool_input` | `{"<redacted>": N}` |
+| `tool_response` | `"<redacted:N bytes>"` |
+| any value under a key matching `(?i)(secret\|token\|password\|api_?key\|authorization)` | `"<redacted>"` |
+
+Redaction at ingest rather than at projection is the load-bearing choice: a redactor that runs when a frame is built passes every unit test and still leaves the raw value sitting in memory for the next projection, the next API route, or a crash log to pick up. The byte and character lengths are retained deliberately — they are useful and they are not content. Structural fields (`tool_name`, `session_id`, `prompt_id`, `cwd`, `transcript_path`, `permission_mode`, `hook_event_name`, `agent_id`, `agent_type`, `source`, `error_type`) are always retained.
+
+The secret-shaped-key rule is **unconditional**: it applies even with capture enabled. Opting in means opting in to seeing your own prompts, not to having credentials rendered in a browser tab.
+
+Setting `SMITH_ACTIVITY_CAPTURE_PROMPTS=1` opts in, and the dashboard displays a "prompt capture is ACTIVE" indicator for as long as it is on — the setting is never silently in effect. A test drives a unique canary string through a `UserPromptSubmit` payload and a `PreToolUse` `tool_input` with capture off, then greps every `/api/*` response body, a captured `/events` transcript, and `~/.smith/activity/activity.log` for it, expecting zero hits in all three.
+
+### Where state lives, and how long
+
+Everything the daemon owns is under `"${SMITH_HOME:-$HOME/.smith}"/activity/` — `activity.pid`, `activity.port`, `activity.token`, `activity.log` (rolled at 5 MB), `wrapped-statusline`, and the registered-project list. Nothing is written into any project's `.smith/vault/`; that prohibition has its own test, because a detached daemon lives outside the hook system and `workflow-gate.sh` cannot enforce it.
+
+**Retention is ephemeral.** Observed events live in memory and are never written to an event store. Stopping the daemon discards them. This is a deliberate boundary: an audit tool that accumulated every prompt and tool input on disk would be a larger privacy surface than the thing it audits. `scripts/uninstall.sh` stops the daemon, restores or removes the `statusLine` key it wrapped, and deletes `$SMITH_HOME/activity/` outright.
 
 ---
 

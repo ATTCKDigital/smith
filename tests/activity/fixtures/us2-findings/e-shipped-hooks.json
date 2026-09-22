@@ -1,0 +1,9 @@
+{
+  "$comment": "The manifest scripts/install.sh stages under ~/.smith/activity/ (that task lands in a later phase; every reader here treats it as optional). `subagent-vault-writeback.sh` is shipped but NOT wired by e-settings-readable.json.",
+  "hooks": [
+    "security-guard-bash.sh",
+    "lint-on-save.sh",
+    "session-start-logger.sh",
+    "subagent-vault-writeback.sh"
+  ]
+}

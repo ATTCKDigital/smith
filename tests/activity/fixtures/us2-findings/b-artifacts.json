@@ -1,0 +1,17 @@
+{
+  "$comment": "FR-22(b). `order` is on the resolver's ingest axis, so an artifact at order 0 precedes every signal in the stream.",
+  "undesigned": {
+    "artifact": "spec.md",
+    "path": "/tmp/smith-activity-dashboard/specs/60-activity-dashboard/spec.md",
+    "order": [0, 0, 0],
+    "at": "2026-09-22T15:02:00Z",
+    "phase_id": "smith-new:3"
+  },
+  "corroborated": {
+    "artifact": "spec.md",
+    "path": "/tmp/smith-activity-dashboard/specs/60-activity-dashboard/spec.md",
+    "order": [0, 999999, 0],
+    "at": "2026-09-22T15:09:00Z",
+    "phase_id": "smith-new:3"
+  }
+}

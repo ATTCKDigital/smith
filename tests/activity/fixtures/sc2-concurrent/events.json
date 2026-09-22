@@ -1,0 +1,50 @@
+[
+  {
+    "after": "Phase 3 Spec Generation — smith-activity",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_a_spec",
+    "cwd": "@FIXTURE@/worktree-a",
+    "timestamp": "2026-09-22T15:24:09Z",
+    "tool_input": {
+      "description": "Phase 3 Spec Generation — smith-activity audit dashboard",
+      "subagent_type": "general-purpose"
+    }
+  },
+  {
+    "after": "Phase 3 Spec Generation — smith-activity",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_b_req",
+    "cwd": "@FIXTURE@/worktree-b",
+    "timestamp": "2026-09-22T15:25:00Z",
+    "tool_input": {
+      "description": "Phase 2 Requirements Conversation — deterministic questions gate",
+      "subagent_type": "general-purpose"
+    }
+  },
+  {
+    "after": "Phase 3 Spec Generation — deterministic",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_a_plan",
+    "cwd": "@FIXTURE@/worktree-a",
+    "timestamp": "2026-09-22T15:34:21Z",
+    "tool_input": {
+      "description": "Phase 4 Plan Generation — smith-activity audit dashboard",
+      "subagent_type": "general-purpose"
+    }
+  },
+  {
+    "after": "Phase 3 Spec Generation — deterministic",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Task",
+    "tool_use_id": "toolu_b_spec",
+    "cwd": "@FIXTURE@/worktree-b",
+    "timestamp": "2026-09-22T15:35:02Z",
+    "tool_input": {
+      "description": "Phase 3 Spec Generation — deterministic questions gate",
+      "subagent_type": "general-purpose"
+    }
+  }
+]
