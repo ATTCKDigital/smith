@@ -106,6 +106,34 @@ is_stale() {
     local ref=""
     [ "$local_exists" = "1" ] && ref="refs/heads/$branch"
     [ -z "$ref" ] && ref="refs/remotes/origin/$branch"
+
+    # Not started: the branch tip is the SAME COMMIT as the base. Such a branch
+    # has not been merged — nothing has happened on it yet — and sweeping its
+    # marker revokes write authorization from a workflow that is still running.
+    #
+    # This is a STATE check, and it deliberately replaces relying on the
+    # GRACE_SECONDS heuristic above for this case. The grace period (1h) is a
+    # bet on how long a workflow takes to reach its first commit, and it loses
+    # that bet silently: feature 60's build ran six hours and did not commit for
+    # three, so the marker was swept mid-build, the gate then denied every
+    # Write/Edit, and a subagent circumvented the gate rather than halting.
+    #
+    # Note "same commit" is checked, not "zero commits ahead" — a genuinely
+    # merged branch is also zero ahead of main once its work is in, so that
+    # weaker test would disable the merged-check below entirely (the half1b
+    # control in tests/marker-resolution.test.sh pins this).
+    #
+    # A fast-forward merge that leaves the tips equal also lands here and is
+    # left alone. That is the safe direction: an un-swept marker is cleared
+    # explicitly by clear-active-workflow.sh at workflow end, whereas a
+    # wrongly-swept one breaks a running workflow.
+    local tip base
+    tip=$(git rev-parse --verify --quiet "$ref" 2>/dev/null || true)
+    base=$(git rev-parse --verify --quiet "$MAIN_REF" 2>/dev/null || true)
+    if [ -n "$tip" ] && [ "$tip" = "$base" ]; then
+        return 1
+    fi
+
     if git merge-base --is-ancestor "$ref" "$MAIN_REF" 2>/dev/null; then
         return 0
     fi

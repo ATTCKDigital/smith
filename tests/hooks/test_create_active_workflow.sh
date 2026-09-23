@@ -167,10 +167,20 @@ setup_repo() {
 # ---------- 7: idempotent re-run ----------
 {
     repo=$(setup_repo)
-    bash "$HELPER" --branch fix/bar --workflow smith-new --slug bar --worktree /tmp/wt-bar >/dev/null 2>&1
-    (cd "$repo" || exit 1)
+    # The `cd` is load-bearing: the helper resolves the project root from its
+    # own working directory, so without it this wrote a marker into whatever
+    # repo the suite happened to be run from rather than into the fixture.
+    # (The previous `(cd "$repo" || exit 1)` on its own line was a subshell
+    # that exited immediately and changed nothing.)
+    (cd "$repo" && bash "$HELPER" --branch fix/bar --workflow smith-new --slug bar --worktree /tmp/wt-bar >/dev/null 2>&1)
     marker="$repo/.smith/vault/active-workflows/fix-bar.yaml"
-    cp "$marker" "$marker.first" 2>/dev/null
+    # Loud, not silent: this `cp` used to be `2>/dev/null`, so when the marker
+    # was missing (because of the bug above) `old_started` stayed empty and the
+    # timestamp assertion below could never fail.
+    if ! cp "$marker" "$marker.first"; then
+        FAIL=$((FAIL + 1)); FAILED_NAMES+=("idempotent setup: first marker not created")
+        printf 'FAIL  idempotent setup: first marker not created at %s\n' "$marker"
+    fi
     sleep 1
     out=$(cd "$repo" && bash "$HELPER" --branch fix/bar --workflow smith-new --slug bar --worktree /tmp/wt-bar 2>&1)
     rc=$?
