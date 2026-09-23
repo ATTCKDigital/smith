@@ -136,8 +136,28 @@ fi
 
 # ---------- resolve project root ----------
 
-if ! PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
+# Resolved the SAME way hooks/workflow-gate.sh and hooks/active-workflow-janitor.sh
+# resolve it, because they are the only two consumers of what this writes.
+#
+# `--show-toplevel` was used here and is wrong inside a linked worktree: it
+# returns the WORKTREE, while both consumers use `--git-common-dir` and look in
+# the PRIMARY repo. A marker created from inside a worktree therefore landed
+# where neither would ever read it — and since the gate saw no marker, it denied
+# every Write/Edit while the workflow believed it had just registered one.
+#
+# `--git-common-dir` returns the primary repo's `.git` from inside a worktree,
+# and plain `.git` from the primary repo itself; its dirname is the repo root.
+GIT_COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null || true)
+if [ -z "$GIT_COMMON_DIR" ]; then
     err "not inside a git repository; cannot resolve project root"
+    exit 2
+fi
+case "$GIT_COMMON_DIR" in
+    /*) PROJECT_ROOT=$(cd "$(dirname "$GIT_COMMON_DIR")" && pwd -P) ;;
+    *)  PROJECT_ROOT=$(cd "$(dirname "$GIT_COMMON_DIR")" 2>/dev/null && pwd -P) ;;
+esac
+if [ -z "$PROJECT_ROOT" ]; then
+    err "could not resolve project root from git-common-dir: $GIT_COMMON_DIR"
     exit 2
 fi
 
