@@ -151,7 +151,7 @@ Building this surfaced a pre-existing inconsistency in how Smith resolves "the p
 
 | Caller | Resolution | Returns, inside a worktree |
 |---|---|---|
-| `scripts/create-active-workflow.sh:139` | `git rev-parse --show-toplevel` | the **worktree** |
+| `scripts/create-active-workflow.sh` | ~~`git rev-parse --show-toplevel`~~ → now `--git-common-dir` → `dirname` | **FIXED** — the primary repo |
 | `hooks/workflow-gate.sh:60` | `${CLAUDE_PROJECT_DIR:-$(pwd)}` → `--git-common-dir` → `dirname` | the **primary repo** |
 | `hooks/active-workflow-janitor.sh:42` | `${CLAUDE_PROJECT_DIR:-$PWD}` → `--git-common-dir` → `dirname` | the **primary repo** |
 
@@ -164,7 +164,12 @@ So the writer and the readers do not agree on where markers live. Four consequen
 
 **What this means for anything that reads markers.** Enumerate **both** vaults — the primary repo's and every linked worktree's, via `git worktree list --porcelain` — correlate records by `branch:`, and tolerate an empty `session_log:` with a fallback to the primary vault's `.current-session`. `scripts/activity/markers.py` does exactly this. Two markers naming one branch with different `workflow:` values is the signal for a legitimate nested workflow (`smith-new` handing off to `smith-build`), not a contradiction to report.
 
-**This is documented, not fixed.** The fix is a behavior change to a script and two hooks with its own blast radius across every workflow, and it is banked as a separate bugfix alongside BANK-030 rather than smuggled into a dashboard feature.
+**Fixed on 2026-09-22, in `fix/marker-resolution`.** Two changes, pinned by `tests/marker-resolution.test.sh`:
+
+- `scripts/create-active-workflow.sh` now resolves the project root the same way its only two consumers do, so a marker created from inside a worktree lands in the primary repo's vault where the gate and janitor actually look. The `worktree:` field still records the worktree path — `scripts/activity/worktrees.py` depends on it.
+- `active-workflow-janitor.sh` no longer sweeps a marker whose **branch tip is the same commit as the base**. Such a branch has not been merged; it has not started. The previous `SMITH_JANITOR_GRACE_SECONDS` window is a bet on how quickly a workflow reaches its first commit, and consequence 4 above is what losing that bet looks like. The state check is deliberately "same commit" rather than "zero commits ahead", since a genuinely merged branch is also zero ahead once its work is in — the weaker test would have disabled the merged-check entirely.
+
+**Consequences 1-3 above are now historical for newly-created markers**, but the guidance in the preceding paragraph still stands: markers written by older Smith versions may sit in worktree vaults, and reading both vaults remains the robust behavior. `scripts/activity/markers.py` continues to do so.
 
 See [Security Model](security-model.md#activity-daemon-security) for the daemon's network and privacy surface.
 
