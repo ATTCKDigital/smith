@@ -24,7 +24,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -789,34 +789,140 @@ def git_files_changed(project_root: str) -> List[str]:
 # Window resolver
 # ---------------------------------------------------------------------------
 
+# The session-log date, located by PATTERN rather than by position. The vault
+# writes `<user>_<hash>_<YYYY-MM-DD>_<HHMMSS>.md` and a username may itself
+# contain underscores, so no fixed `split("_")` index is safe. This used to be
+# `split("_")[0]`, which picked the USERNAME off every real log; strptime then
+# raised and the `except ValueError` returned a None start — and because
+# parse_parent_jsonl's lower bound is `if start_utc and ts < start_utc`, a
+# falsy start silently disabled the filter and attributed the whole transcript
+# to the workflow. Last match wins: nothing follows the date but the HHMMSS
+# time, so a later YYYY-MM-DD can only be the real one.
+_SESSION_DATE_RE = re.compile(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)")
+
+# The AUTHORITATIVE window anchor: `### [HH:MM:SS] workflow-start <branch>`,
+# appended by scripts/create-active-workflow.sh:229 with `date -u`. Genuinely
+# UTC, and written by a hook rather than by the model — which the
+# `/smith-* invocation` stamp is not (see resolve_workflow_window).
+_WORKFLOW_START_RE = re.compile(
+    r"^#{1,4} \[(\d{2}:\d{2}:\d{2})\] workflow-start\b", re.MULTILINE
+)
+
+
+def find_workflow_start(content: str) -> Optional[str]:
+    """Return HH:MM:SS (UTC) of the first `workflow-start` line, or None.
+
+    FIRST match, not last, to pair with find_invocation(), which also takes the
+    first /smith-(new|bugfix|debug) entry. A session log outlives a single
+    workflow and routinely holds several of each; taking the first of both
+    keeps the two anchors describing the same workflow.
+    """
+    m = _WORKFLOW_START_RE.search(content)
+    return m.group(1) if m else None
+
+
+def _combine_utc(date_part: str, hms: str) -> Optional[datetime]:
+    """`YYYY-MM-DD` + `HH:MM:SS` read as UTC."""
+    try:
+        return datetime.strptime(f"{date_part} {hms}", "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+
+
+def _combine_local(date_part: str, hms: str) -> Optional[datetime]:
+    """`YYYY-MM-DD` + `HH:MM:SS` read as MACHINE-LOCAL, returned as UTC."""
+    try:
+        naive = datetime.strptime(f"{date_part} {hms}", "%Y-%m-%d %H:%M:%S")
+        # A naive datetime .astimezone()s as local time (py3.6+).
+        return naive.astimezone().astimezone(timezone.utc)
+    except (ValueError, OSError, OverflowError):
+        return None
+
+
+def _roll_past_midnight(start_utc: datetime, fn: str, date_part: str) -> datetime:
+    """Advance a day when the stamp precedes the session file's own creation.
+
+    The filename carries a UTC date AND a UTC time (session-start-logger.sh:46
+    is `date -u`), and a session log is append-only, so every stamp in it is at
+    or after the file's own creation time. A stamp that reads EARLIER in the
+    day therefore belongs to the next UTC day — which is the common case, since
+    a workflow started in the US evening lands after 00:00Z. Without this the
+    anchor would be a full day early and the window would swallow everything.
+    """
+    m = re.search(re.escape(date_part) + r"_(\d{2})(\d{2})(\d{2})(?!\d)", fn)
+    if not m:
+        return start_utc
+    file_hms = tuple(int(g) for g in m.groups())
+    if (start_utc.hour, start_utc.minute, start_utc.second) < file_hms:
+        return start_utc + timedelta(days=1)
+    return start_utc
+
 
 def resolve_workflow_window(
     session_log_path: str, session_log_text: str
 ) -> Tuple[Optional[datetime], datetime]:
     """
     Return (start_utc, end_utc) for the current workflow.
-      start: invocation HH:MM:SS from the session log, promoted to UTC using
-             the session-file date (YYYY-MM-DD_HHMMSS.md).
+      start: the workflow's beginning in UTC, from the session log. Preferred
+             source is the hook-written `workflow-start` stamp; see below.
       end:   datetime.now(timezone.utc)
+
+    The date always comes from the session FILENAME, which is UTC. The time
+    comes from one of two stamps, and they are NOT equivalent:
+
+      1. `workflow-start` — written by create-active-workflow.sh with
+         `date -u`. Genuinely UTC. Preferred whenever present.
+      2. `/smith-* invocation` — written by the MODEL per the skill, in an
+         unspecified zone (in practice machine-local). Fallback only.
+
+    Combining the UTC filename date with the model's local time and calling the
+    result UTC skews the start by the machine's offset — in a real log the same
+    workflow appears as `[00:52:12] workflow-start` and `[20:52:19]
+    /smith-bugfix invocation`, four hours apart. West of UTC that widens the
+    window (spend overstated, recoverable); east of UTC it NARROWS it and drops
+    real in-workflow tokens, silently understating spend, which for a
+    cost-reporting feature is the unacceptable direction.
+
+    So when the fallback is all there is, this DELIBERATELY WIDENS rather than
+    normalising: it takes the EARLIER of the as-UTC and as-local readings. The
+    alternative — trusting the machine offset — is only correct if the model
+    really did write local time, and is wrong in the dangerous direction if it
+    wrote UTC. Taking the minimum is never later than either hypothesis, and
+    errs by at most one UTC offset in the safe direction.
     """
     end_utc = datetime.now(timezone.utc)
+    # An invocation entry remains the precondition for a window at all: only
+    # new|bugfix|debug workflows are summarised, and main() bails without one.
     invoke = find_invocation(session_log_text)
     if invoke is None:
         return None, end_utc
     hms, _ = invoke
     fn = os.path.basename(session_log_path).replace(".md", "")
-    try:
-        date_part = fn.split("_")[0]  # YYYY-MM-DD
-    except IndexError:
+    dates = _SESSION_DATE_RE.findall(fn)
+    if not dates:
         return None, end_utc
-    try:
-        # Combine date + HH:MM:SS as UTC (matches how session logs are written).
-        start_utc = datetime.strptime(
-            f"{date_part} {hms}", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=timezone.utc)
-    except ValueError:
+    date_part = dates[-1]  # YYYY-MM-DD
+
+    # --- Preferred: the hook-written UTC anchor. ---
+    ws_hms = find_workflow_start(session_log_text)
+    if ws_hms is not None:
+        ws_start = _combine_utc(date_part, ws_hms)
+        if ws_start is not None:
+            return _roll_past_midnight(ws_start, fn, date_part), end_utc
+
+    # --- Fallback: the model-written stamp, widened. ---
+    # No midnight roll here: rolling forward would move the start LATER, i.e.
+    # narrow the window, and this branch has already conceded it does not know
+    # the zone. Erring wide is the whole point.
+    as_utc = _combine_utc(date_part, hms)
+    if as_utc is None:
         return None, end_utc
-    return start_utc, end_utc
+    as_local = _combine_local(date_part, hms)
+    if as_local is not None and as_local < as_utc:
+        return as_local, end_utc
+    return as_utc, end_utc
 
 
 # ---------------------------------------------------------------------------
