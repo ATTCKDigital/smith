@@ -94,7 +94,7 @@ fi
 
 # ---------- no marker; decide whether to deny based on the tool ----------
 
-SAFE_VAULT_DIRS=(sessions bank ledger queue agents todo reports index audits)
+SAFE_VAULT_DIRS=(sessions bank ledger queue agents todo reports index audits explore)
 # Per spec/31-workflow-gate-bootstrap (Q4 answer A): a parallel exemption
 # list for .smith/index/ subdirs. /smith-index --describe writes to
 # .smith/index/files/*.meta and shouldn't need a marker — it's a
@@ -309,16 +309,47 @@ sys.stdout.write("".join(out) if ok else s)
         MATCHED_SUBCMD=""
 
         # Mutator command words (whole-word match).
+        #
+        # Tested against REDIR_TEST, not COMMAND: REDIR_TEST is the same copy
+        # the redirect check below uses, with the CONTENTS of quoted spans
+        # blanked. A verb inside a quoted argument is an argument, not a
+        # command, and matching it is a false positive on a security control.
+        # Two real denials, both read-only:
+        #   grep -nE 'foo|rm |bar' file    (the `|` satisfies command position)
+        #   echo "(must not become the tee itself)"
+        # The stripper is fail-safe: on unbalanced quoting, or with no python3,
+        # REDIR_TEST falls back to the raw command and these stay denied.
         for cmd in rm rmdir mv cp chmod chown touch truncate tee dd; do
-            if printf '%s' "$COMMAND" | grep -qE "(^|[ 	;|&\(])${cmd}([ 	]|$)"; then
+            if printf '%s' "$REDIR_TEST" | grep -qE "(^|[ 	;|&\(])${cmd}([ 	]|$)"; then
                 MATCHED_SUBCMD="$cmd"
                 break
             fi
         done
 
-        # sed -i (in-place edit)
+        # A quoted payload handed to an interpreter IS executed, so for those
+        # the quoted span must still be examined. Checked against the RAW
+        # command, deliberately: `bash -c 'rm x'` slipped through before this
+        # (the `rm` follows a quote, which is not command position), so this is
+        # a tightening, not a preservation.
+        #
+        # This does NOT close the wider hole where a program writes files
+        # without naming a mutating verb at all (`python3 -c "open(p,'w')"`).
+        # That is a design-level limitation of a text-matching gate and is
+        # tracked separately.
         if [ -z "$MATCHED_SUBCMD" ]; then
-            if printf '%s' "$COMMAND" | grep -qE '(^|[ 	;|&\(])sed[ 	]+(-[a-zA-Z]*i|--in-place)'; then
+            if printf '%s' "$COMMAND" | grep -qE '(^|[ 	;|&\(])(ba|z|k|da)?sh[ 	]+-[a-zA-Z]*c([ 	]|$)'; then
+                for cmd in rm rmdir mv cp chmod chown touch truncate tee dd; do
+                    if printf '%s' "$COMMAND" | grep -qE "(^|[ 	;|&\('\"])${cmd}([ 	]|$)"; then
+                        MATCHED_SUBCMD="$cmd"
+                        break
+                    fi
+                done
+            fi
+        fi
+
+        # sed -i (in-place edit). Same quoted-span reasoning as above.
+        if [ -z "$MATCHED_SUBCMD" ]; then
+            if printf '%s' "$REDIR_TEST" | grep -qE '(^|[ 	;|&\(])sed[ 	]+(-[a-zA-Z]*i|--in-place)'; then
                 MATCHED_SUBCMD="sed -i"
             fi
         fi
