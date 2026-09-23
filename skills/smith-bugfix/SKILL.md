@@ -98,7 +98,7 @@ Every bugfix always runs in an isolated git worktree branched from the configure
      --slug "$SLUG" \
      --worktree "$WORKTREE_PATH"
    ```
-   (Falls back to `scripts/create-active-workflow.sh` in repo-dev layouts.) The helper exits 3 if a marker already exists for this branch under a different workflow type — pick a new slug (e.g., append `-2`) and retry. The marker is cleared by the Workflow Cleanup step at the end via `clear-active-workflow.sh`.
+   (Falls back to `scripts/create-active-workflow.sh` in repo-dev layouts.) The helper exits 3 if a marker already exists for this branch under a different workflow type. The marker path is derived from `--branch` alone (`<safe-branch>.yaml`); `--slug` only fills the `feature:` field *inside* the file, so retrying with a different slug writes the identical path and exits 3 again. The remedies are to use a different branch, or — if the existing marker is stale — to clear it with `clear-active-workflow.sh` and retry. The marker is cleared by the Workflow Cleanup step at the end via `clear-active-workflow.sh`.
 
 3. **Create the worktree with the fix branch from the configured base branch (`origin/$BASE_BRANCH`)**:
    ```bash
