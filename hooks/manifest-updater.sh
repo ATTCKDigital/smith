@@ -117,18 +117,34 @@ fi
 # warning, which we pass through unchanged on our stdout for Claude Code
 # to inject.
 #
-# Wrap with `timeout 2s` if available so a runaway parser can't block
-# Claude. Bail on any failure — exit 0 always.
-TIMEOUT_BIN=""
-if command -v timeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="timeout 2s"
-elif command -v gtimeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="gtimeout 2s"
-fi
+# Bound the run at 2s so a runaway parser can't block Claude. Bail on any
+# failure — exit 0 always.
+#
+# This used to build a `TIMEOUT_BIN` string from `timeout`/`gtimeout` and prefix
+# the command with it. Stock macOS ships neither binary, so TIMEOUT_BIN expanded
+# to nothing and the 2s budget was not enforced at all. `timeout`/`gtimeout` are
+# still preferred when present; otherwise python3 — already a hard requirement,
+# checked immediately above — supplies the bound in-process. The helper's stdout
+# is inherited either way, so the additionalContext JSON still passes through.
+run_bounded() {
+    local secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${secs}s" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "${secs}s" "$@"
+    else
+        python3 -c 'import subprocess, sys
+try:
+    sys.exit(subprocess.run(sys.argv[2:], timeout=float(sys.argv[1])).returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+except Exception:
+    sys.exit(125)' "$secs" "$@"
+    fi
+}
 
 STDERR_TMP="$(mktemp 2>/dev/null || echo /tmp/manifest-updater-$$.err)"
-# shellcheck disable=SC2086
-$TIMEOUT_BIN python3 "$HELPER" "$FILE_PATH" "$PROJECT_ROOT" 2>"$STDERR_TMP" || true
+run_bounded 2 python3 "$HELPER" "$FILE_PATH" "$PROJECT_ROOT" 2>"$STDERR_TMP" || true
 
 # Append the helper's structured log lines to hooks.log.
 if [ -s "$STDERR_TMP" ]; then

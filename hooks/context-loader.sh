@@ -114,18 +114,38 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
-TIMEOUT_BIN=""
-if command -v timeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="timeout 5s"
-elif command -v gtimeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="gtimeout 5s"
-fi
+# Bound the helper run.
+#
+# This used to build a `TIMEOUT_BIN` string from `timeout`/`gtimeout` and prefix
+# the command with it. Stock macOS ships neither binary, so TIMEOUT_BIN expanded
+# to nothing and the advertised 5s budget was not enforced at all — a hung helper
+# hung this hook, on every single UserPromptSubmit.
+#
+# `timeout`/`gtimeout` are still preferred when present. Otherwise python3 —
+# already a hard requirement, checked immediately above — supplies the bound
+# in-process. Either way the caller's `|| true` below keeps the hook fail-open:
+# a timeout is exit 124, an internal error 125, and neither stops the session.
+run_bounded() {
+    local secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${secs}s" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "${secs}s" "$@"
+    else
+        python3 -c 'import subprocess, sys
+try:
+    sys.exit(subprocess.run(sys.argv[2:], timeout=float(sys.argv[1])).returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+except Exception:
+    sys.exit(125)' "$secs" "$@"
+    fi
+}
 
 STDERR_TMP="$(mktemp 2>/dev/null || echo /tmp/context-loader-$$.err)"
 
 # Pass the full stdin payload through to the helper.
-# shellcheck disable=SC2086
-printf '%s' "$INPUT" | $TIMEOUT_BIN python3 "$HELPER" compose-injection \
+printf '%s' "$INPUT" | run_bounded 5 python3 "$HELPER" compose-injection \
     2>"$STDERR_TMP" || true
 
 if [ -s "$STDERR_TMP" ]; then
