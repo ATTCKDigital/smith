@@ -473,6 +473,25 @@ def format_duration(seconds: int) -> str:
     return f"{s}s"
 
 
+def format_elapsed(seconds: Optional[int]) -> str:
+    """format_duration, except that None renders as `unknown`.
+
+    Total elapsed is the one duration here that can be genuinely
+    unrecoverable: it needs a UTC day, and the only place that day exists is
+    the session FILENAME (session-start-logger.sh:46, `date -u`). A log whose
+    name carries no parseable date — a hand-copied file, a rolled-over name, a
+    future rename — leaves nothing to anchor on. Active duration has no such
+    failure mode; it is a sum of gaps and 0 means 0.
+
+    So this renders the absence instead of substituting a number for it.
+    `0s` reads as "the workflow took no time", which is both false and exactly
+    what the fixed defect printed, for every session, for months.
+    """
+    if seconds is None:
+        return "unknown"
+    return format_duration(seconds)
+
+
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
@@ -500,7 +519,7 @@ def render_chat_block(totals: Dict[str, Any]) -> str:
     else:
         cost_line = f"Est. cost: {cost}{suffix}"
     active = format_duration(totals["active_duration_s"])
-    elapsed = format_duration(totals["total_elapsed_s"])
+    elapsed = format_elapsed(totals["total_elapsed_s"])
     return (
         f"Token Usage: {tok} normalized\n"
         f"{cost_line}\n"
@@ -533,7 +552,7 @@ def render_audit_block(
 ) -> str:
     """Full audit block appended to session log (FR-16)."""
     active = format_duration(totals["active_duration_s"])
-    elapsed = format_duration(totals["total_elapsed_s"])
+    elapsed = format_elapsed(totals["total_elapsed_s"])
     tok = format_tokens(totals["combined_normalized"])
     cost_line = (
         "Est. cost: unavailable (pricing config missing)"
@@ -666,7 +685,7 @@ def assemble_totals(
     parent_active_duration_s: int,
     subagent_rows: List[Dict[str, Any]],
     pricing: Optional[Dict[str, Any]],
-    total_elapsed_s: int,
+    total_elapsed_s: Optional[int],
 ) -> Dict[str, Any]:
     """Compute every field needed by render_chat_block / render_audit_block."""
     # Main-session cost and normalized
@@ -992,14 +1011,35 @@ def main() -> int:
     parent_tool_calls = len(tool_entries)
     parent_active_duration_s = compute_active_duration(tool_entries)
 
-    # Elapsed = session file's timestamp → now.
-    fn = os.path.basename(session_file).replace(".md", "")
-    total_elapsed_s = 0
-    try:
-        start_dt = datetime.strptime(fn, "%Y-%m-%d_%H%M%S").replace(tzinfo=timezone.utc)
-        total_elapsed_s = int((end_utc - start_dt).total_seconds())
-    except ValueError:
-        pass
+    # Elapsed = the WORKFLOW's start → now.
+    #
+    # This used to be `strptime(fn, "%Y-%m-%d_%H%M%S")` with `fn` the WHOLE
+    # basename — the same positional-parse defect PR #72 fixed one function
+    # away in resolve_workflow_window. A real session log is named
+    # `<user>_<hash>_<YYYY-MM-DD>_<HHMMSS>.md`, so strptime raised on every
+    # one of them, the bare `except ValueError: pass` swallowed it, and the
+    # `0` initialiser survived. Every totals line ever printed read
+    # `total elapsed 0s`.
+    #
+    # The replacement is not a third filename parser: it is the anchor
+    # resolve_workflow_window already computed above, which prefers the
+    # hook-written UTC `workflow-start` stamp and falls back to the widened
+    # model stamp. That also CHANGES WHAT THIS MEASURES, deliberately. The old
+    # comment said "session file's timestamp → now", but a session log is
+    # append-only and outlives the workflow inside it — it is created by
+    # session-start-logger.sh at the first prompt of the session, which can
+    # precede `/smith-bugfix` by hours, and holds several workflows over its
+    # life. Elapsed now spans the workflow it is reported for, which is what
+    # the line sits next to (`Workflow: /smith-…`, `Started: …`) and what the
+    # token window above is already scoped to.
+    #
+    # None, not 0, when no anchor resolves: `0s` is indistinguishable from a
+    # genuine instant workflow, and printing it is exactly the bug. Same
+    # reasoning as render_no_marker_block one branch up — be loud rather than
+    # print misleading zeros.
+    total_elapsed_s: Optional[int] = None
+    if start_utc is not None:
+        total_elapsed_s = int((end_utc - start_utc).total_seconds())
 
     # Pricing table.
     pricing_path = os.path.join(
