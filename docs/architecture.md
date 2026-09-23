@@ -8,8 +8,8 @@ Smith is composed of four subsystems: skills, hooks, the scheduler, and the vaul
 
 ```
 Smith
-  |-- Skills (33)      Claude Code slash commands and utilities
-  |-- Hooks (8)        Bash scripts fired by Claude Code lifecycle events
+  |-- Skills (36)      Claude Code slash commands and utilities
+  |-- Hooks (21)       Bash scripts fired by Claude Code lifecycle events
   |-- Scheduler (1)    macOS LaunchAgent for autonomous task processing
   |-- Vault            Per-project local data store (.smith/vault/)
 ```

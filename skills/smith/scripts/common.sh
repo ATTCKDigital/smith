@@ -72,9 +72,26 @@ check_feature_branch() {
         return 0
     fi
 
-    if [[ ! "$branch" =~ ^[0-9]{3}- ]]; then
+    # Accept any numeric prefix of two or more digits. This repo's own feature
+    # branches are two-digit (60-activity-dashboard); older SpecKit projects are
+    # three-digit (001-feature-name). The previous `^[0-9]{3}-` rejected both the
+    # two-digit and the four-digit shapes, so every feature from 53 onward made
+    # setup-plan.sh and check-prerequisites.sh exit 1 and /smith-new Phase 4's
+    # documented first step silently never ran.
+    #
+    # `fix/<slug>` — the branch shape /smith-bugfix creates — is deliberately NOT
+    # accepted. No caller reaches this check from a bugfix: only
+    # skills/smith-new/SKILL.md invokes setup-plan.sh, and a fix/ branch has no
+    # numbered spec directory, so admitting it would just trade this clear error
+    # for a confusing "Feature directory not found" from
+    # find_feature_dir_by_prefix() one step later.
+    #
+    # main/master must keep failing. Stopping these scripts from scaffolding plan
+    # artifacts while sitting on a non-feature branch is the whole point of the
+    # check, and widening the prefix must not widen that.
+    if [[ ! "$branch" =~ ^[0-9]{2,}- ]]; then
         echo "ERROR: Not on a feature branch. Current branch: $branch" >&2
-        echo "Feature branches should be named like: 001-feature-name" >&2
+        echo "Feature branches should be named like: 60-feature-name or 001-feature-name" >&2
         return 1
     fi
 

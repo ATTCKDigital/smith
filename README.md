@@ -1,5 +1,5 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![35 Skills](https://img.shields.io/badge/skills-35-brightgreen.svg)](skills/)
+[![36 Skills](https://img.shields.io/badge/skills-36-brightgreen.svg)](skills/)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blueviolet.svg)](https://claude.ai/code)
 
 # Smith
@@ -15,7 +15,7 @@ _See [smith.attck.com](https://smith.attck.com) for a walkthrough._
 
 Claude Code is a powerful AI coding assistant, but it has no built-in workflow structure. Developers jump straight from a vague idea to generated code with no specification, no plan, and no audit trail. The result is hard to review, harder to maintain, and impossible to trace back to requirements. When something goes wrong — and it will — there is no record of what was intended, what was decided, or why.
 
-Smith fixes this by adding 35 skills — a full spec-driven development workflow plus general-purpose utilities (like `/smith-clean-code` and `/to-mermaid`) — into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
+Smith fixes this by adding 36 skills — a full spec-driven development workflow plus general-purpose utilities (like `/smith-clean-code` and `/to-mermaid`) — into Claude Code. The pipeline flows from **spec to plan to tasks to implementation to review to ship**. Every step produces a versioned artifact inside a `.specify/` directory in your project. Claude reads the output of each step as input to the next, so context accumulates instead of evaporating. You never have to re-explain what you're building.
 
 The outcome: you talk to Claude about what you want to build, Smith handles the structured process, and you get a merged PR with full traceability from idea to code. Hooks log every session automatically and guard against common mistakes — dangerous shell commands, secret exposure, writes to sensitive files. A scheduler can process queued tasks overnight. Everything runs locally on your machine, nothing phones home, and every artifact is a plain text file you can read, diff, and version-control.
 
@@ -29,7 +29,7 @@ The outcome: you talk to Claude about what you want to build, Smith handles the 
 npx skills add ATTCKDigital/smith
 ```
 
-This is the fastest path — it copies all 26 Smith skills into `~/.claude/skills/` and nothing else. Use this if you only want the Smith workflow commands.
+This is the fastest path — it copies all 36 Smith skills into `~/.claude/skills/` and nothing else. Use this if you only want the Smith workflow commands.
 
 **To update:** re-run the same command. `npx skills add` is idempotent.
 
@@ -53,35 +53,44 @@ Once installed, open any new or existing project in your terminal and run `/smit
 
 ## What's Inside
 
-### Skills (35)
+### Skills (36)
 
 | Category | Commands | Description |
 |---|---|---|
 | Feature workflow | `/smith-new`, `/smith-explore`, `/smith-specify`, `/smith-clarify`, `/smith-plan`, `/smith-tasks`, `/smith-analyze`, `/smith-implement`, `/smith-build`, `/smith-bugfix`, `/smith-checklist`, `/smith-finish` | End-to-end feature development pipeline |
 | Debugging and audit | `/smith-debug`, `/smith-audit` | Diagnostic investigation and cross-system audit reporting |
-| Knowledge and vault | `/smith-vault`, `/smith-bank`, `/smith-queue`, `/smith-todo`, `/smith-ledger`, `/smith-reflect` | Persistent session logs, idea storage, task queuing, and accumulated learning |
+| Knowledge and vault | `/smith-vault`, `/smith-bank`, `/smith-queue`, `/smith-todo`, `/smith-ledger`, `/smith-reflect`, `/smith-sync` | Persistent session logs, idea storage, task queuing, accumulated learning, and the chore commit that pushes team-shareable vault artifacts to the default branch |
 | Reporting | `/smith-report`, `/smith-taskstoissues` | Client-facing reports and GitHub issue generation |
 | Manifest | `/smith-index`, `/smith-navigate`, `/smith-migrate-system-paths` | Precomputed project index, Haiku navigator, and one-shot path-frontmatter migration for structured context retrieval (see [docs/manifest-system.md](docs/manifest-system.md)) |
 | Observability | `/smith-activity` | Local, loopback-only activity dashboard: which workflow is in which phase, what is waiting on you, and where Smith's self-reports disagree with what the hooks observed. Read-only and ephemeral — it audits, it does not monitor |
-| Meta | `/smith`, `/smith-update`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help` | Project initialization, version sync, governance, and reference |
-| Utilities | `/smith-clean-code`, `/to-mermaid` | Framework-agnostic Clean Code / Clean Architecture refactoring and Mermaid diagram generation from plans and workflows |
+| Meta | `/smith`, `/smith-update`, `/smith-constitution`, `/smith-migrate-specs`, `/smith-help`, `/smith-question` | Project initialization, version sync, governance, reference, and the canonical markdown Q&A contract every gate asks questions through |
+| Utilities | `/smith-clean-code`, `/to-mermaid`, `/smith-research` | Framework-agnostic Clean Code / Clean Architecture refactoring, Mermaid diagram generation from plans and workflows, and citation-gated research on a target site and the company behind it |
 
-### Hooks (12)
+### Hooks (21)
 
 | Hook | Event | Purpose |
 |---|---|---|
 | `session-start-logger.sh` | SessionStart | Creates a session log in `.smith/vault/sessions/` |
 | `session-end-review.sh` | Stop | Reviews changes made during the session and prompts for spec updates |
+| `active-workflow-janitor.sh` | Stop | Sweeps stale `.smith/vault/active-workflows/*.yaml` markers whose branch is gone or already merged. See [Workflow gate](#workflow-gate) |
+| `workflow-summary.sh` | Stop | Appends a `=== Workflow Summary ===` block to the session log when a primary workflow completes; also callable with `--totals-only` for an inline chat block |
+| `stamp-response.sh` | Stop | Emits the deterministic `YYYY-MM-DD HH:MM:SS — <branch>` turn stamp as a `systemMessage`. Fail-closed, unlike the critic it replaced |
 | `grade-response.sh` | Stop | Grades the turn against `~/.claude/CLAUDE.md` rubric via a Haiku critic; blocks the stop and forces a retry when score < 100 (up to 3 retries) |
 | `file-change-logger.sh` | PostToolUse (Write/Edit) | Logs every file change to the active session log |
 | `lint-on-save.sh` | PostToolUse (Write/Edit) | Runs the project linter on changed files |
+| `context-budget-guard.sh` | PostToolUse (Write/Edit) | Warns (never blocks) when a just-written file crosses a size threshold, extra-loudly for files `@`-referenced from `CLAUDE.md` |
+| `metrics-tracker.sh` | PostToolUse | Logs per-tool input/output character counts to the session log for token estimation |
 | `manifest-updater.sh` | PostToolUse (Write/Edit) | Updates `.smith/index/` metadata after edits; emits 300-line advisory warnings. Runs LAST in the chain so it sees the post-lint file state. |
 | `context-loader.sh` | UserPromptSubmit | Detects `/smith-*` invocations and natural-language triggers; injects vault + navigator context as `additionalContext` before reasoning starts. Zero overhead for regular conversation. |
+| `user-prompt-logger.sh` | UserPromptSubmit | Appends the user's verbatim prompt to the session log, interleaved with the tool-call lines |
 | `security-guard-bash.sh` | PreToolUse (Bash) | Blocks dangerous commands and secret exposure |
 | `security-guard-files.sh` | PreToolUse (Write/Edit) | Blocks writes to sensitive files without explicit approval |
 | `workflow-gate.sh` | PreToolUse (Bash, Write/Edit) | Denies file-modifying tool calls when no `.smith/vault/active-workflows/*.yaml` marker exists. Runs AFTER security guards so security blocks take precedence. See the [Workflow gate](#workflow-gate) section. |
+| `security-guard-mcp-browser.sh` | PreToolUse (`mcp__playwright__`) | Lets read-only browser tools through; gates interaction tools (click/type/evaluate) and fails safe against production-labeled targets |
+| `question-gate-guard.sh` | PreToolUse (AskUserQuestion) | Suppresses the interactive popup in favor of Smith's markdown Q&A contract (`/smith-question`). Mode is config-driven |
 | `task-router.sh` | PreToolUse (Task) | Routes sub-agent tasks during active workflows |
 | `subagent-vault-writeback.sh` | SubagentStop | Persists sub-agent findings to the vault |
+| `activity-emitter.sh` | 15 events (SessionStart … ConfigChange) | Forwards hook events to the local `/smith-activity` daemon; silent no-op when the daemon isn't running |
 
 ### Scheduler
 
@@ -190,8 +199,8 @@ The installer is a **one-time global setup** — it installs Smith into `~/.clau
 
 - Backs up your existing `~/.claude/settings.json`
 - Backs up your existing `~/.claude/CLAUDE.md` (if any) and installs the Smith rubric
-- Copies all 35 skills to `~/.claude/skills/`
-- Copies all 9 hooks to `~/.claude/hooks/`
+- Copies all 36 skills to `~/.claude/skills/`
+- Copies all 21 hooks to `~/.claude/hooks/`
 - Merges hook configuration into `settings.json` (requires `jq`)
 - Optionally installs the macOS scheduler LaunchAgent
 
