@@ -14,6 +14,8 @@ Manage daily todo lists stored in `.smith/vault/todo/`. Each day has one file (`
 
 Log significant events to the vault session log. Read the session log path from `.smith/vault/.current-session`. If missing, skip logging silently.
 
+**Timestamps are UTC.** `HH:MM:SS` comes from `date -u +%H:%M:%S` — never a local clock, never a time from memory. The append already runs through a shell, so read the clock in that same command (`TS=$(date -u +%H:%M:%S)`) and spend no extra tool call. Substitute the resulting value: an unexpanded `$(...)` reaching the log is a known regression and will not parse. Every hook-written stamp in this log is `date -u`, so a local-clock entry lands hours away from its neighbours and skews the workflow window `hooks/workflow_summary_lib.py` derives from them.
+
 Append entries using this format:
 
 ```

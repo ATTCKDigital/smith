@@ -15,6 +15,8 @@ Throughout this action, log significant events to the vault session log. Read th
 
 **Marker before first append**: the workflow-gate denies markerless Bash redirection, so `cat >> "$SESSION"` appends are blocked until the active-workflow marker exists. Create the marker (Phase 1 step 0 helper) FIRST, then write the invocation entry immediately after — do not log before the marker.
 
+**Timestamps are UTC.** `HH:MM:SS` comes from `date -u +%H:%M:%S` — never a local clock, never a time from memory. The append already runs through a shell, so read the clock in that same command (`TS=$(date -u +%H:%M:%S)`) and spend no extra tool call. Substitute the resulting value: an unexpanded `$(...)` reaching the log is a known regression and will not parse. Every hook-written stamp in this log is `date -u`, so a local-clock entry lands hours away from its neighbours and skews the workflow window `hooks/workflow_summary_lib.py` derives from them.
+
 Append entries to the session log using this format:
 
 ```
@@ -47,6 +49,8 @@ Immediately before every Agent tool call in this workflow, append a block to the
 **Type:** <subagent_type or "general">
 **Model:** <model override passed to Agent, or "inherited" if none>
 ```
+
+`HH:MM:SS` here is UTC as well — `date -u +%H:%M:%S`, same rule as above. The `subagent-vault-writeback.sh` block that lands beside this one is hook-written and therefore already UTC; a local-clock invocation stamp would make a subagent appear to finish hours before it started.
 
 After the Agent tool returns, the `subagent-vault-writeback.sh` hook automatically appends a matching "Subagent completed" block with metrics read from the sidechain transcript — do not duplicate that logging in the skill.
 

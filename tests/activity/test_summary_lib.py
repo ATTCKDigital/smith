@@ -50,16 +50,23 @@ Reached from CI through the flat tests/smith-activity.test.sh wrapper.
    hook disagreeing with your worktree. Running this module ALONE
    (``python3 -m unittest tests.activity.test_summary_lib``) also sidesteps it,
    because nothing imports ``usage`` first.
+
+   The flat wrapper ``tests/smith-activity.test.sh`` now pins
+   ``CLAUDE_HOOKS_DIR`` on its ``discover`` call, so running the suite THAT
+   way is trustworthy on a developer machine. A bare ``discover`` typed by
+   hand still is not — hence this block.
 """
 
 import contextlib
+import io
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from tests._harness import *  # noqa: F401,F403 — puts hooks/ on sys.path
 
@@ -579,6 +586,260 @@ class GitFilesChangedTest(unittest.TestCase):
         git(other, "add", "-A")
         git(other, "commit", "-qm", "c")
         self.assertEqual(W.git_files_changed(other), [])
+
+
+_ELAPSED_RE = re.compile(r"total elapsed ([^)\n]+)\)")
+
+
+def _duration_to_seconds(text):
+    """Invert ``format_duration``: ``2h1m5s`` / ``12m04s`` / ``42s`` -> int."""
+    m = re.match(r"^(?:(\d+)h)?(?:(\d+)m)?(\d+)s$", text.strip())
+    if not m:
+        raise AssertionError("not a duration: %r" % text)
+    h, mins, secs = (int(g or 0) for g in m.groups())
+    return h * 3600 + mins * 60 + secs
+
+
+class MainTotalElapsedTest(unittest.TestCase):
+    """``main()``'s ``total_elapsed_s`` — the positional filename parse again.
+
+    ``main()`` carried the identical defect PR #72 fixed one function away in
+    ``resolve_workflow_window``::
+
+        start_dt = datetime.strptime(fn, "%Y-%m-%d_%H%M%S")
+
+    with ``fn`` the WHOLE basename. A real session log is
+    ``<user>_<hash>_<YYYY-MM-DD>_<HHMMSS>.md``, so that raised ``ValueError``
+    on every one of them, the bare ``except ValueError: pass`` swallowed it,
+    and ``total_elapsed_s`` stayed at its ``0`` initialiser. Every totals line
+    this repository has ever printed read ``total elapsed 0s``.
+
+    Two things are asserted here, and they are separable:
+
+    1. **It is no longer zero, and it is right.** The anchor is now whatever
+       ``resolve_workflow_window`` resolves rather than a third private
+       filename parser — which means elapsed measures the WORKFLOW, from the
+       hook-written UTC ``workflow-start`` stamp, not the session FILE, whose
+       creation can precede the workflow by any amount (a session log is
+       append-only and outlives several workflows).
+    2. **It degrades visibly.** When no UTC anchor can be recovered the line
+       reads ``unknown``, not ``0s``. ``0s`` is indistinguishable from a
+       genuine instant workflow, and printing it is precisely the bug — the
+       same reasoning ``render_no_marker_block`` already applies one branch
+       up ("be loud rather than print misleading zeros").
+
+    The fixture plants a decoy: a model-written ``/smith-bugfix invocation``
+    stamp four hours off the ``workflow-start`` line, exactly as this repo's
+    own logs contain. Anchoring on the file, on the decoy, or on nothing each
+    lands outside the asserted band, so the anchor choice is load-bearing in
+    the assertion rather than only in the docstring.
+    """
+
+    # Deliberately non-round and mutually distinguishable: 0, the file's own
+    # creation time, and the decoy stamp are each hundreds or thousands of
+    # seconds away from the answer, so no stub and no off-by-one anchor can
+    # land in the band by accident.
+    ANCHOR_AGO_S = 7265  # workflow started 2h01m05s ago
+    FILE_BEFORE_ANCHOR_S = 913  # session file created 15m13s before that
+    DECOY_SKEW_S = 4 * 3600  # model's local-clock stamp, UTC-4 laptop
+    TOLERANCE_S = 5  # the test's own runtime
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="smith-elapsed-")
+        # An empty HOME means no ~/.claude/projects/<slug>, so
+        # resolve_parent_jsonl returns None and the parent-token path is out
+        # of the picture. This test is about the clock, nothing else.
+        self.home = os.path.join(self.tmp, "home")
+        os.makedirs(self.home)
+        self.project = os.path.join(self.tmp, "proj")
+        self.sessions = os.path.join(self.project, ".smith", "vault", "sessions")
+        os.makedirs(self.sessions)
+        self._saved = {
+            k: os.environ.get(k)
+            for k in ("HOME", "SESSION_FILE", "PROJECT_ROOT", "TOTALS_ONLY")
+        }
+        os.environ["HOME"] = self.home
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    # -- fixture ------------------------------------------------------------
+
+    def _write(self, basename, body):
+        path = os.path.join(self.sessions, basename)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        return path
+
+    def _log_body(self, invocation_hms, workflow_start_hms=None):
+        lines = ["# Session Log", ""]
+        if workflow_start_hms is not None:
+            lines += [
+                "### [%s] workflow-start fix/utc-timestamps" % workflow_start_hms,
+                "",
+            ]
+        lines += [
+            "### [%s] /smith-bugfix invocation" % invocation_hms,
+            "",
+            "**Synthesized Input:** make the clocks agree",
+            "",
+        ]
+        return "\n".join(lines)
+
+    def _realistic_log(self, with_workflow_start=True):
+        """A real-shaped session log, built backwards from *now*.
+
+        The filename is spelled the way ``session-start-logger.sh:46`` spells
+        it (``date -u +%Y-%m-%d_%H%M%S`` behind ``<user>_<hash>_``), and the
+        two stamps disagree by four hours the way a real log's do.
+        """
+        now = datetime.now(timezone.utc)
+        anchor = now - timedelta(seconds=self.ANCHOR_AGO_S)
+        created = anchor - timedelta(seconds=self.FILE_BEFORE_ANCHOR_S)
+        decoy = anchor - timedelta(seconds=self.DECOY_SKEW_S)
+        basename = "dennis-plucinik_ad8161_%s.md" % created.strftime("%Y-%m-%d_%H%M%S")
+        body = self._log_body(
+            decoy.strftime("%H:%M:%S"),
+            anchor.strftime("%H:%M:%S") if with_workflow_start else None,
+        )
+        return self._write(basename, body)
+
+    # -- driver -------------------------------------------------------------
+
+    def _run(self, path, totals_only=True):
+        os.environ["SESSION_FILE"] = path
+        os.environ["PROJECT_ROOT"] = self.project
+        if totals_only:
+            os.environ["TOTALS_ONLY"] = "1"
+        else:
+            os.environ.pop("TOTALS_ONLY", None)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = W.main()
+        return rc, out.getvalue(), err.getvalue()
+
+    def _elapsed_text(self, stdout):
+        m = _ELAPSED_RE.search(stdout)
+        self.assertIsNotNone(m, "no 'total elapsed' line in:\n%s" % stdout)
+        return m.group(1)
+
+    def _elapsed_seconds(self, stdout):
+        return _duration_to_seconds(self._elapsed_text(stdout))
+
+    # -- the number is right ------------------------------------------------
+
+    def test_elapsed_is_not_silently_zero(self):
+        """The visible symptom: every totals line read ``total elapsed 0s``."""
+        rc, out, err = self._run(self._realistic_log())
+        self.assertEqual(rc, 0, err)
+        self.assertNotEqual(self._elapsed_text(out), "0s", out)
+
+    def test_elapsed_is_measured_from_the_workflow_start_anchor(self):
+        rc, out, err = self._run(self._realistic_log())
+        self.assertEqual(rc, 0, err)
+        secs = self._elapsed_seconds(out)
+        self.assertGreaterEqual(secs, self.ANCHOR_AGO_S, out)
+        self.assertLessEqual(secs, self.ANCHOR_AGO_S + self.TOLERANCE_S, out)
+
+    def test_the_session_files_own_creation_time_is_not_the_anchor(self):
+        """A session log is append-only and outlives the workflow in it.
+
+        ``main``'s comment said "Elapsed = session file's timestamp → now",
+        which over-reports by however long the file existed before the
+        workflow began — here 15m13s.
+        """
+        rc, out, err = self._run(self._realistic_log())
+        self.assertEqual(rc, 0, err)
+        secs = self._elapsed_seconds(out)
+        from_file = self.ANCHOR_AGO_S + self.FILE_BEFORE_ANCHOR_S
+        self.assertLess(secs, from_file - 60, "anchored on the file, not the workflow")
+
+    def test_the_model_written_invocation_stamp_is_not_the_anchor(self):
+        """The decoy is four hours off, as this repo's own logs are."""
+        rc, out, err = self._run(self._realistic_log())
+        self.assertEqual(rc, 0, err)
+        secs = self._elapsed_seconds(out)
+        from_decoy = self.ANCHOR_AGO_S + self.DECOY_SKEW_S
+        self.assertLess(secs, from_decoy - 60, "anchored on the model-written stamp")
+
+    def test_the_audit_block_carries_the_same_elapsed(self):
+        """Stop-hook mode renders through ``render_audit_block``, a separate
+        formatter that reads the same field."""
+        path = self._realistic_log()
+        rc, out, err = self._run(path, totals_only=False)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("=== Workflow Summary ===", out)
+        secs = self._elapsed_seconds(out)
+        self.assertGreaterEqual(secs, self.ANCHOR_AGO_S, out)
+        self.assertLessEqual(secs, self.ANCHOR_AGO_S + self.TOLERANCE_S, out)
+
+    def test_the_fallback_anchor_still_produces_a_duration(self):
+        """No ``workflow-start`` line: ``resolve_workflow_window`` falls back
+        to the model stamp, widened. The number is zone-dependent and so is
+        only bounded from below — but it must not be zero and must not be
+        ``unknown``, or the degradation below would be swallowing real logs."""
+        rc, out, err = self._run(self._realistic_log(with_workflow_start=False))
+        self.assertEqual(rc, 0, err)
+        text = self._elapsed_text(out)
+        self.assertNotEqual(text, "unknown", out)
+        # The stamp reads 2h01m05s ago as UTC and the fallback takes the
+        # EARLIER of the as-UTC and as-local readings, so elapsed is at least
+        # that in every timezone.
+        self.assertGreaterEqual(_duration_to_seconds(text), 7200, out)
+
+    # -- and it degrades visibly -------------------------------------------
+
+    def test_a_filename_with_no_parseable_date_degrades_to_unknown(self):
+        """No date in the filename means no UTC day to hang either stamp on.
+
+        There is nothing to recover from and no honest number to print, so the
+        line says so. ``0s`` would be a claim; ``unknown`` is not.
+        """
+        path = self._write(
+            "dennis-plucinik_ad8161_rolled-over.md",
+            self._log_body("20:52:19", "00:52:12"),
+        )
+        rc, out, err = self._run(path)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("total elapsed unknown", out)
+        self.assertNotIn("total elapsed 0s", out)
+
+    def test_an_impossible_calendar_date_degrades_to_unknown(self):
+        """The date matches the shape but not the calendar: ``strptime``
+        raises, and the raise must not become a plausible number."""
+        path = self._write(
+            "dennis-plucinik_ad8161_2026-02-30_120000.md",
+            self._log_body("20:52:19", "00:52:12"),
+        )
+        rc, out, err = self._run(path)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("total elapsed unknown", out)
+
+    def test_degrading_does_not_crash_or_change_the_line_shape(self):
+        """Callers parse a fixed three-line block; the degraded form keeps it."""
+        path = self._write(
+            "dennis-plucinik_ad8161_rolled-over.md",
+            self._log_body("20:52:19", "00:52:12"),
+        )
+        rc, out, err = self._run(path)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(len(out.strip().splitlines()), 3, out)
+        self.assertTrue(out.startswith("Token Usage:"), out)
+        self.assertIn("Active duration:", out)
+
+    def test_the_audit_block_degrades_to_unknown_too(self):
+        path = self._write(
+            "dennis-plucinik_ad8161_rolled-over.md",
+            self._log_body("20:52:19", "00:52:12"),
+        )
+        rc, out, err = self._run(path, totals_only=False)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("total elapsed unknown", out)
 
 
 class FormatterTest(unittest.TestCase):

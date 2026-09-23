@@ -333,10 +333,24 @@ fi
 # is the same mechanism tests/test_normalized.py and its four siblings already
 # use. python3 is already an unconditional dependency of the flat suite
 # (tests/stamp-response.test.sh:29,46,53), so this adds no CI requirement.
+#
+# CLAUDE_HOOKS_DIR pins WHICH workflow_summary_lib.py is under test. Without
+# it this wrapper silently tested the INSTALLED ~/.claude/hooks copy instead
+# of the worktree's: scripts/activity/usage.py carries an import ladder
+# (CLAUDE_HOOKS_DIR → ~/.claude/hooks → repo hooks/) which sys.path.insert(0)s
+# its winner AHEAD of tests/_harness.py's entry, and under `discover` the
+# modules that import usage sort first, so sys.modules already holds that
+# copy by the time test_summary_lib.py imports the name. CI never noticed —
+# a runner has no ~/.claude/hooks, so the ladder fell through to the repo —
+# which is exactly why it went unnoticed locally for as long as it did: a
+# developer would see this suite pass against a stale installed hook, or fail
+# against one, with no indication either way. tests/workflow-summary-session.
+# test.sh already pins it for the same reason (see its run_totals).
 # ===========================================================================
 
 # --- Test 4: Python unit suite --------------------------------------------
-if PYTHONPATH="$REPO_ROOT" python3 -m unittest discover \
+if CLAUDE_HOOKS_DIR="$REPO_ROOT/hooks" PYTHONPATH="$REPO_ROOT" \
+        python3 -m unittest discover \
         -s "$REPO_ROOT/tests/activity" -t "$REPO_ROOT" -q > "$TMP/py.out" 2>&1; then
     assert "python unit suite (tests/activity)" true
 else
