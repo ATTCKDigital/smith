@@ -216,6 +216,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Workflow gate finds markers in the project being edited (fix/gate-edited-project)** — `hooks/workflow-gate.sh` resolved the project only from `CLAUDE_PROJECT_DIR` / the working directory, so a session started in a non-git parent folder (one that holds several repos) was blocked even while the repo it was editing had an active workflow, and the marker had to be copied into the parent by hand. The gate now also accepts an active marker in the git project that contains the edited file (Write/Edit/NotebookEdit) or any absolute path or `cd` target in a Bash command; worktrees resolve to their primary repo via `--git-common-dir`, as before. Paths outside any Smith project are ignored, and the hook's own working directory is not consulted. New `tests/workflow-gate-edited-project.test.sh` (12 cases); existing gate tests unchanged and passing.
+
 - **Timestamped backups of `settings.json` / `CLAUDE.md` grew without bound**
   (fix/settings-backup-gc). `scripts/install.sh`, `scripts/install-hooks.sh` and
   `scripts/dedupe-settings.sh` each copy the file to a timestamped sidecar before
