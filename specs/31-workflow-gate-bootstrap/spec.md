@@ -166,3 +166,7 @@ C4. **CHANGELOG entry** documenting the new helper, the gate exemption, and the 
 - PRs #25, #27, #28, #29, #30 — each used the Python workaround tonight. Confirm none regress after this feature lands.
 - `scheduler/smith-scheduler.sh` — uses `claude --print` which is also affected by this issue when running scheduled workflows.
 - `.specify/scripts/bash/clear-active-workflow.sh` — existing teardown helper; this feature ships its counterpart.
+
+## Implementation History
+
+- **2026-10-20** — `fix/gate-edited-project`: the gate also accepts a marker in the project that contains the edited file or a path named in a Bash command, so sessions started in a non-git parent folder no longer need markers copied in by hand.

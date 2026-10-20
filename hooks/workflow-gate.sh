@@ -92,6 +92,75 @@ if [ "$MARKER_PRESENT" = "1" ]; then
     exit 0
 fi
 
+# ---------- markers in the project being edited ----------
+#
+# The session's project (CLAUDE_PROJECT_DIR / PWD) is not always the project
+# a workflow edits: a session started in a non-git parent folder that holds
+# several repos, or one that edits a sibling repo, creates its marker in the
+# edited repo (create-active-workflow.sh resolves the project via git). So the
+# gate also accepts a marker in the git project that contains the edited
+# file (Write/Edit), or any absolute path / cd target in a Bash command.
+# Worktrees resolve to their primary repo through --git-common-dir, exactly
+# like the session check above. Paths outside any Smith project are ignored.
+
+# project_root_of <path> -> primary repo root of the nearest existing dir, or fail
+project_root_of() {
+    local p="$1"
+    case "$p" in
+        "~") p="$HOME" ;;
+        "~/"*) p="$HOME/${p#\~/}" ;;
+        /*) ;;
+        *) p="$RESOLVED_DIR/$p" ;;
+    esac
+    while [ ! -d "$p" ] && [ "$p" != "/" ] && [ -n "$p" ]; do
+        p=$(dirname "$p")
+    done
+    local common
+    common=$(git -C "$p" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+    [ -n "$common" ] || return 1
+    dirname "$common"
+}
+
+project_has_marker() {
+    local active="$1/.smith/vault/active-workflows"
+    [ -d "$active" ] || return 1
+    shopt -s nullglob
+    local found=( "$active"/*.yaml )
+    shopt -u nullglob
+    [ "${#found[@]}" -gt 0 ]
+}
+
+# edited_project_has_marker <path>... -> success if any path sits in a Smith
+# project with an active marker.
+edited_project_has_marker() {
+    local p root
+    for p in "$@"; do
+        [ -n "$p" ] || continue
+        root=$(project_root_of "$p") || continue
+        [ "$root" = "$PROJECT_DIR" ] && continue
+        [ -d "$root/.smith" ] || continue
+        if project_has_marker "$root"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# bash_command_paths <command> -> absolute/~ paths and cd targets, one per line
+bash_command_paths() {
+    CMD="$1" python3 -c '
+import os, re
+cmd = os.environ["CMD"]
+seen = []
+for m in re.finditer(r"(?:^|[\s=:\x27\"(])((?:~|/)[^\s\x27\";|&()<>]*)", cmd):
+    seen.append(m.group(1))
+for m in re.finditer(r"(?:^|[;&|(]\s*|\s)cd\s+([^\s;&|()]+)", cmd):
+    seen.append(m.group(1).strip("\x27\""))
+for path in dict.fromkeys(seen):
+    print(path)
+' 2>/dev/null
+}
+
 # ---------- no marker; decide whether to deny based on the tool ----------
 
 SAFE_VAULT_DIRS=(sessions bank ledger queue agents todo reports index audits explore)
@@ -219,6 +288,11 @@ print(ti.get('file_path', ti.get('notebook_path', '')))
             exit 0
         fi
 
+        # Allow when the edited file's own project has an active workflow.
+        if [ -n "$FILE_PATH" ] && edited_project_has_marker "$FILE_PATH"; then
+            exit 0
+        fi
+
         if [ -n "$FILE_PATH" ]; then
             deny "Blocked write to: $FILE_PATH"
         else
@@ -250,6 +324,17 @@ print(ti.get('command', ''))
         # `bash /path/to/create-active-workflow.sh ...` and
         # `~/.smith/scripts/create-active-workflow.sh ...`.
         if printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]/])create-active-workflow\.sh([[:space:]]|$)'; then
+            exit 0
+        fi
+
+        # Allow when a project the command names (an absolute path or cd
+        # target in it) has an active workflow. The hook's own working
+        # directory is deliberately not used: it varies by caller.
+        CMD_PATHS=()
+        while IFS= read -r cmd_path; do
+            CMD_PATHS+=( "$cmd_path" )
+        done < <(bash_command_paths "$COMMAND")
+        if [ "${#CMD_PATHS[@]}" -gt 0 ] && edited_project_has_marker "${CMD_PATHS[@]}"; then
             exit 0
         fi
 
