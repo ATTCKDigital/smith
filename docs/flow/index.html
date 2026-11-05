@@ -511,6 +511,19 @@
         color: rgba(255, 255, 255, 0.3);
       }
 
+      /* ── Inline code (smith skills & hooks) ───────────────────── */
+      code.inline-code {
+        font-family: var(--mono);
+        color: #d6aa6b;
+        background-color: #000;
+        border: 1px solid #704e1f;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.875em;
+        line-height: 1.4;
+        display: inline-block;
+      }
+
       /* ── Responsive ────────────────────────────────────────────── */
       @media (max-width: 600px) {
         .page {
@@ -999,6 +1012,16 @@
                           Investigations route to a diagnostic-only mode that
                           produces a report
                         </li>
+                        <li>
+                          Hook: <code class="inline-code">task-router.sh</code>
+                          (UserPromptSubmit) runs before Claude sees the message
+                          and routes to
+                          <code class="inline-code">/smith-new</code>,
+                          <code class="inline-code">/smith-bugfix</code>,
+                          <code class="inline-code">/smith-debug</code>, or
+                          <code class="inline-code">/smith-bank</code> based on
+                          trigger phrases
+                        </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
                         <span class="tech-toggle-chevron">&#8250;</span>
@@ -1060,20 +1083,36 @@
                             >
                             <div class="tech-row">
                               <span class="tech-key">fix this</span
-                              ><span class="tech-val">/smith-bugfix</span>
+                              ><span class="tech-val"
+                                ><code class="inline-code"
+                                  >/smith-bugfix</code
+                                ></span
+                              >
                             </div>
                             <div class="tech-row">
                               <span class="tech-key"
                                 >let&rsquo;s build this</span
-                              ><span class="tech-val">/smith-new</span>
+                              ><span class="tech-val"
+                                ><code class="inline-code"
+                                  >/smith-new</code
+                                ></span
+                              >
                             </div>
                             <div class="tech-row">
                               <span class="tech-key">help me debug</span
-                              ><span class="tech-val">/smith-debug</span>
+                              ><span class="tech-val"
+                                ><code class="inline-code"
+                                  >/smith-debug</code
+                                ></span
+                              >
                             </div>
                             <div class="tech-row">
                               <span class="tech-key">bank this idea</span
-                              ><span class="tech-val">/smith-bank</span>
+                              ><span class="tech-val"
+                                ><code class="inline-code"
+                                  >/smith-bank</code
+                                ></span
+                              >
                             </div>
                           </div>
                         </div>
@@ -1118,6 +1157,17 @@
                         <li>
                           All subsequent file writes are locked to this
                           workspace only
+                        </li>
+                        <li>
+                          Invoked by
+                          <code class="inline-code">/smith-new</code> or
+                          <code class="inline-code">/smith-bugfix</code>;
+                          <code class="inline-code"
+                            >create-active-workflow.sh</code
+                          >
+                          registers the tracking marker;
+                          <code class="inline-code">workflow-gate.sh</code>
+                          (PreToolUse) blocks writes until the marker exists
                         </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
@@ -1271,6 +1321,13 @@
                           <strong>Vault context</strong> &mdash; recent session
                           history, the idea bank, and the active work queue
                         </li>
+                        <li>
+                          Hook:
+                          <code class="inline-code">context-loader.sh</code>
+                          (UserPromptSubmit) automatically injects all of this
+                          before Claude sees the prompt &mdash; no manual
+                          loading required
+                        </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
                         <span class="tech-toggle-chevron">&#8250;</span>
@@ -1398,6 +1455,14 @@
                           <strong>Dependencies agent</strong> &mdash; reads
                           package files, external APIs, library constraints
                         </li>
+                        <li>
+                          All 4 agents run simultaneously via the Agent tool;
+                          <code class="inline-code"
+                            >subagent-vault-writeback.sh</code
+                          >
+                          (PostToolUse Agent hook) logs each agent's findings to
+                          the session vault automatically
+                        </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
                         <span class="tech-toggle-chevron">&#8250;</span>
@@ -1518,6 +1583,16 @@
                           A questions file is saved to disk before asking
                           &mdash; creating a record of what was decided and why
                         </li>
+                        <li>
+                          Skill:
+                          <code class="inline-code">/smith-question</code>
+                          defines the Q&amp;A format contract;
+                          <code class="inline-code"
+                            >question-gate-guard.sh</code
+                          >
+                          (PreToolUse) blocks interactive prompts and enforces
+                          markdown-only questions
+                        </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
                         <span class="tech-toggle-chevron">&#8250;</span>
@@ -1530,7 +1605,9 @@
                             <div class="tech-row">
                               <span class="tech-key">name</span
                               ><span class="tech-val bright"
-                                >/smith-question</span
+                                ><code class="inline-code"
+                                  >/smith-question</code
+                                ></span
                               >
                             </div>
                             <div class="tech-row">
@@ -1643,6 +1720,14 @@
                           antipatterns and edge cases inform the plan before
                           it&rsquo;s written
                         </li>
+                        <li>
+                          Skills:
+                          <code class="inline-code">/smith-specify</code> writes
+                          the spec,
+                          <code class="inline-code">/smith-plan</code> writes
+                          the implementation plan &mdash; both locked before
+                          Build begins
+                        </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
                         <span class="tech-toggle-chevron">&#8250;</span>
@@ -1672,12 +1757,18 @@
                             <div class="tech-row">
                               <span class="tech-key">spec</span
                               ><span class="tech-val bright"
-                                >/smith-specify</span
+                                ><code class="inline-code"
+                                  >/smith-specify</code
+                                ></span
                               >
                             </div>
                             <div class="tech-row">
                               <span class="tech-key">plan</span
-                              ><span class="tech-val bright">/smith-plan</span>
+                              ><span class="tech-val bright"
+                                ><code class="inline-code"
+                                  >/smith-plan</code
+                                ></span
+                              >
                             </div>
                           </div>
                           <div class="tech-section">
@@ -1771,6 +1862,18 @@
                         <li>
                           The write guard hook uses the marker to decide what
                           edits are permitted
+                        </li>
+                        <li>
+                          Script:
+                          <code class="inline-code"
+                            >create-active-workflow.sh</code
+                          >
+                          creates the marker;
+                          <code class="inline-code">workflow-gate.sh</code>
+                          (PreToolUse) enforces it; logs JSONL to
+                          <code class="inline-code"
+                            >logs/&lt;script&gt;-&lt;ts&gt;.jsonl</code
+                          >
                         </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
@@ -2358,21 +2461,29 @@
                       </p>
                       <ul class="desc-list">
                         <li>
-                          <strong>/code-review</strong> &mdash; scans for
-                          correctness bugs: logic errors, missing edge cases,
-                          misused APIs, and anything that would cause incorrect
-                          behavior at runtime
+                          <code class="inline-code">/code-review</code> &mdash;
+                          scans for correctness bugs: logic errors, missing edge
+                          cases, misused APIs, and anything that would cause
+                          incorrect behavior at runtime
                         </li>
                         <li>
-                          <strong>/simplify</strong> &mdash; reviews for reuse,
-                          simplification, and efficiency cleanups; applies them
-                          directly to the working tree before moving on
+                          <code class="inline-code">/simplify</code> &mdash;
+                          reviews for reuse, simplification, and efficiency
+                          cleanups; applies them directly to the working tree
+                          before moving on
                         </li>
                         <li>
-                          <strong>/security-review</strong> &mdash;
-                          security-focused scan covering auth checks, data
-                          escaping, injection risk, capability verification, and
-                          anything that could expose a vulnerability
+                          <code class="inline-code">/security-review</code>
+                          &mdash; security-focused scan covering auth checks,
+                          data escaping, injection risk, capability
+                          verification, and anything that could expose a
+                          vulnerability
+                        </li>
+                        <li>
+                          All three are orchestrated by
+                          <code class="inline-code">/smith-clean-code</code>
+                          &mdash; each pass applies its fixes before the next
+                          runs; output is a modified working tree, not a report
                         </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
@@ -2388,21 +2499,25 @@
                             <div class="tech-row">
                               <span class="tech-key">1st</span
                               ><span class="tech-val gold"
-                                >/code-review &mdash; correctness bugs, medium
-                                effort</span
+                                ><code class="inline-code">/code-review</code>
+                                &mdash; correctness bugs, medium effort</span
                               >
                             </div>
                             <div class="tech-row">
                               <span class="tech-key">2nd</span
                               ><span class="tech-val gold"
-                                >/simplify &mdash; reuse / simplification
-                                cleanups, applied</span
+                                ><code class="inline-code">/simplify</code>
+                                &mdash; reuse / simplification cleanups,
+                                applied</span
                               >
                             </div>
                             <div class="tech-row">
                               <span class="tech-key">3rd</span
                               ><span class="tech-val gold"
-                                >/security-review &mdash; security scan</span
+                                ><code class="inline-code"
+                                  >/security-review</code
+                                >
+                                &mdash; security scan</span
                               >
                             </div>
                           </div>
@@ -2427,7 +2542,9 @@
                             <div class="tech-row">
                               <span class="tech-key">invoked by</span
                               ><span class="tech-val bright"
-                                >/smith-clean-code</span
+                                ><code class="inline-code"
+                                  >/smith-clean-code</code
+                                ></span
                               >
                             </div>
                           </div>
@@ -2498,6 +2615,13 @@
                         <li>
                           The critic has no involvement in writing or reviewing
                           the code it scores
+                        </li>
+                        <li>
+                          The critic is claude-haiku, running externally via
+                          <code class="inline-code">stamp-response.sh</code> +
+                          <code class="inline-code">workflow-summary.sh</code>
+                          (Stop hooks) &mdash; a process completely separate
+                          from the one that built the feature
                         </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
@@ -2704,6 +2828,18 @@
                           The isolated workspace is removed after a successful
                           merge
                         </li>
+                        <li>
+                          Commands:
+                          <code class="inline-code"
+                            >gh pr create --base main</code
+                          >
+                          then
+                          <code class="inline-code"
+                            >gh pr merge &lt;n&gt; --squash
+                            --delete-branch</code
+                          >
+                          run from the primary repo (not the worktree)
+                        </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
                         <span class="tech-toggle-chevron">&#8250;</span>
@@ -2809,6 +2945,14 @@
                           Runs non-blocking &mdash; the feature is considered
                           shipped before this completes
                         </li>
+                        <li>
+                          Skill:
+                          <code class="inline-code">/smith-reflect</code> runs
+                          as a background Haiku subagent;
+                          <code class="inline-code">workflow-summary.sh</code>
+                          (Stop hook) writes the final token/cost summary to the
+                          session log
+                        </li>
                       </ul>
                       <button class="tech-toggle" onclick="toggleTech(this)">
                         <span class="tech-toggle-chevron">&#8250;</span>
@@ -2821,7 +2965,9 @@
                             <div class="tech-row">
                               <span class="tech-key">name</span
                               ><span class="tech-val bright"
-                                >/smith-reflect</span
+                                ><code class="inline-code"
+                                  >/smith-reflect</code
+                                ></span
                               >
                             </div>
                             <div class="tech-row">
