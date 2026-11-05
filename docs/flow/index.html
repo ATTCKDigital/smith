@@ -781,35 +781,11 @@
       .sidebar-card:last-child {
         border-bottom: 1px solid var(--hairline);
       }
-      .sidebar-card-btn {
+      .sidebar-card-head {
         display: flex;
         align-items: center;
         gap: 10px;
-        width: 100%;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        text-align: left;
-        color: var(--fg);
-        padding: 0;
         margin-bottom: 8px;
-        transition: opacity 0.15s;
-      }
-      .sidebar-card-btn:hover {
-        opacity: 0.75;
-      }
-      .sidebar-card-btn::after {
-        content: "›";
-        font-size: 20px;
-        color: hsl(0 0% 83% / 1);
-        margin-left: auto;
-        display: block;
-        line-height: 1;
-        flex-shrink: 0;
-        transition: transform 0.2s ease;
-      }
-      .sidebar-card.open .sidebar-card-btn::after {
-        transform: rotate(90deg);
       }
       .sidebar-icon {
         color: var(--accent);
@@ -833,14 +809,6 @@
         margin: 0;
         padding-left: 38px;
         -webkit-font-smoothing: antialiased;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-      }
-      .sidebar-card.open .sidebar-card-desc {
-        display: block;
-        overflow: visible;
       }
       @media (max-width: 720px) {
         .workflow-layout {
@@ -849,6 +817,11 @@
         .workflow-sidebar {
           position: static;
           order: -1;
+        }
+      }
+      @media (max-width: 570px) {
+        .gov-always-label {
+          display: none;
         }
       }
     </style>
@@ -877,77 +850,6 @@
         </p>
       </header>
 
-      <!-- Governance bar -->
-      <div class="gov-bar">
-        <button class="gov-btn" onclick="toggleGov(this)" aria-expanded="false">
-          <div class="gov-btn-row">
-            <svg
-              class="gov-icon"
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-            <span class="gov-label"
-              >Governance &amp; safety rules (Always active)</span
-            >
-            <div class="gov-files">
-              <span class="gov-file">constitution.md</span>
-              <span class="gov-file">claude.md</span>
-              <span class="gov-file">memory.md</span>
-            </div>
-            <span class="gov-chevron">&#8250;</span>
-          </div>
-        </button>
-        <div class="gov-body">
-          <div class="gov-cards">
-            <div class="gov-card">
-              <div class="gov-card-title">constitution.md</div>
-              <div class="gov-card-path">.specify/memory/constitution.md</div>
-              <p class="gov-card-desc">
-                Binding project principles the team has formally agreed to.
-                Covers code quality standards, testing requirements, UX
-                consistency rules, performance targets, and branch &amp; commit
-                conventions. These cannot be overridden — every step in the
-                workflow checks its decisions against them.
-              </p>
-            </div>
-            <div class="gov-card">
-              <div class="gov-card-title">claude.md</div>
-              <div class="gov-card-path">CLAUDE.md (global + project)</div>
-              <p class="gov-card-desc">
-                Two-layer instruction set loaded at the start of every session.
-                The global layer (~/.claude/CLAUDE.md) defines the 7-rule rubric
-                and behavioral constraints that apply across all projects. The
-                project layer (CLAUDE.md) adds site-specific conventions: tech
-                stack, file patterns, build commands, and deploy rules specific
-                to this codebase.
-              </p>
-            </div>
-            <div class="gov-card">
-              <div class="gov-card-title">memory.md</div>
-              <div class="gov-card-path">memory/MEMORY.md</div>
-              <p class="gov-card-desc">
-                A running index of decisions, preferences, and lessons
-                accumulated across all prior sessions. Stores what surprised us,
-                what failed, what the user prefers, and what should never be
-                repeated — so Smith doesn&rsquo;t need to relearn project
-                context from scratch each session.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div class="workflow-layout">
         <div class="workflow-main">
           <div class="workflow-heading">
@@ -970,7 +872,6 @@
                   >Request intake, classification, and workspace setup</span
                 >
               </div>
-              <span class="stage-meta">2 steps</span>
               <span class="chevron">&#8250;</span>
             </button>
             <div class="stage-body">
@@ -1277,7 +1178,6 @@
                   write the plan</span
                 >
               </div>
-              <span class="stage-meta">4 steps</span>
               <span class="chevron">&#8250;</span>
             </button>
             <div class="stage-body">
@@ -1821,7 +1721,6 @@
                   >Checkpoint, implement, then run automated gate checks</span
                 >
               </div>
-              <span class="stage-meta">3 steps</span>
               <span class="chevron">&#8250;</span>
             </button>
             <div class="stage-body">
@@ -2142,7 +2041,6 @@
                   ship</span
                 >
               </div>
-              <span class="stage-meta">6 steps</span>
               <span class="chevron">&#8250;</span>
             </button>
             <div class="stage-body">
@@ -3053,11 +2951,7 @@
           <div class="sidebar-cards">
             <!-- Parallel Specialists -->
             <div class="sidebar-card">
-              <button
-                class="sidebar-card-btn"
-                onclick="toggleSidebar(this)"
-                aria-expanded="false"
-              >
+              <div class="sidebar-card-head">
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -3086,7 +2980,7 @@
                   <line x1="6.6" y1="10" x2="10.2" y2="11.5" />
                 </svg>
                 <span class="sidebar-card-title">Parallel Specialists</span>
-              </button>
+              </div>
               <p class="sidebar-card-desc">
                 Multiple AI agents work simultaneously, each focused on a
                 specific domain — dramatically compressing review time without
@@ -3096,11 +2990,7 @@
 
             <!-- Self-Correcting & Self-Learning -->
             <div class="sidebar-card">
-              <button
-                class="sidebar-card-btn"
-                onclick="toggleSidebar(this)"
-                aria-expanded="false"
-              >
+              <div class="sidebar-card-head">
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -3129,7 +3019,7 @@
                 <span class="sidebar-card-title"
                   >Self-Correcting &amp; Self-Learning</span
                 >
-              </button>
+              </div>
               <p class="sidebar-card-desc">
                 Rubric failures trigger automatic correction cycles before
                 anything ships. Completed features write lessons to a persistent
@@ -3139,11 +3029,7 @@
 
             <!-- Safe by Design -->
             <div class="sidebar-card">
-              <button
-                class="sidebar-card-btn"
-                onclick="toggleSidebar(this)"
-                aria-expanded="false"
-              >
+              <div class="sidebar-card-head">
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -3162,7 +3048,7 @@
                   <path d="M10 11V9a2 2 0 1 1 4 0v2" />
                 </svg>
                 <span class="sidebar-card-title">Safe by Design</span>
-              </button>
+              </div>
               <p class="sidebar-card-desc">
                 Governance files are loaded at the start of every step. Isolated
                 worktrees prevent changes from touching the main codebase until
@@ -3172,11 +3058,7 @@
 
             <!-- Lowest-Cost Model Routing -->
             <div class="sidebar-card">
-              <button
-                class="sidebar-card-btn"
-                onclick="toggleSidebar(this)"
-                aria-expanded="false"
-              >
+              <div class="sidebar-card-head">
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -3197,7 +3079,7 @@
                 <span class="sidebar-card-title"
                   >Lowest-Cost Model Routing</span
                 >
-              </button>
+              </div>
               <p class="sidebar-card-desc">
                 Fast, cheap models handle routine tasks; powerful models are
                 reserved for complex reasoning — keeping costs efficient without
@@ -3207,11 +3089,7 @@
 
             <!-- Full Audit Trail -->
             <div class="sidebar-card">
-              <button
-                class="sidebar-card-btn"
-                onclick="toggleSidebar(this)"
-                aria-expanded="false"
-              >
+              <div class="sidebar-card-head">
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -3235,7 +3113,7 @@
                   <path d="M9 17h4" />
                 </svg>
                 <span class="sidebar-card-title">Full Audit Trail</span>
-              </button>
+              </div>
               <p class="sidebar-card-desc">
                 Every agent action, decision, and outcome is logged to a session
                 vault. A complete record of how every feature was built is
@@ -3244,6 +3122,79 @@
             </div>
           </div>
         </aside>
+      </div>
+
+      <!-- Governance bar -->
+      <div class="gov-bar">
+        <button class="gov-btn" onclick="toggleGov(this)" aria-expanded="false">
+          <div class="gov-btn-row">
+            <svg
+              class="gov-icon"
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+            <span class="gov-label"
+              >Governance &amp; safety rules<span class="gov-always-label">
+                (Always active)</span
+              ></span
+            >
+            <div class="gov-files">
+              <span class="gov-file">constitution.md</span>
+              <span class="gov-file">claude.md</span>
+              <span class="gov-file">memory.md</span>
+            </div>
+            <span class="gov-chevron">&#8250;</span>
+          </div>
+        </button>
+        <div class="gov-body">
+          <div class="gov-cards">
+            <div class="gov-card">
+              <div class="gov-card-title">constitution.md</div>
+              <div class="gov-card-path">.specify/memory/constitution.md</div>
+              <p class="gov-card-desc">
+                Binding project principles the team has formally agreed to.
+                Covers code quality standards, testing requirements, UX
+                consistency rules, performance targets, and branch &amp; commit
+                conventions. These cannot be overridden — every step in the
+                workflow checks its decisions against them.
+              </p>
+            </div>
+            <div class="gov-card">
+              <div class="gov-card-title">claude.md</div>
+              <div class="gov-card-path">CLAUDE.md (global + project)</div>
+              <p class="gov-card-desc">
+                Two-layer instruction set loaded at the start of every session.
+                The global layer (~/.claude/CLAUDE.md) defines the 7-rule rubric
+                and behavioral constraints that apply across all projects. The
+                project layer (CLAUDE.md) adds site-specific conventions: tech
+                stack, file patterns, build commands, and deploy rules specific
+                to this codebase.
+              </p>
+            </div>
+            <div class="gov-card">
+              <div class="gov-card-title">memory.md</div>
+              <div class="gov-card-path">memory/MEMORY.md</div>
+              <p class="gov-card-desc">
+                A running index of decisions, preferences, and lessons
+                accumulated across all prior sessions. Stores what surprised us,
+                what failed, what the user prefers, and what should never be
+                repeated — so Smith doesn&rsquo;t need to relearn project
+                context from scratch each session.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <script>
@@ -3293,12 +3244,14 @@
         btn.setAttribute("aria-expanded", String(!isOpen));
         isOpen ? close(getBody(btn)) : open(getBody(btn));
       }
-      function toggleSidebar(btn) {
-        var card = btn.closest(".sidebar-card");
-        var isOpen = card.classList.contains("open");
-        card.classList.toggle("open", !isOpen);
-        btn.setAttribute("aria-expanded", String(!isOpen));
-      }
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".stage-btn").forEach(function (btn) {
+          btn.classList.add("open");
+          btn.setAttribute("aria-expanded", "true");
+          var body = getBody(btn);
+          body.style.height = "auto";
+        });
+      });
     </script>
   </body>
 </html>
