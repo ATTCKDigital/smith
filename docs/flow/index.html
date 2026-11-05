@@ -357,7 +357,7 @@
         list-style: none;
         padding: 0;
         margin: 0 0 24px;
-        max-width: 640px;
+        max-width: none;
       }
       .desc-list li {
         font-family: var(--body);
@@ -1856,7 +1856,7 @@
               ship</span
             >
           </div>
-          <span class="stage-meta">5 steps</span>
+          <span class="stage-meta">6 steps</span>
           <span class="chevron">&#8250;</span>
         </button>
         <div class="stage-body">
@@ -2137,6 +2137,127 @@
                 aria-expanded="false"
               >
                 <span class="substep-num">02</span>
+                <span class="substep-name">Clean Code</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Before the rubric scores the work, three automated quality
+                    passes run in sequence directly on the implementation. Each
+                    pass can modify the code — findings are applied, not just
+                    reported — so the rubric evaluates the finished, corrected
+                    result.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      <strong>/code-review</strong> &mdash; scans for
+                      correctness bugs: logic errors, missing edge cases,
+                      misused APIs, and anything that would cause incorrect
+                      behavior at runtime
+                    </li>
+                    <li>
+                      <strong>/simplify</strong> &mdash; reviews for reuse,
+                      simplification, and efficiency cleanups; applies them
+                      directly to the working tree before moving on
+                    </li>
+                    <li>
+                      <strong>/security-review</strong> &mdash; security-focused
+                      scan covering auth checks, data escaping, injection risk,
+                      capability verification, and anything that could expose a
+                      vulnerability
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Skills (run in order)</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">1st</span
+                          ><span class="tech-val gold"
+                            >/code-review &mdash; correctness bugs, medium
+                            effort</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">2nd</span
+                          ><span class="tech-val gold"
+                            >/simplify &mdash; reuse / simplification cleanups,
+                            applied</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">3rd</span
+                          ><span class="tech-val gold"
+                            >/security-review &mdash; security scan</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Execution model</span>
+                        <div class="tech-row">
+                          <span class="tech-key">order</span
+                          ><span class="tech-val dim"
+                            >sequential &mdash; each pass applies its fixes
+                            before the next runs</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">output</span
+                          ><span class="tech-val dim"
+                            >modified working tree &mdash; not a report; changes
+                            are committed</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">invoked by</span
+                          ><span class="tech-val bright"
+                            >/smith-clean-code</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Security scope</span>
+                        <div class="tech-row">
+                          <span class="tech-key">PHP/WP</span
+                          ><span class="tech-val"
+                            >esc_html / esc_attr, nonce verification, capability
+                            checks</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">queries</span
+                          ><span class="tech-val"
+                            >$wpdb-&gt;prepare(), WP_Query sanitization</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">JS</span
+                          ><span class="tech-val"
+                            >XSS vectors, innerHTML usage, event handler
+                            injection</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">03</span>
                 <span class="substep-name">Rubric Verification</span>
                 <span class="chevron-sm">&#8250;</span>
               </button>
@@ -2249,7 +2370,7 @@
                 onclick="toggleSubstep(this)"
                 aria-expanded="false"
               >
-                <span class="substep-num">03</span>
+                <span class="substep-num">04</span>
                 <span class="substep-name">Auto-Correct Loop</span>
                 <span class="chevron-sm">&#8250;</span>
               </button>
@@ -2341,7 +2462,7 @@
                 onclick="toggleSubstep(this)"
                 aria-expanded="false"
               >
-                <span class="substep-num">04</span>
+                <span class="substep-num">05</span>
                 <span class="substep-name">Ship</span>
                 <span class="chevron-sm">&#8250;</span>
               </button>
@@ -2443,7 +2564,7 @@
                 onclick="toggleSubstep(this)"
                 aria-expanded="false"
               >
-                <span class="substep-num">05</span>
+                <span class="substep-num">06</span>
                 <span class="substep-name">Reflect</span>
                 <span class="chevron-sm">&#8250;</span>
               </button>
