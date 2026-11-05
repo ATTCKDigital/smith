@@ -126,11 +126,17 @@
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 10px 20px;
-        border-top: 1px solid var(--hairline-mid);
-        border-bottom: 1px solid var(--hairline-mid);
-        padding: 16px 0;
+        gap: initial;
+        border: 1px solid var(--hairline-mid);
+        border-radius: 8px;
+        padding: 16px 30px;
         margin-bottom: 56px;
+      }
+
+      .gov-icon {
+        color: var(--accent);
+        flex-shrink: 0;
+        vertical-align: middle;
       }
 
       .gov-label {
@@ -731,13 +737,30 @@
       <div class="gov-bar">
         <button class="gov-btn" onclick="toggleGov(this)" aria-expanded="false">
           <div class="gov-btn-row">
-            <span class="gov-label">Governance &amp; safety rules</span>
+            <svg
+              class="gov-icon"
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+            <span class="gov-label"
+              >Governance &amp; safety rules (Always active)</span
+            >
             <div class="gov-files">
               <span class="gov-file">constitution.md</span>
               <span class="gov-file">claude.md</span>
               <span class="gov-file">memory.md</span>
             </div>
-            <span class="gov-always">(ALWAYS ACTIVE)</span>
             <span class="gov-chevron">&#8250;</span>
           </div>
         </button>
