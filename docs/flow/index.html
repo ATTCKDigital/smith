@@ -1,0 +1,2172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Smith Workflow</title>
+    <meta name="claude:viewport-fit-sides" content="cover" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Barlow+Condensed:wght@400;600&family=Libre+Baskerville:wght@400;700&family=Libre+Franklin:wght@400&family=Roboto+Mono:wght@400&display=swap"
+    />
+    <style>
+      /* ── Design tokens (from smith/src/index.css) ─────────────── */
+      :root {
+        --canvas: #1d1d1d;
+        --fg: #ffffff;
+        --accent: #d6aa6b;
+        --accent-hover: #feb400;
+        --muted: #a1a1a1;
+        --hairline: rgba(255, 255, 255, 0.1);
+        --hairline-mid: rgba(255, 255, 255, 0.2);
+        --ghost: rgba(255, 255, 255, 0.5);
+        --hover-bg: rgba(255, 255, 255, 0.03);
+        --tech-bg: #111111;
+
+        --display: "Cormorant Garamond", Georgia, Times, serif;
+        --sans: "Barlow Condensed", Helvetica, Arial, sans-serif;
+        --body: "Libre Baskerville", Georgia, Times, serif;
+        --ui: "Libre Franklin", Helvetica, Arial, sans-serif;
+        --mono: "Roboto Mono", ui-monospace, SFMono-Regular, monospace;
+
+        --track-eyebrow: 0.218em;
+        --track-title: 0.166em;
+        --track-btn: 0.09em;
+        --track-label: 0.058em;
+
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--fg);
+        font-family: var(--body);
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* ── Page ──────────────────────────────────────────────────── */
+      .page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding-block: 72px;
+        padding-left: max(32px, env(safe-area-inset-left, 0px));
+        padding-right: max(32px, env(safe-area-inset-right, 0px));
+      }
+
+      /* ── Header ────────────────────────────────────────────────── */
+      .header {
+        margin-bottom: 56px;
+      }
+
+      .eyebrow {
+        display: block;
+        font-family: var(--sans);
+        font-size: 12px;
+        font-weight: 400;
+        letter-spacing: var(--track-eyebrow);
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 16px;
+      }
+
+      .header h1 {
+        font-family: var(--display);
+        font-size: clamp(36px, 5vw, 56px);
+        font-weight: 300;
+        line-height: 1.1;
+        letter-spacing: normal;
+        color: var(--fg);
+        margin: 0 0 20px;
+        text-wrap: balance;
+      }
+
+      .header-sub {
+        font-family: var(--body);
+        font-size: 17px;
+        color: var(--muted);
+        margin: 0 0 28px;
+        max-width: 560px;
+      }
+
+      .hint {
+        font-family: var(--ui);
+        font-size: 12px;
+        letter-spacing: var(--track-label);
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .hint::before {
+        content: "";
+        display: block;
+        width: 20px;
+        height: 1px;
+        background: var(--muted);
+        flex-shrink: 0;
+      }
+
+      /* ── Governance bar ────────────────────────────────────────── */
+      .gov-bar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px 20px;
+        border-top: 1px solid var(--hairline-mid);
+        border-bottom: 1px solid var(--hairline-mid);
+        padding: 16px 0;
+        margin-bottom: 56px;
+      }
+
+      .gov-label {
+        font-family: var(--sans);
+        font-size: 11px;
+        font-weight: 400;
+        letter-spacing: var(--track-eyebrow);
+        text-transform: uppercase;
+        color: var(--accent);
+        white-space: nowrap;
+      }
+
+      .gov-files {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .gov-file {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        border: 1px solid var(--hairline-mid);
+        padding: 2px 8px;
+      }
+
+      .gov-note {
+        font-family: var(--ui);
+        font-size: 11px;
+        letter-spacing: var(--track-label);
+        color: var(--muted);
+        margin-left: auto;
+      }
+
+      /* ── Stage ─────────────────────────────────────────────────── */
+      .stage {
+        border-top: 1px solid var(--hairline);
+      }
+      .stage:last-child {
+        border-bottom: 1px solid var(--hairline);
+      }
+
+      .stage-btn {
+        display: flex;
+        align-items: flex-start;
+        gap: 20px;
+        width: 100%;
+        padding: 28px 0;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+        color: var(--fg);
+        transition: background 0.15s;
+      }
+      .stage-btn:hover {
+        background: var(--hover-bg);
+      }
+
+      .stage-num {
+        font-family: var(--sans);
+        font-size: 11px;
+        font-weight: 400;
+        letter-spacing: var(--track-eyebrow);
+        color: var(--accent);
+        min-width: 28px;
+        padding-top: 4px;
+        flex-shrink: 0;
+      }
+
+      .stage-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .stage-name {
+        display: block;
+        font-family: var(--sans);
+        font-size: 22px;
+        font-weight: 400;
+        letter-spacing: var(--track-title);
+        text-transform: uppercase;
+        color: var(--fg);
+        line-height: 1;
+        margin-bottom: 7px;
+      }
+
+      .stage-desc {
+        font-family: var(--body);
+        font-size: 14px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .stage-meta {
+        font-family: var(--sans);
+        font-size: 11px;
+        font-weight: 400;
+        letter-spacing: var(--track-label);
+        text-transform: uppercase;
+        color: var(--muted);
+        white-space: nowrap;
+        padding-top: 4px;
+        flex-shrink: 0;
+      }
+
+      .chevron {
+        font-size: 20px;
+        color: var(--muted);
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+        padding-top: 2px;
+        user-select: none;
+        line-height: 1;
+      }
+      .stage-btn.open .chevron,
+      .substep-btn.open .chevron-sm {
+        transform: rotate(90deg);
+      }
+
+      /* Stage body */
+      .stage-body {
+        height: 0;
+        overflow: hidden;
+        transition: height 0.25s ease;
+      }
+      .stage-body-inner {
+        padding-bottom: 32px;
+      }
+
+      /* ── Sub-step ───────────────────────────────────────────────── */
+      .substep {
+        border-top: 1px solid var(--hairline);
+      }
+
+      .substep-btn {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        width: 100%;
+        padding: 16px 0;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+        color: var(--fg);
+        transition: background 0.15s;
+      }
+      .substep-btn:hover {
+        background: var(--hover-bg);
+      }
+
+      .substep-num {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+        min-width: 28px;
+        flex-shrink: 0;
+        opacity: 0.5;
+      }
+      .substep-btn.open .substep-num {
+        opacity: 1;
+        color: var(--accent);
+      }
+
+      .substep-name {
+        font-family: var(--sans);
+        font-size: 15px;
+        font-weight: 400;
+        letter-spacing: var(--track-title);
+        text-transform: uppercase;
+        color: var(--fg);
+        flex: 1;
+      }
+
+      .substep-tag {
+        font-family: var(--sans);
+        font-size: 10px;
+        font-weight: 400;
+        letter-spacing: var(--track-label);
+        text-transform: uppercase;
+        color: var(--muted);
+        border: 1px solid var(--hairline-mid);
+        padding: 2px 7px;
+        flex-shrink: 0;
+      }
+
+      .chevron-sm {
+        font-size: 16px;
+        color: var(--muted);
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+        user-select: none;
+        line-height: 1;
+      }
+
+      /* Sub-step body */
+      .substep-body {
+        height: 0;
+        overflow: hidden;
+        transition: height 0.25s ease;
+      }
+      .substep-body-inner {
+        padding: 20px 0 28px 44px;
+      }
+
+      /* ── Description ───────────────────────────────────────────── */
+      .desc {
+        font-family: var(--body);
+        font-size: 15px;
+        color: var(--muted);
+        line-height: 1.75;
+        margin: 0 0 20px;
+        max-width: 640px;
+      }
+
+      .desc-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 24px;
+        max-width: 640px;
+      }
+      .desc-list li {
+        font-family: var(--body);
+        font-size: 14px;
+        color: var(--muted);
+        line-height: 1.65;
+        padding: 7px 0 7px 20px;
+        border-top: 1px solid var(--hairline);
+        position: relative;
+      }
+      .desc-list li:last-child {
+        border-bottom: 1px solid var(--hairline);
+      }
+      .desc-list li::before {
+        content: "—";
+        position: absolute;
+        left: 0;
+        color: var(--accent);
+        font-family: var(--sans);
+        font-size: 12px;
+      }
+      .desc-list strong {
+        color: var(--fg);
+        font-weight: 700;
+      }
+
+      /* ── Ghost button (tech toggle) ────────────────────────────── */
+      .tech-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-family: var(--sans);
+        font-size: 11px;
+        font-weight: 400;
+        letter-spacing: var(--track-btn);
+        text-transform: uppercase;
+        color: var(--fg);
+        background: transparent;
+        border: 1px solid var(--ghost);
+        padding: 10px 20px;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+      .tech-toggle:hover {
+        border-color: var(--fg);
+        color: var(--accent-hover);
+      }
+      .tech-toggle.open {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .tech-toggle-chevron {
+        font-size: 14px;
+        transition: transform 0.2s ease;
+        line-height: 1;
+      }
+      .tech-toggle.open .tech-toggle-chevron {
+        transform: rotate(90deg);
+      }
+
+      /* ── Technical panel ───────────────────────────────────────── */
+      .tech-wrap {
+        height: 0;
+        overflow: hidden;
+        transition: height 0.25s ease;
+      }
+
+      .tech-panel {
+        margin-top: 16px;
+        background: var(--tech-bg);
+        padding: 20px 24px;
+        overflow-x: auto;
+      }
+
+      .tech-section {
+        margin-bottom: 20px;
+      }
+      .tech-section:last-child {
+        margin-bottom: 0;
+      }
+
+      .tech-section-label {
+        font-family: var(--sans);
+        font-size: 9px;
+        font-weight: 400;
+        letter-spacing: var(--track-eyebrow);
+        text-transform: uppercase;
+        color: var(--accent);
+        display: block;
+        margin-bottom: 10px;
+      }
+
+      .tech-row {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        gap: 12px;
+        padding: 5px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        align-items: baseline;
+      }
+      .tech-row:last-child {
+        border-bottom: none;
+      }
+
+      .tech-key {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.3);
+        font-weight: 400;
+      }
+
+      .tech-val {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.7);
+        line-height: 1.6;
+      }
+      .tech-val.gold {
+        color: var(--accent);
+      }
+      .tech-val.bright {
+        color: var(--fg);
+      }
+      .tech-val.dim {
+        color: rgba(255, 255, 255, 0.3);
+      }
+
+      /* ── Responsive ────────────────────────────────────────────── */
+      @media (max-width: 600px) {
+        .page {
+          padding-block: 48px;
+        }
+        .stage-meta {
+          display: none;
+        }
+        .gov-note {
+          display: none;
+        }
+        .substep-body-inner {
+          padding-left: 0;
+        }
+        .tech-row {
+          grid-template-columns: 80px 1fr;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- Header -->
+      <header class="header">
+        <span class="eyebrow">Smith &middot; ATTCK</span>
+        <h1>AI Engineering<br />Workflow</h1>
+        <p class="header-sub">
+          Autonomous feature delivery &mdash; from first request to production,
+          without manual intervention at any step.
+        </p>
+        <span class="hint"
+          >Click any stage to expand &mdash; each level reveals more</span
+        >
+      </header>
+
+      <!-- Governance bar -->
+      <div class="gov-bar">
+        <span class="gov-label">Always Active</span>
+        <div class="gov-files">
+          <span class="gov-file">constitution.md</span>
+          <span class="gov-file">CLAUDE.md</span>
+          <span class="gov-file">memory.md</span>
+          <span class="gov-file">session.log</span>
+        </div>
+        <span class="gov-note"
+          >Governance &amp; safety rules &mdash; loaded into every step</span
+        >
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+       STAGE 1: SUBMIT
+  ══════════════════════════════════════════════════ -->
+      <div class="stage">
+        <button
+          class="stage-btn"
+          onclick="toggleStage(this)"
+          aria-expanded="false"
+        >
+          <span class="stage-num">01</span>
+          <div class="stage-info">
+            <span class="stage-name">Submit</span>
+            <span class="stage-desc"
+              >Request intake, classification, and workspace setup</span
+            >
+          </div>
+          <span class="stage-meta">2 steps</span>
+          <span class="chevron">&#8250;</span>
+        </button>
+        <div class="stage-body">
+          <div class="stage-body-inner">
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">01</span>
+                <span class="substep-name">Classify</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Smith&rsquo;s first job is to understand what it&rsquo;s
+                    been asked to do. It sorts the input into one of four
+                    categories &mdash; a question (answered immediately, no
+                    workflow started), a bug fix, a new feature build, or an
+                    investigation. This routing decision determines everything
+                    that follows.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      Questions are answered directly and the workflow never
+                      starts
+                    </li>
+                    <li>
+                      Bug fixes route to a streamlined path with no planning
+                      phase
+                    </li>
+                    <li>
+                      New features route to the full workflow including
+                      requirements gathering
+                    </li>
+                    <li>
+                      Investigations route to a diagnostic-only mode that
+                      produces a report
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Hook</span>
+                        <div class="tech-row">
+                          <span class="tech-key">name</span
+                          ><span class="tech-val bright">task-router.sh</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">trigger</span
+                          ><span class="tech-val gold">UserPromptSubmit</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">runs</span
+                          ><span class="tech-val dim"
+                            >before Claude sees the message</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Question detection</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">pattern</span
+                          ><span class="tech-val"
+                            >ends with ? or starts with what / why / how / can /
+                            does / is / should / would / could / will / where /
+                            who / when</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">result</span
+                          ><span class="tech-val gold"
+                            >answer only &mdash; zero tool calls, zero file
+                            writes</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">rule</span
+                          ><span class="tech-val dim"
+                            >Rule 1 (25 pts) &mdash; enforced by rubric
+                            critic</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Trigger phrase routing</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">fix this</span
+                          ><span class="tech-val">/smith-bugfix</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">let&rsquo;s build this</span
+                          ><span class="tech-val">/smith-new</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">help me debug</span
+                          ><span class="tech-val">/smith-debug</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">bank this idea</span
+                          ><span class="tech-val">/smith-bank</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">02</span>
+                <span class="substep-name">Kickoff</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Once classified as a build or fix command, Smith creates a
+                    completely isolated copy of the codebase. This sandbox is
+                    separate from the live project &mdash; nothing that happens
+                    during development can affect the main branch until it is
+                    explicitly reviewed and merged. The user&rsquo;s current
+                    working directory is never touched.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      A unique branch name is generated from the task
+                      description (2&ndash;4 words)
+                    </li>
+                    <li>
+                      An isolated workspace is created from the latest main
+                      branch
+                    </li>
+                    <li>
+                      A workflow tracking marker is registered so progress can
+                      be recovered if interrupted
+                    </li>
+                    <li>
+                      All subsequent file writes are locked to this workspace
+                      only
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Worktree creation</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">branch</span
+                          ><span class="tech-val"
+                            >fix/&lt;slug&gt; or feature/&lt;slug&gt;</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">base</span
+                          ><span class="tech-val gold"
+                            >origin/main (fetched fresh)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">path</span
+                          ><span class="tech-val">/tmp/smith-&lt;slug&gt;</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">command</span
+                          ><span class="tech-val gold"
+                            >git worktree add $PATH -b $BRANCH origin/main</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Workflow tracking</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">script</span
+                          ><span class="tech-val"
+                            >~/.smith/scripts/create-active-workflow.sh</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">marker</span
+                          ><span class="tech-val"
+                            >.smith/vault/active-workflows/&lt;branch&gt;.yaml</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">session log</span
+                          ><span class="tech-val"
+                            >.smith/vault/sessions/&lt;timestamp&gt;.md</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Write guard</span>
+                        <div class="tech-row">
+                          <span class="tech-key">hook</span
+                          ><span class="tech-val bright">workflow-gate.sh</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">trigger</span
+                          ><span class="tech-val gold"
+                            >PreToolUse (Write / Edit / Bash)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">behavior</span
+                          ><span class="tech-val dim"
+                            >denies writes until active-workflow marker
+                            exists</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+       STAGE 2: ANALYZE
+  ══════════════════════════════════════════════════ -->
+      <div class="stage">
+        <button
+          class="stage-btn"
+          onclick="toggleStage(this)"
+          aria-expanded="false"
+        >
+          <span class="stage-num">02</span>
+          <div class="stage-info">
+            <span class="stage-name">Analyze</span>
+            <span class="stage-desc"
+              >Load rules, research the codebase, clarify requirements, then
+              write the plan</span
+            >
+          </div>
+          <span class="stage-meta">4 steps</span>
+          <span class="chevron">&#8250;</span>
+        </button>
+        <div class="stage-body">
+          <div class="stage-body-inner">
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">01</span>
+                <span class="substep-name">Load Governance</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Before anything is designed or built, Smith loads every rule
+                    and constraint the project has agreed to follow. These rules
+                    stay active throughout the entire workflow &mdash; every
+                    decision in later stages is checked against them.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      <strong>Constitution</strong> &mdash; binding principles
+                      the team has formally agreed to; these cannot be
+                      overridden
+                    </li>
+                    <li>
+                      <strong>Project rules</strong> &mdash; conventions
+                      specific to this codebase: naming, patterns, tech stack
+                    </li>
+                    <li>
+                      <strong>Memory</strong> &mdash; a running index of
+                      decisions, preferences, and lessons learned from prior
+                      sessions
+                    </li>
+                    <li>
+                      <strong>Vault context</strong> &mdash; recent session
+                      history, the idea bank, and the active work queue
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Hook</span>
+                        <div class="tech-row">
+                          <span class="tech-key">name</span
+                          ><span class="tech-val bright"
+                            >context-loader.sh</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">trigger</span
+                          ><span class="tech-val gold">UserPromptSubmit</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">behavior</span
+                          ><span class="tech-val dim"
+                            >injects vault context automatically before Claude
+                            sees the prompt</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Governance files (read order)</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">1st</span
+                          ><span class="tech-val gold"
+                            >.specify/memory/constitution.md &mdash; binding,
+                            never overridden</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">2nd</span
+                          ><span class="tech-val"
+                            >CLAUDE.md &mdash; project rules</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">3rd</span
+                          ><span class="tech-val"
+                            >memory/MEMORY.md &mdash; accumulated knowledge
+                            index</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">4th</span
+                          ><span class="tech-val"
+                            >.smith/vault/sessions/ &mdash; recent session
+                            context</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Ledger files</span>
+                        <div class="tech-row">
+                          <span class="tech-key">antipatterns</span
+                          ><span class="tech-val"
+                            >.smith/vault/ledger/antipatterns.md</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">edge-cases</span
+                          ><span class="tech-val"
+                            >.smith/vault/ledger/edge-cases.md</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">quirks</span
+                          ><span class="tech-val"
+                            >.smith/vault/ledger/project-quirks.md</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">02</span>
+                <span class="substep-name">Research</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Four specialist agents fan out simultaneously, each reading
+                    a different slice of the project. This is a pure
+                    information-gathering phase &mdash; no agent writes
+                    anything. Their findings are combined into a complete
+                    picture before any decisions are made.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      <strong>Codebase agent</strong> &mdash; reads existing
+                      patterns, file structure, how similar features were
+                      previously built
+                    </li>
+                    <li>
+                      <strong>Specifications agent</strong> &mdash; reads
+                      feature specs, prior requirements, documented constraints
+                    </li>
+                    <li>
+                      <strong>History agent</strong> &mdash; reads commit
+                      history, prior debug reports, decisions made in earlier
+                      sessions
+                    </li>
+                    <li>
+                      <strong>Dependencies agent</strong> &mdash; reads package
+                      files, external APIs, library constraints
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Concurrency</span>
+                        <div class="tech-row">
+                          <span class="tech-key">concurrency</span
+                          ><span class="tech-val gold"
+                            >all 4 launched simultaneously via Agent tool</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">permissions</span
+                          ><span class="tech-val dim"
+                            >read-only &mdash; no writes permitted in this
+                            phase</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Model routing</span>
+                        <div class="tech-row">
+                          <span class="tech-key">codebase</span
+                          ><span class="tech-val"
+                            >claude-haiku &mdash; fast pattern scan</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">specifications</span
+                          ><span class="tech-val"
+                            >claude-haiku &mdash; structured doc read</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">history</span
+                          ><span class="tech-val"
+                            >claude-haiku &mdash; git log + prior reports</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">dependencies</span
+                          ><span class="tech-val gold"
+                            >claude-sonnet &mdash; dependency trace requires
+                            reasoning</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Logging</span>
+                        <div class="tech-row">
+                          <span class="tech-key">hook</span
+                          ><span class="tech-val bright"
+                            >subagent-vault-writeback.sh</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">trigger</span
+                          ><span class="tech-val gold"
+                            >PostToolUse (Agent)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">writes</span
+                          ><span class="tech-val dim"
+                            >token count, model, duration per agent to session
+                            log</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">03</span>
+                <span class="substep-name">Q&amp;A Gate</span>
+                <span class="substep-tag">New features only</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Based on what research found, Smith identifies everything
+                    ambiguous or undefined in the original request. It presents
+                    clarifying questions to the user one at a time &mdash; each
+                    with context, concrete options, and a recommended answer
+                    already attached. No implementation begins until every
+                    question is answered. Bug fixes skip this step entirely.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      Each question includes the context behind why it matters
+                    </li>
+                    <li>Concrete options are listed with their trade-offs</li>
+                    <li>
+                      A recommended answer is included with reasoning, so
+                      approving the default takes seconds
+                    </li>
+                    <li>
+                      A questions file is saved to disk before asking &mdash;
+                      creating a record of what was decided and why
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Skill</span>
+                        <div class="tech-row">
+                          <span class="tech-key">name</span
+                          ><span class="tech-val bright">/smith-question</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">defines</span
+                          ><span class="tech-val dim"
+                            >Q&amp;A format contract &mdash; Context, Options,
+                            Recommended, Answer:</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Hook enforcement</span>
+                        <div class="tech-row">
+                          <span class="tech-key">name</span
+                          ><span class="tech-val bright"
+                            >question-gate-guard.sh</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">trigger</span
+                          ><span class="tech-val gold"
+                            >PreToolUse (AskUserQuestion)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">behavior</span
+                          ><span class="tech-val gold"
+                            >blocks the interactive tool &mdash; enforces
+                            markdown-only format</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">rule</span
+                          ><span class="tech-val dim"
+                            >Rule 2 (25 pts) &mdash; enforced by rubric
+                            critic</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Questions file</span>
+                        <div class="tech-row">
+                          <span class="tech-key">path</span
+                          ><span class="tech-val"
+                            >specs/questions/&lt;topic&gt;.md</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">created</span
+                          ><span class="tech-val dim"
+                            >before the first question is asked (Rule 3, 15
+                            pts)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">gate</span
+                          ><span class="tech-val gold"
+                            >implementation cannot begin until all answers are
+                            recorded</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">04</span>
+                <span class="substep-name">Spec &amp; Plan</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Everything learned in Research and Q&amp;A is synthesized
+                    into two locked documents: a specification that defines what
+                    will be built and why, and an implementation plan that lists
+                    the exact sequence of steps to execute. Nothing in Build
+                    deviates from them without explicit approval. If existing
+                    specs conflict, the workflow stops and alerts the user
+                    before proceeding.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      <strong>Spec</strong> &mdash; what is being built, why,
+                      and what constraints it must respect
+                    </li>
+                    <li>
+                      <strong>Plan</strong> &mdash; ordered list of
+                      implementation steps with file-level detail
+                    </li>
+                    <li>
+                      <strong>Conflict check</strong> &mdash; existing specs are
+                      cross-referenced before writing the new one
+                    </li>
+                    <li>
+                      <strong>Ledger consulted</strong> &mdash; known
+                      antipatterns and edge cases inform the plan before
+                      it&rsquo;s written
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Output files</span>
+                        <div class="tech-row">
+                          <span class="tech-key">spec</span
+                          ><span class="tech-val"
+                            >specs/&lt;feature&gt;/spec.md</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">plan</span
+                          ><span class="tech-val"
+                            >specs/&lt;feature&gt;/plan.md</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Skills invoked</span>
+                        <div class="tech-row">
+                          <span class="tech-key">spec</span
+                          ><span class="tech-val bright">/smith-specify</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">plan</span
+                          ><span class="tech-val bright">/smith-plan</span>
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Conflict handling</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">check</span
+                          ><span class="tech-val dim"
+                            >reads specs/*/spec.md for conflicts before
+                            writing</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">on conflict</span
+                          ><span class="tech-val gold"
+                            >workflow STOPS &mdash; only point it may pause
+                            before Build</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">on clear</span
+                          ><span class="tech-val dim">continues silently</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+       STAGE 3: BUILD
+  ══════════════════════════════════════════════════ -->
+      <div class="stage">
+        <button
+          class="stage-btn"
+          onclick="toggleStage(this)"
+          aria-expanded="false"
+        >
+          <span class="stage-num">03</span>
+          <div class="stage-info">
+            <span class="stage-name">Build</span>
+            <span class="stage-desc"
+              >Checkpoint, implement, then run automated gate checks</span
+            >
+          </div>
+          <span class="stage-meta">3 steps</span>
+          <span class="chevron">&#8250;</span>
+        </button>
+        <div class="stage-body">
+          <div class="stage-body-inner">
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">01</span>
+                <span class="substep-name">Checkpoint Setup</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Before the first line of code is written, Smith establishes
+                    a progress tracking system. This ensures the workflow can be
+                    paused, resumed, or recovered if something goes wrong
+                    mid-build &mdash; without losing work already done. Every
+                    action from this point is logged in a structured format that
+                    can be replayed.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      An active-workflow marker records the branch, worktree
+                      path, and session log location
+                    </li>
+                    <li>
+                      Every subsequent write is logged with a timestamp, file,
+                      and status
+                    </li>
+                    <li>
+                      If the session is interrupted, the workflow can resume
+                      from the last checkpoint
+                    </li>
+                    <li>
+                      The write guard hook uses the marker to decide what edits
+                      are permitted
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Tracking files</span>
+                        <div class="tech-row">
+                          <span class="tech-key">marker</span
+                          ><span class="tech-val"
+                            >.smith/vault/active-workflows/&lt;branch&gt;.yaml</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">session log</span
+                          ><span class="tech-val"
+                            >.smith/vault/.current-session (pointer)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">log format</span
+                          ><span class="tech-val gold"
+                            >JSONL &mdash; {timestamp, item_id, stage, status,
+                            error}</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Resume capability</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">flag</span
+                          ><span class="tech-val bright">--resume</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">behavior</span
+                          ><span class="tech-val dim"
+                            >reads last checkpoint, skips completed items,
+                            continues from last position</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">rule</span
+                          ><span class="tech-val dim"
+                            >Rule 4 (15 pts) &mdash; required on all batch
+                            scripts</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">02</span>
+                <span class="substep-name">Implement</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Code is written according to the implementation plan,
+                    following the project&rsquo;s established patterns,
+                    conventions, and technology stack. The scope is locked to
+                    what the spec defines &mdash; nothing extra is added,
+                    nothing is refactored unless it&rsquo;s directly in scope.
+                    All changes happen inside the isolated worktree, never the
+                    main project.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      Every edit follows the patterns established in the
+                      codebase &mdash; no introducing new conventions
+                    </li>
+                    <li>
+                      Files are staged explicitly by name &mdash; never with a
+                      catch-all command
+                    </li>
+                    <li>
+                      Quick syntax checks run after each file is edited, before
+                      moving to the next
+                    </li>
+                    <li>
+                      The worktree isolation means broken code can never reach
+                      the live project by accident
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Constraints</span>
+                        <div class="tech-row">
+                          <span class="tech-key">staging</span
+                          ><span class="tech-val gold"
+                            >explicit filenames only &mdash; never git add -A or
+                            git add .</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">scope</span
+                          ><span class="tech-val dim"
+                            >spec-locked &mdash; no refactoring, no extra
+                            features</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">location</span
+                          ><span class="tech-val dim"
+                            >$WORKTREE_PATH only &mdash; primary repo
+                            untouched</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Inline syntax checks</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">PHP</span
+                          ><span class="tech-val">php -l &lt;file&gt;.php</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">JS</span
+                          ><span class="tech-val"
+                            >node --check &lt;file&gt;.js</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">03</span>
+                <span class="substep-name">Automated Checks</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Once implementation is complete, three gate checks run
+                    before the code can advance to Review. All three must pass
+                    &mdash; there is no partial credit. This ensures the expert
+                    reviewers in the next stage are evaluating working,
+                    well-formed code, not catching syntax errors.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      <strong>Tests</strong> &mdash; unit and integration tests
+                      must all pass
+                    </li>
+                    <li>
+                      <strong>Lint</strong> &mdash; code style and syntax rules
+                      must report zero violations
+                    </li>
+                    <li>
+                      <strong>Build</strong> &mdash; the full project build must
+                      complete with zero errors and zero warnings
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Test commands</span>
+                        <div class="tech-row">
+                          <span class="tech-key">frontend</span
+                          ><span class="tech-val"
+                            >cd wp-content/themes/attck &amp;&amp; npm
+                            test</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">python svc</span
+                          ><span class="tech-val">poetry run pytest</span>
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Lint commands</span>
+                        <div class="tech-row">
+                          <span class="tech-key">JS/CSS</span
+                          ><span class="tech-val"
+                            >cd wp-content/themes/FLEX &amp;&amp; npm run
+                            lint:js</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">python</span
+                          ><span class="tech-val">poetry run ruff check .</span>
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Build</span>
+                        <div class="tech-row">
+                          <span class="tech-key">theme</span
+                          ><span class="tech-val gold"
+                            >cd wp-content/themes/attck &amp;&amp; npm run
+                            build</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">must exit</span
+                          ><span class="tech-val bright"
+                            >0 errors, 0 warnings</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+       STAGE 4: REVIEW
+  ══════════════════════════════════════════════════ -->
+      <div class="stage">
+        <button
+          class="stage-btn"
+          onclick="toggleStage(this)"
+          aria-expanded="false"
+        >
+          <span class="stage-num">04</span>
+          <div class="stage-info">
+            <span class="stage-name">Review</span>
+            <span class="stage-desc"
+              >Expert panel, rubric verification, auto-correct loop, then
+              ship</span
+            >
+          </div>
+          <span class="stage-meta">5 steps</span>
+          <span class="chevron">&#8250;</span>
+        </button>
+        <div class="stage-body">
+          <div class="stage-body-inner">
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">01</span>
+                <span class="substep-name">Expert Panel</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Five specialist agents read the finished code
+                    simultaneously, each from a completely different angle.
+                    Because they run in parallel, you get the depth of five
+                    independent code reviews in roughly the time it takes to do
+                    one.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      <strong>QA Engineer</strong> &mdash; test coverage gaps,
+                      missing edge cases, regression risk
+                    </li>
+                    <li>
+                      <strong>Frontend Specialist</strong> &mdash; UI
+                      correctness, accessibility, CSS architecture, JS patterns
+                    </li>
+                    <li>
+                      <strong>Backend Specialist</strong> &mdash; API design,
+                      database queries, capability checks, security
+                    </li>
+                    <li>
+                      <strong>Full-Stack Reviewer</strong> &mdash; end-to-end
+                      integration, cross-layer concerns
+                    </li>
+                    <li>
+                      <strong>Infrastructure Reviewer</strong> &mdash; build
+                      config, deployment pipeline, hosting implications
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Agent identities (.claude/agents/)</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">QA</span
+                          ><span class="tech-val">senior-qa</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Frontend</span
+                          ><span class="tech-val">staff-frontend</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Backend</span
+                          ><span class="tech-val">staff-backend</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Full-Stack</span
+                          ><span class="tech-val">staff-fullstack</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Infra</span
+                          ><span class="tech-val">staff-infrastructure</span>
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Model routing</span>
+                        <div class="tech-row">
+                          <span class="tech-key">senior-qa</span
+                          ><span class="tech-val"
+                            >claude-haiku &mdash; structured checklist
+                            analysis</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">staff-frontend</span
+                          ><span class="tech-val gold"
+                            >claude-sonnet &mdash; UX and accessibility
+                            judgment</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">staff-backend</span
+                          ><span class="tech-val gold"
+                            >claude-sonnet &mdash; security and query
+                            reasoning</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">staff-fullstack</span
+                          ><span class="tech-val gold"
+                            >claude-sonnet &mdash; cross-layer integration</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">staff-infra</span
+                          ><span class="tech-val"
+                            >claude-haiku &mdash; config and pipeline
+                            checks</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">02</span>
+                <span class="substep-name">Rubric Verification</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    An independent critic &mdash; a separate AI process with no
+                    prior involvement in building or reviewing the feature
+                    &mdash; scores the entire body of work against a 100-point
+                    quality rubric. This is the final objective check before
+                    anything is merged.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      7 rules, each weighted by importance &mdash; 100 points
+                      total
+                    </li>
+                    <li>
+                      All-or-nothing scoring per rule: one failed sub-criterion
+                      zeros the whole rule
+                    </li>
+                    <li>
+                      Must score exactly 100 to pass &mdash; no partial passes
+                    </li>
+                    <li>
+                      The critic has no involvement in writing or reviewing the
+                      code it scores
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Critic setup</span>
+                        <div class="tech-row">
+                          <span class="tech-key">model</span
+                          ><span class="tech-val"
+                            >claude-haiku (external, via Stop hook)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">hooks</span
+                          ><span class="tech-val gold"
+                            >stamp-response.sh + workflow-summary.sh
+                            (Stop)</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Rubric rules (100 pts total)</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">Rule 1</span
+                          ><span class="tech-val gold"
+                            >Questions &#8800; Actions &mdash; 25 pts</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Rule 2</span
+                          ><span class="tech-val gold"
+                            >SpecKit workflow triggers &mdash; 25 pts</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Rule 3</span
+                          ><span class="tech-val"
+                            >Question files before complex changes &mdash; 15
+                            pts</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Rule 4</span
+                          ><span class="tech-val"
+                            >Checkpoint/Resume on batch scripts &mdash; 15
+                            pts</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Rule 5</span
+                          ><span class="tech-val"
+                            >Session logging via vault &mdash; 10 pts</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Rule 6</span
+                          ><span class="tech-val dim"
+                            >General preferences &mdash; 8 pts</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">Rule 7</span
+                          ><span class="tech-val dim"
+                            >Directory setup &mdash; 2 pts</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">03</span>
+                <span class="substep-name">Auto-Correct Loop</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    If the rubric score falls below 100, the specific issues are
+                    identified, fixes are applied automatically, and the rubric
+                    runs again. This can repeat up to three times. If the work
+                    still fails after three cycles, the workflow halts and
+                    surfaces the remaining issues to the user rather than
+                    merging broken code.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      Each retry re-reads the rubric findings to understand
+                      exactly what failed
+                    </li>
+                    <li>
+                      Targeted fixes are applied &mdash; not a full rewrite
+                    </li>
+                    <li>The rubric runs again on the corrected code</li>
+                    <li>
+                      After 3 failed cycles, the user decides what happens next
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Retry configuration</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">max retries</span
+                          ><span class="tech-val gold">3 (hard limit)</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">config key</span
+                          ><span class="tech-val dim"
+                            >.smith/config.json &rarr; ledger.max_retries</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">auto-retry</span
+                          ><span class="tech-val dim"
+                            >ledger.auto_retry: true (default false)</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label"
+                          >Per-retry behavior</span
+                        >
+                        <div class="tech-row">
+                          <span class="tech-key">1. re-read</span
+                          ><span class="tech-val dim"
+                            >antipatterns.md re-read to inform the adjusted
+                            approach</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">2. fix</span
+                          ><span class="tech-val dim"
+                            >targeted corrections applied to failing criteria
+                            only</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">3. rerun</span
+                          ><span class="tech-val dim"
+                            >full 100-point rubric runs again on corrected
+                            code</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">04</span>
+                <span class="substep-name">Ship</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Once the rubric passes, the code is committed, a pull
+                    request is created with a full plain-English summary of
+                    every decision made throughout the workflow, and the branch
+                    is merged. The isolated workspace is then cleaned up. No
+                    human has to click anything.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      Commit message follows Conventional Commits format (feat:,
+                      fix:, etc.)
+                    </li>
+                    <li>
+                      Pull request includes a summary, what changed, and a test
+                      plan checklist
+                    </li>
+                    <li>Branch is merged and deleted automatically</li>
+                    <li>
+                      The isolated workspace is removed after a successful merge
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Commit</span>
+                        <div class="tech-row">
+                          <span class="tech-key">format</span
+                          ><span class="tech-val"
+                            >feat: &lt;desc&gt; or fix: &lt;desc&gt;
+                            (Conventional Commits)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">trailer</span
+                          ><span class="tech-val gold"
+                            >Co-Authored-By: Claude Sonnet 4.6
+                            &lt;noreply@anthropic.com&gt;</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Pull request</span>
+                        <div class="tech-row">
+                          <span class="tech-key">create</span
+                          ><span class="tech-val"
+                            >gh pr create --base main --title
+                            &quot;...&quot;</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">merge</span
+                          ><span class="tech-val"
+                            >gh pr merge &lt;n&gt; --squash
+                            --delete-branch</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">must run from</span
+                          ><span class="tech-val dim"
+                            >primary repo (not worktree) to avoid checkout
+                            conflict</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Cleanup</span>
+                        <div class="tech-row">
+                          <span class="tech-key">worktree</span
+                          ><span class="tech-val"
+                            >git worktree remove $WORKTREE_PATH</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">marker</span
+                          ><span class="tech-val"
+                            >.specify/scripts/bash/clear-active-workflow.sh
+                            $BRANCH</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="substep">
+              <button
+                class="substep-btn"
+                onclick="toggleSubstep(this)"
+                aria-expanded="false"
+              >
+                <span class="substep-num">05</span>
+                <span class="substep-name">Reflect</span>
+                <span class="chevron-sm">&#8250;</span>
+              </button>
+              <div class="substep-body">
+                <div class="substep-body-inner">
+                  <p class="desc">
+                    Once merged, Smith writes lessons and patterns to the
+                    project&rsquo;s knowledge base. Future features
+                    automatically inherit these learnings. This step runs in the
+                    background and does not delay the ship.
+                  </p>
+                  <ul class="desc-list">
+                    <li>
+                      Patterns that worked well are recorded so they&rsquo;re
+                      repeated in future features
+                    </li>
+                    <li>
+                      Antipatterns and mistakes are documented so they&rsquo;re
+                      not repeated
+                    </li>
+                    <li>
+                      Edge cases discovered during this feature are added to the
+                      edge-case registry
+                    </li>
+                    <li>
+                      Runs non-blocking &mdash; the feature is considered
+                      shipped before this completes
+                    </li>
+                  </ul>
+                  <button class="tech-toggle" onclick="toggleTech(this)">
+                    <span class="tech-toggle-chevron">&#8250;</span> Technical
+                    details
+                  </button>
+                  <div class="tech-wrap">
+                    <div class="tech-panel">
+                      <div class="tech-section">
+                        <span class="tech-section-label">Skill</span>
+                        <div class="tech-row">
+                          <span class="tech-key">name</span
+                          ><span class="tech-val bright">/smith-reflect</span>
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">model</span
+                          ><span class="tech-val"
+                            >claude-haiku (background subagent)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">blocking</span
+                          ><span class="tech-val gold"
+                            >non-blocking &mdash; ship does not wait for
+                            this</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Ledger writes</span>
+                        <div class="tech-row">
+                          <span class="tech-key">antipatterns</span
+                          ><span class="tech-val"
+                            >.smith/vault/ledger/antipatterns.md</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">edge cases</span
+                          ><span class="tech-val"
+                            >.smith/vault/ledger/edge-cases.md</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">quirks</span
+                          ><span class="tech-val"
+                            >.smith/vault/ledger/project-quirks.md</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">tools</span
+                          ><span class="tech-val"
+                            >.smith/vault/ledger/tool-preferences.md</span
+                          >
+                        </div>
+                      </div>
+                      <div class="tech-section">
+                        <span class="tech-section-label">Session summary</span>
+                        <div class="tech-row">
+                          <span class="tech-key">hook</span
+                          ><span class="tech-val gold"
+                            >workflow-summary.sh (Stop)</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">writes</span
+                          ><span class="tech-val dim"
+                            >=== Workflow Summary === block to session log</span
+                          >
+                        </div>
+                        <div class="tech-row">
+                          <span class="tech-key">totals</span
+                          ><span class="tech-val dim"
+                            >token count, model costs, attempt count reported in
+                            chat</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      function getBody(btn) {
+        return btn.nextElementSibling;
+      }
+      function open(body) {
+        body.style.height = "0px";
+        body.style.height = body.scrollHeight + "px";
+        body.addEventListener("transitionend", function h() {
+          body.style.height = "auto";
+          body.removeEventListener("transitionend", h);
+        });
+      }
+      function close(body) {
+        body.style.height = body.scrollHeight + "px";
+        requestAnimationFrame(function () {
+          body.style.height = "0px";
+        });
+      }
+      function toggleStage(btn) {
+        var isOpen = btn.classList.contains("open");
+        btn.classList.toggle("open", !isOpen);
+        btn.setAttribute("aria-expanded", String(!isOpen));
+        isOpen ? close(getBody(btn)) : open(getBody(btn));
+      }
+      function toggleSubstep(btn) {
+        var isOpen = btn.classList.contains("open");
+        btn.classList.toggle("open", !isOpen);
+        btn.setAttribute("aria-expanded", String(!isOpen));
+        isOpen ? close(getBody(btn)) : open(getBody(btn));
+      }
+      function toggleTech(btn) {
+        var isOpen = btn.classList.contains("open");
+        btn.classList.toggle("open", !isOpen);
+        isOpen ? close(getBody(btn)) : open(getBody(btn));
+      }
+    </script>
+  </body>
+</html>
