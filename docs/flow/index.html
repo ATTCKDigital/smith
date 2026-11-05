@@ -356,7 +356,7 @@
       .desc-list li {
         font-family: var(--body);
         font-size: 14px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         line-height: 1.65;
         padding: 7px 0 7px 20px;
         border-top: 1px solid var(--hairline);
@@ -490,9 +490,6 @@
         .stage-meta {
           display: none;
         }
-        .gov-note {
-          display: none;
-        }
         .substep-body-inner {
           padding-left: 0;
         }
@@ -500,6 +497,209 @@
           grid-template-columns: 80px 1fr;
           gap: 8px;
         }
+        .gov-always {
+          display: none;
+        }
+      }
+
+      /* ── Governance accordion ──────────────────────────────── */
+      .gov-btn {
+        display: block;
+        width: 100%;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        text-align: left;
+        color: var(--fg);
+      }
+      .gov-btn-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        padding: 16px 0;
+        transition: opacity 0.15s;
+      }
+      .gov-btn:hover .gov-btn-row {
+        opacity: 0.8;
+      }
+      .gov-always {
+        font-family: var(--sans);
+        font-size: 11px;
+        font-weight: 400;
+        letter-spacing: var(--track-eyebrow);
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-left: auto;
+      }
+      .gov-chevron {
+        font-size: 16px;
+        color: var(--muted);
+        transition: transform 0.2s ease;
+        user-select: none;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+      .gov-btn.open .gov-chevron {
+        transform: rotate(90deg);
+      }
+      .gov-body {
+        height: 0;
+        overflow: hidden;
+        transition: height 0.25s ease;
+      }
+      .gov-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1px;
+        background: var(--hairline);
+        margin-bottom: 24px;
+      }
+      .gov-card {
+        background: var(--canvas);
+        padding: 20px 24px;
+      }
+      .gov-card-title {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--accent);
+        margin-bottom: 4px;
+      }
+      .gov-card-path {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.3);
+        margin-bottom: 12px;
+      }
+      .gov-card-desc {
+        font-family: var(--body);
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.65;
+        margin: 0;
+      }
+
+      /* ── Agent cards ───────────────────────────────────────── */
+      .agent-cards {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--hairline);
+        margin-bottom: 24px;
+      }
+      .agent-card {
+        border-bottom: 1px solid var(--hairline);
+      }
+      .agent-card:last-child {
+        border-bottom: none;
+      }
+      .agent-btn {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+        padding: 14px 16px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+        color: var(--fg);
+        transition: background 0.15s;
+      }
+      .agent-btn:hover {
+        background: var(--hover-bg);
+      }
+      .agent-id {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent);
+        min-width: 130px;
+        flex-shrink: 0;
+      }
+      .agent-btn.open .agent-id {
+        color: var(--accent-hover);
+      }
+      .agent-role {
+        font-family: var(--sans);
+        font-size: 13px;
+        font-weight: 400;
+        letter-spacing: var(--track-label);
+        text-transform: uppercase;
+        color: var(--muted);
+        flex: 1;
+      }
+      .agent-btn.open .agent-role {
+        color: var(--fg);
+      }
+      .agent-chevron {
+        font-size: 14px;
+        color: var(--muted);
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+        user-select: none;
+        line-height: 1;
+      }
+      .agent-btn.open .agent-chevron {
+        transform: rotate(90deg);
+      }
+      .agent-body {
+        height: 0;
+        overflow: hidden;
+        transition: height 0.25s ease;
+      }
+      .agent-body-inner {
+        padding: 16px 20px 20px 20px;
+        background: rgba(255, 255, 255, 0.02);
+        border-top: 1px solid var(--hairline);
+      }
+      .agent-desc {
+        font-family: var(--body);
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.65;
+        margin: 0 0 14px;
+      }
+      .agent-focus {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 14px;
+      }
+      .agent-focus li {
+        font-family: var(--body);
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.6;
+        padding: 4px 0 4px 14px;
+        position: relative;
+      }
+      .agent-focus li::before {
+        content: "—";
+        position: absolute;
+        left: 0;
+        color: var(--accent);
+        font-family: var(--sans);
+        font-size: 10px;
+      }
+      .agent-meta {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+      }
+      .agent-meta-key {
+        font-family: var(--mono);
+        font-size: 9px;
+        color: rgba(255, 255, 255, 0.3);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        flex-shrink: 0;
+      }
+      .agent-meta-val {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      .agent-meta-val.gold {
+        color: var(--accent);
       }
     </style>
   </head>
@@ -507,7 +707,19 @@
     <div class="page">
       <!-- Header -->
       <header class="header">
-        <span class="eyebrow">Smith &middot; ATTCK</span>
+        <span class="eyebrow"
+          ><a
+            href="https://smith.attck.com"
+            style="color: inherit; text-decoration: none"
+            >Smith</a
+          >
+          &middot;
+          <a
+            href="https://attck.com"
+            style="color: inherit; text-decoration: none"
+            >ATTCK</a
+          ></span
+        >
         <h1>AI Engineering<br />Workflow</h1>
         <p class="header-sub">
           Autonomous feature delivery &mdash; from first request to production,
@@ -517,16 +729,56 @@
 
       <!-- Governance bar -->
       <div class="gov-bar">
-        <span class="gov-label">Always Active</span>
-        <div class="gov-files">
-          <span class="gov-file">constitution.md</span>
-          <span class="gov-file">CLAUDE.md</span>
-          <span class="gov-file">memory.md</span>
-          <span class="gov-file">session.log</span>
+        <button class="gov-btn" onclick="toggleGov(this)" aria-expanded="false">
+          <div class="gov-btn-row">
+            <span class="gov-label">Governance &amp; safety rules</span>
+            <div class="gov-files">
+              <span class="gov-file">constitution.md</span>
+              <span class="gov-file">claude.md</span>
+              <span class="gov-file">memory.md</span>
+            </div>
+            <span class="gov-always">(ALWAYS ACTIVE)</span>
+            <span class="gov-chevron">&#8250;</span>
+          </div>
+        </button>
+        <div class="gov-body">
+          <div class="gov-cards">
+            <div class="gov-card">
+              <div class="gov-card-title">constitution.md</div>
+              <div class="gov-card-path">.specify/memory/constitution.md</div>
+              <p class="gov-card-desc">
+                Binding project principles the team has formally agreed to.
+                Covers code quality standards, testing requirements, UX
+                consistency rules, performance targets, and branch &amp; commit
+                conventions. These cannot be overridden — every step in the
+                workflow checks its decisions against them.
+              </p>
+            </div>
+            <div class="gov-card">
+              <div class="gov-card-title">claude.md</div>
+              <div class="gov-card-path">CLAUDE.md (global + project)</div>
+              <p class="gov-card-desc">
+                Two-layer instruction set loaded at the start of every session.
+                The global layer (~/.claude/CLAUDE.md) defines the 7-rule rubric
+                and behavioral constraints that apply across all projects. The
+                project layer (CLAUDE.md) adds site-specific conventions: tech
+                stack, file patterns, build commands, and deploy rules specific
+                to this codebase.
+              </p>
+            </div>
+            <div class="gov-card">
+              <div class="gov-card-title">memory.md</div>
+              <div class="gov-card-path">memory/MEMORY.md</div>
+              <p class="gov-card-desc">
+                A running index of decisions, preferences, and lessons
+                accumulated across all prior sessions. Stores what surprised us,
+                what failed, what the user prefers, and what should never be
+                repeated — so Smith doesn&rsquo;t need to relearn project
+                context from scratch each session.
+              </p>
+            </div>
+          </div>
         </div>
-        <span class="gov-note"
-          >Governance &amp; safety rules &mdash; loaded into every step</span
-        >
       </div>
 
       <!-- ══════════════════════════════════════════════════
@@ -1058,7 +1310,6 @@
               >
                 <span class="substep-num">03</span>
                 <span class="substep-name">Q&amp;A Gate</span>
-                <span class="substep-tag">New features only</span>
                 <span class="chevron-sm">&#8250;</span>
               </button>
               <div class="substep-body">
@@ -1606,28 +1857,182 @@
                     independent code reviews in roughly the time it takes to do
                     one.
                   </p>
-                  <ul class="desc-list">
-                    <li>
-                      <strong>QA Engineer</strong> &mdash; test coverage gaps,
-                      missing edge cases, regression risk
-                    </li>
-                    <li>
-                      <strong>Frontend Specialist</strong> &mdash; UI
-                      correctness, accessibility, CSS architecture, JS patterns
-                    </li>
-                    <li>
-                      <strong>Backend Specialist</strong> &mdash; API design,
-                      database queries, capability checks, security
-                    </li>
-                    <li>
-                      <strong>Full-Stack Reviewer</strong> &mdash; end-to-end
-                      integration, cross-layer concerns
-                    </li>
-                    <li>
-                      <strong>Infrastructure Reviewer</strong> &mdash; build
-                      config, deployment pipeline, hosting implications
-                    </li>
-                  </ul>
+                  <div class="agent-cards">
+                    <div class="agent-card">
+                      <button
+                        class="agent-btn"
+                        onclick="toggleAgent(this)"
+                        aria-expanded="false"
+                      >
+                        <span class="agent-id">senior-qa</span>
+                        <span class="agent-role">QA Engineer</span>
+                        <span class="agent-chevron">&#8250;</span>
+                      </button>
+                      <div class="agent-body">
+                        <div class="agent-body-inner">
+                          <p class="agent-desc">
+                            Looks at the finished code purely through the lens
+                            of correctness and coverage. Finds test gaps,
+                            missing edge cases, and paths where the new code
+                            could cause regressions in existing behavior.
+                          </p>
+                          <ul class="agent-focus">
+                            <li>Test coverage gaps and untested branches</li>
+                            <li>
+                              Edge cases the implementation doesn&rsquo;t handle
+                            </li>
+                            <li>Regression risk in adjacent code</li>
+                            <li>Missing assertions and boundary conditions</li>
+                          </ul>
+                          <div class="agent-meta">
+                            <span class="agent-meta-key">model</span
+                            ><span class="agent-meta-val"
+                              >claude-haiku &mdash; structured checklist
+                              analysis</span
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="agent-card">
+                      <button
+                        class="agent-btn"
+                        onclick="toggleAgent(this)"
+                        aria-expanded="false"
+                      >
+                        <span class="agent-id">staff-frontend</span>
+                        <span class="agent-role">Frontend Specialist</span>
+                        <span class="agent-chevron">&#8250;</span>
+                      </button>
+                      <div class="agent-body">
+                        <div class="agent-body-inner">
+                          <p class="agent-desc">
+                            Reviews everything the browser sees. Checks UI
+                            correctness, accessibility compliance, CSS
+                            architecture, and JavaScript patterns against the
+                            project&rsquo;s established frontend conventions.
+                          </p>
+                          <ul class="agent-focus">
+                            <li>UX correctness and visual regressions</li>
+                            <li>WCAG accessibility compliance</li>
+                            <li>CSS architecture and specificity issues</li>
+                            <li>
+                              JS patterns, event handling, performance budget
+                            </li>
+                          </ul>
+                          <div class="agent-meta">
+                            <span class="agent-meta-key">model</span
+                            ><span class="agent-meta-val gold"
+                              >claude-sonnet &mdash; UX and accessibility
+                              judgment</span
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="agent-card">
+                      <button
+                        class="agent-btn"
+                        onclick="toggleAgent(this)"
+                        aria-expanded="false"
+                      >
+                        <span class="agent-id">staff-backend</span>
+                        <span class="agent-role">Backend Specialist</span>
+                        <span class="agent-chevron">&#8250;</span>
+                      </button>
+                      <div class="agent-body">
+                        <div class="agent-body-inner">
+                          <p class="agent-desc">
+                            Reviews the server-side implementation:
+                            PHP/WordPress patterns, database query safety,
+                            capability checks, and any security implications of
+                            the new code.
+                          </p>
+                          <ul class="agent-focus">
+                            <li>PHP/WP architecture and anti-patterns</li>
+                            <li>WP_Query safety and query efficiency</li>
+                            <li>Capability and permission checks</li>
+                            <li>Security: escaping, nonces, injection risk</li>
+                          </ul>
+                          <div class="agent-meta">
+                            <span class="agent-meta-key">model</span
+                            ><span class="agent-meta-val gold"
+                              >claude-sonnet &mdash; security and query
+                              reasoning</span
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="agent-card">
+                      <button
+                        class="agent-btn"
+                        onclick="toggleAgent(this)"
+                        aria-expanded="false"
+                      >
+                        <span class="agent-id">staff-fullstack</span>
+                        <span class="agent-role">Full-Stack Reviewer</span>
+                        <span class="agent-chevron">&#8250;</span>
+                      </button>
+                      <div class="agent-body">
+                        <div class="agent-body-inner">
+                          <p class="agent-desc">
+                            Looks at the change end-to-end, across the boundary
+                            between frontend and backend. Catches integration
+                            issues that only appear when both layers are
+                            considered together.
+                          </p>
+                          <ul class="agent-focus">
+                            <li>Frontend-to-backend data contracts</li>
+                            <li>Cross-layer bugs invisible to specialists</li>
+                            <li>API surface and response shape consistency</li>
+                            <li>End-to-end flow correctness</li>
+                          </ul>
+                          <div class="agent-meta">
+                            <span class="agent-meta-key">model</span
+                            ><span class="agent-meta-val gold"
+                              >claude-sonnet &mdash; cross-layer
+                              integration</span
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="agent-card">
+                      <button
+                        class="agent-btn"
+                        onclick="toggleAgent(this)"
+                        aria-expanded="false"
+                      >
+                        <span class="agent-id">staff-infrastructure</span>
+                        <span class="agent-role">Infrastructure Reviewer</span>
+                        <span class="agent-chevron">&#8250;</span>
+                      </button>
+                      <div class="agent-body">
+                        <div class="agent-body-inner">
+                          <p class="agent-desc">
+                            Reviews the build, deploy, and hosting implications
+                            of the change. Looks at webpack config, deploy
+                            scripts, CI/CD pipeline, and anything that affects
+                            how the site is built or served.
+                          </p>
+                          <ul class="agent-focus">
+                            <li>Webpack config and bundle impact</li>
+                            <li>Deploy scripts and staging pipeline</li>
+                            <li>CI/CD changes and build reproducibility</li>
+                            <li>Hosting config and WP Engine constraints</li>
+                          </ul>
+                          <div class="agent-meta">
+                            <span class="agent-meta-key">model</span
+                            ><span class="agent-meta-val"
+                              >claude-haiku &mdash; config and pipeline
+                              checks</span
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   <button class="tech-toggle" onclick="toggleTech(this)">
                     <span class="tech-toggle-chevron">&#8250;</span> Technical
                     details
@@ -2162,6 +2567,18 @@
       function toggleTech(btn) {
         var isOpen = btn.classList.contains("open");
         btn.classList.toggle("open", !isOpen);
+        isOpen ? close(getBody(btn)) : open(getBody(btn));
+      }
+      function toggleGov(btn) {
+        var isOpen = btn.classList.contains("open");
+        btn.classList.toggle("open", !isOpen);
+        btn.setAttribute("aria-expanded", String(!isOpen));
+        isOpen ? close(getBody(btn)) : open(getBody(btn));
+      }
+      function toggleAgent(btn) {
+        var isOpen = btn.classList.contains("open");
+        btn.classList.toggle("open", !isOpen);
+        btn.setAttribute("aria-expanded", String(!isOpen));
         isOpen ? close(getBody(btn)) : open(getBody(btn));
       }
     </script>
