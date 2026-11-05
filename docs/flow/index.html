@@ -55,8 +55,8 @@
         font-family: var(--body);
         font-size: 16px;
         line-height: 1.6;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
+        -webkit-font-smoothing: auto;
+        -moz-osx-font-smoothing: auto;
       }
 
       /* ── Page ──────────────────────────────────────────────────── */
@@ -107,7 +107,7 @@
         font-family: var(--ui);
         font-size: 12px;
         letter-spacing: var(--track-label);
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         display: flex;
         align-items: center;
         gap: 8px;
@@ -167,7 +167,7 @@
         font-family: var(--ui);
         font-size: 11px;
         letter-spacing: var(--track-label);
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         margin-left: auto;
       }
 
@@ -252,7 +252,7 @@
         font-weight: 400;
         letter-spacing: var(--track-label);
         text-transform: uppercase;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         white-space: nowrap;
         padding-top: 4px;
         flex-shrink: 0;
@@ -260,7 +260,7 @@
 
       .chevron {
         font-size: 20px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         flex-shrink: 0;
         transition: transform 0.2s ease;
         padding-top: 2px;
@@ -307,7 +307,7 @@
       .substep-num {
         font-family: var(--mono);
         font-size: 16px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         min-width: 28px;
         flex-shrink: 0;
         opacity: 0.5;
@@ -334,7 +334,7 @@
         font-weight: 400;
         letter-spacing: var(--track-label);
         text-transform: uppercase;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         border: 1px solid var(--hairline-mid);
         padding: 2px 7px;
         flex-shrink: 0;
@@ -342,7 +342,7 @@
 
       .chevron-sm {
         font-size: 16px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         flex-shrink: 0;
         transition: transform 0.2s ease;
         user-select: none;
@@ -559,12 +559,12 @@
         font-weight: 400;
         letter-spacing: var(--track-eyebrow);
         text-transform: uppercase;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         margin-left: auto;
       }
       .gov-chevron {
         font-size: 16px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         transition: transform 0.2s ease;
         user-select: none;
         line-height: 1;
@@ -604,7 +604,7 @@
       .gov-card-desc {
         font-family: var(--body);
         font-size: 13px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         line-height: 1.65;
         margin: 0;
       }
@@ -654,7 +654,7 @@
         font-weight: 400;
         letter-spacing: var(--track-label);
         text-transform: uppercase;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         flex: 1;
       }
       .agent-btn.open .agent-role {
@@ -662,7 +662,7 @@
       }
       .agent-chevron {
         font-size: 14px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         flex-shrink: 0;
         transition: transform 0.2s ease;
         user-select: none;
@@ -684,7 +684,7 @@
       .agent-desc {
         font-family: var(--body);
         font-size: 13px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         line-height: 1.65;
         margin: 0 0 14px;
       }
@@ -696,7 +696,7 @@
       .agent-focus li {
         font-family: var(--body);
         font-size: 12px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         line-height: 1.6;
         padding: 4px 0 4px 14px;
         position: relative;
@@ -747,13 +747,14 @@
       }
       .sidebar-label {
         font-family: var(--sans);
-        font-size: 11px;
-        font-weight: 400;
+        font-size: 21px;
+        font-weight: 500;
         letter-spacing: var(--track-eyebrow);
         text-transform: uppercase;
-        color: var(--muted);
-        margin-bottom: 20px;
-        margin-top: 48px;
+        color: hsl(0 0% 83% / 1);
+        margin: 0 0 8px;
+        padding-top: 40px;
+        display: block;
         -webkit-font-smoothing: auto;
       }
       .sidebar-cards {
@@ -767,11 +768,35 @@
       .sidebar-card:last-child {
         border-bottom: 1px solid var(--hairline);
       }
-      .sidebar-card-head {
+      .sidebar-card-btn {
         display: flex;
         align-items: center;
         gap: 10px;
+        width: 100%;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+        color: var(--fg);
+        padding: 0;
         margin-bottom: 8px;
+        transition: opacity 0.15s;
+      }
+      .sidebar-card-btn:hover {
+        opacity: 0.75;
+      }
+      .sidebar-card-btn::after {
+        content: "›";
+        font-size: 20px;
+        color: hsl(0 0% 83% / 1);
+        margin-left: auto;
+        display: block;
+        line-height: 1;
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+      }
+      .sidebar-card.open .sidebar-card-btn::after {
+        transform: rotate(90deg);
       }
       .sidebar-icon {
         color: var(--accent);
@@ -779,7 +804,7 @@
       }
       .sidebar-card-title {
         font-family: var(--sans);
-        font-size: 13px;
+        font-size: 15px;
         font-weight: 400;
         letter-spacing: var(--track-label);
         text-transform: uppercase;
@@ -790,10 +815,18 @@
       .sidebar-card-desc {
         font-family: var(--body);
         font-size: 13px;
-        color: var(--muted);
+        color: hsl(0 0% 83% / 1);
         line-height: 1.65;
         margin: 0;
-        padding-left: 30px;
+        padding-left: 28px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .sidebar-card.open .sidebar-card-desc {
+        display: block;
+        overflow: visible;
       }
       @media (max-width: 720px) {
         .workflow-layout {
@@ -2873,7 +2906,11 @@
           <div class="sidebar-cards">
             <!-- Parallel Specialists -->
             <div class="sidebar-card">
-              <div class="sidebar-card-head">
+              <button
+                class="sidebar-card-btn"
+                onclick="toggleSidebar(this)"
+                aria-expanded="false"
+              >
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -2902,7 +2939,7 @@
                   <line x1="6.6" y1="10" x2="10.2" y2="11.5" />
                 </svg>
                 <span class="sidebar-card-title">Parallel Specialists</span>
-              </div>
+              </button>
               <p class="sidebar-card-desc">
                 Multiple AI agents work simultaneously, each focused on a
                 specific domain — dramatically compressing review time without
@@ -2912,7 +2949,11 @@
 
             <!-- Self-Correcting & Self-Learning -->
             <div class="sidebar-card">
-              <div class="sidebar-card-head">
+              <button
+                class="sidebar-card-btn"
+                onclick="toggleSidebar(this)"
+                aria-expanded="false"
+              >
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -2941,7 +2982,7 @@
                 <span class="sidebar-card-title"
                   >Self-Correcting &amp; Self-Learning</span
                 >
-              </div>
+              </button>
               <p class="sidebar-card-desc">
                 Rubric failures trigger automatic correction cycles before
                 anything ships. Completed features write lessons to a persistent
@@ -2951,7 +2992,11 @@
 
             <!-- Safe by Design -->
             <div class="sidebar-card">
-              <div class="sidebar-card-head">
+              <button
+                class="sidebar-card-btn"
+                onclick="toggleSidebar(this)"
+                aria-expanded="false"
+              >
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -2970,7 +3015,7 @@
                   <path d="M10 11V9a2 2 0 1 1 4 0v2" />
                 </svg>
                 <span class="sidebar-card-title">Safe by Design</span>
-              </div>
+              </button>
               <p class="sidebar-card-desc">
                 Governance files are loaded at the start of every step. Isolated
                 worktrees prevent changes from touching the main codebase until
@@ -2980,7 +3025,11 @@
 
             <!-- Lowest-Cost Model Routing -->
             <div class="sidebar-card">
-              <div class="sidebar-card-head">
+              <button
+                class="sidebar-card-btn"
+                onclick="toggleSidebar(this)"
+                aria-expanded="false"
+              >
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -3001,7 +3050,7 @@
                 <span class="sidebar-card-title"
                   >Lowest-Cost Model Routing</span
                 >
-              </div>
+              </button>
               <p class="sidebar-card-desc">
                 Fast, cheap models handle routine tasks; powerful models are
                 reserved for complex reasoning — keeping costs efficient without
@@ -3011,7 +3060,11 @@
 
             <!-- Full Audit Trail -->
             <div class="sidebar-card">
-              <div class="sidebar-card-head">
+              <button
+                class="sidebar-card-btn"
+                onclick="toggleSidebar(this)"
+                aria-expanded="false"
+              >
                 <svg
                   class="sidebar-icon"
                   xmlns="http://www.w3.org/2000/svg"
@@ -3035,7 +3088,7 @@
                   <path d="M9 17h4" />
                 </svg>
                 <span class="sidebar-card-title">Full Audit Trail</span>
-              </div>
+              </button>
               <p class="sidebar-card-desc">
                 Every agent action, decision, and outcome is logged to a session
                 vault. A complete record of how every feature was built is
@@ -3092,6 +3145,12 @@
         btn.classList.toggle("open", !isOpen);
         btn.setAttribute("aria-expanded", String(!isOpen));
         isOpen ? close(getBody(btn)) : open(getBody(btn));
+      }
+      function toggleSidebar(btn) {
+        var card = btn.closest(".sidebar-card");
+        var isOpen = card.classList.contains("open");
+        card.classList.toggle("open", !isOpen);
+        btn.setAttribute("aria-expanded", String(!isOpen));
       }
     </script>
   </body>
